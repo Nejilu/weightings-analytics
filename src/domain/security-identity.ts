@@ -52,6 +52,15 @@ export function securityListingIdentity(
   return [ticker, name, normalizeSecurityIdentityPart(security.country)].join("|");
 }
 
+export function securityTickerCountryIdentity(
+  security: Pick<SecurityIdentityDescriptor, "ticker" | "country">,
+): string | null {
+  const ticker = normalizeSecurityIdentityPart(security.ticker);
+  const country = normalizeSecurityIdentityPart(security.country);
+  if (!ticker || !country) return null;
+  return `${ticker}|${country}`;
+}
+
 function isLegacyFallback(securityId: string): boolean {
   return securityId.startsWith("NAME:");
 }
@@ -174,6 +183,43 @@ export function planSecurityIdentityMerges(
         ? preferredLegacyFallback(group)?.securityId
         : undefined;
     if (!targetId) continue;
+
+    for (const security of group) {
+      if (
+        security.securityId !== targetId &&
+        isLegacyFallback(security.securityId)
+      ) {
+        merges.set(security.securityId, {
+          sourceId: security.securityId,
+          targetId,
+        });
+      }
+    }
+  }
+
+  // Provider files do not use one stable company label: for example,
+  // "MICROSOFT", "MICROSOFT CORP" and "MICROSOFT CORPORATION" can all
+  // describe the same MSFT listing. Merge a legacy name-based identity when
+  // ticker and country lead to exactly one durable market identity. Multiple
+  // strong candidates remain deliberately ambiguous and are kept separate.
+  const tickerCountryGroups = new Map<string, SecurityIdentityDescriptor[]>();
+  for (const security of securities) {
+    const key = securityTickerCountryIdentity(security);
+    if (!key) continue;
+    const group = tickerCountryGroups.get(key) ?? [];
+    group.push(security);
+    tickerCountryGroups.set(key, group);
+  }
+
+  for (const group of tickerCountryGroups.values()) {
+    if (group.length < 2) continue;
+    const strongTargets = new Set(
+      group
+        .map((security) => canonicalStrongId.get(security.securityId))
+        .filter((securityId): securityId is string => Boolean(securityId)),
+    );
+    if (strongTargets.size !== 1) continue;
+    const targetId = [...strongTargets][0];
 
     for (const security of group) {
       if (

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { Holding } from "./etf";
 import {
+  applyCreatorManualCuration,
   filterCreatorHoldings,
   normalizeCreatorHoldings,
 } from "./etf-creator";
@@ -61,4 +62,16 @@ test("renormalizes retained free-float weights to exactly 100", () => {
   assert.equal(result[0].securityId, "B");
   assert.equal(result[0].weight, 75);
   assert.equal(result[1].weight, 25);
+});
+
+test("manual curation can add filtered-out holdings and remove rule matches", () => {
+  const automatic = [holdings[0], holdings[2]];
+  const result = applyCreatorManualCuration(
+    holdings,
+    automatic,
+    new Set(["B"]),
+    new Set(["A"]),
+  );
+
+  assert.deepEqual(result.map((holding) => holding.securityId), ["B", "C"]);
 });

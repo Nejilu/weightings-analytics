@@ -61,13 +61,17 @@ test("annualizes rolling two-quarter and one-quarter consensus windows", () => {
   const twoQuarter = deriveConsensusWindow(simple, 2);
   const oneQuarter = deriveConsensusWindow(simple, 1);
 
-  assert.deepEqual(twoQuarter?.annualizedEpsPath, [14, 18, 22]);
-  assert.deepEqual(twoQuarter?.pePath, [120 / 14, 120 / 18, 120 / 22]);
+  assert.deepEqual(twoQuarter?.annualizedEpsPath, [6, 10, 14, 18, 22, 26, 30]);
+  assert.deepEqual(twoQuarter?.pePath, [120 / 6, 120 / 10, 120 / 14, 120 / 18, 120 / 22, 120 / 26, 4]);
+  assert.equal(twoQuarter?.historicalAnnualizedEps, 14);
+  assert.equal(twoQuarter?.forwardAnnualizedEps, 22);
   assert.ok(Math.abs((twoQuarter?.growth ?? 0) - (22 / 14 - 1) * 100) < 1e-9);
   assert.equal(twoQuarter?.annualizationFactor, 2);
 
-  assert.deepEqual(oneQuarter?.annualizedEpsPath, [16, 20]);
-  assert.deepEqual(oneQuarter?.pePath, [7.5, 6]);
+  assert.deepEqual(oneQuarter?.annualizedEpsPath, [4, 8, 12, 16, 20, 24, 28, 32]);
+  assert.deepEqual(oneQuarter?.pePath, [30, 15, 10, 7.5, 6, 5, 120 / 28, 3.75]);
+  assert.equal(oneQuarter?.historicalAnnualizedEps, 16);
+  assert.equal(oneQuarter?.forwardAnnualizedEps, 20);
   assert.equal(oneQuarter?.growth, 25);
   assert.equal(oneQuarter?.annualizationFactor, 4);
 });

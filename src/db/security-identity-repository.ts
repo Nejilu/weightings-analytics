@@ -3,6 +3,7 @@ import {
   planSecurityIdentityMerges,
   preferredSecurityId,
   securityListingIdentity,
+  securityTickerCountryIdentity,
   type SecurityIdentityDescriptor,
 } from "@/domain/security-identity";
 
@@ -297,12 +298,21 @@ export function canonicalizeHoldingsWithPersistedIdentities(
   const rows = loadSecurities(sqlite);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const byListing = new Map<string, StoredSecurityRow[]>();
+  const byTickerCountry = new Map<string, StoredSecurityRow[]>();
   for (const row of rows) {
-    const key = securityListingIdentity(identityDescriptor(row));
-    if (!key) continue;
-    const group = byListing.get(key) ?? [];
-    group.push(row);
-    byListing.set(key, group);
+    const descriptor = identityDescriptor(row);
+    const listingKey = securityListingIdentity(descriptor);
+    if (listingKey) {
+      const group = byListing.get(listingKey) ?? [];
+      group.push(row);
+      byListing.set(listingKey, group);
+    }
+    const tickerCountryKey = securityTickerCountryIdentity(descriptor);
+    if (tickerCountryKey) {
+      const group = byTickerCountry.get(tickerCountryKey) ?? [];
+      group.push(row);
+      byTickerCountry.set(tickerCountryKey, group);
+    }
   }
 
   const merged = new Map<string, Holding>();
@@ -310,9 +320,16 @@ export function canonicalizeHoldingsWithPersistedIdentities(
     const preferredId = preferredSecurityId(holding);
     const listingKey = securityListingIdentity(holding);
     const listingCandidates = listingKey ? byListing.get(listingKey) ?? [] : [];
+    const tickerCountryKey = securityTickerCountryIdentity(holding);
+    const tickerCountryCandidates = tickerCountryKey
+      ? byTickerCountry.get(tickerCountryKey) ?? []
+      : [];
     const stored = byId.get(preferredId) ??
       byId.get(holding.securityId) ??
-      (listingCandidates.length === 1 ? listingCandidates[0] : undefined);
+      (listingCandidates.length === 1 ? listingCandidates[0] : undefined) ??
+      (tickerCountryCandidates.length === 1
+        ? tickerCountryCandidates[0]
+        : undefined);
     const identifiers = storedIdentifiers(stored?.identifiersJson ?? null);
     const canonical: Holding = {
       ...holding,

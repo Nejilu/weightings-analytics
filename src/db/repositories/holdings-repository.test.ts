@@ -39,7 +39,7 @@ test("reconciles source fallback IDs into one canonical security across every co
       holdings: [{
         securityId: legacyId,
         ticker: "AAPL",
-        name: "APPLE INC",
+        name: "APPLE CORP",
         sector: "Information Technology",
         assetClass: "Equity",
         country: "United States",
@@ -97,7 +97,7 @@ test("reconciles source fallback IDs into one canonical security across every co
       holdings: [{
         securityId: canonicalId,
         ticker: "AAPL",
-        name: "APPLE INC",
+        name: "APPLE",
         sector: "Information Technology",
         assetClass: "Equity",
         country: "United States",

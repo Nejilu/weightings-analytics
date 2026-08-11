@@ -40,6 +40,13 @@ const ECONOMIC_GROUPS: EconomicSecurityGroup[] = [
     tickers: ["HY9H", "HY9H.F", "000660", "000660.KS"],
     nameIncludes: ["SK HYNIX"],
   },
+  {
+    key: "asml",
+    displayTicker: "ASML",
+    displayName: "ASML HOLDING",
+    tickers: ["ASML"],
+    nameIncludes: ["ASML HOLDING"],
+  },
 ];
 
 function normalized(value: string): string {

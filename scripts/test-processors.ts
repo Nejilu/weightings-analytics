@@ -21,6 +21,7 @@ import "../src/data/services/metrics-overview-screener.test";
 import "../src/data/services/metrics-overview-model.test";
 import "../src/db/repositories/metrics-repository.test";
 import "../src/db/repositories/holdings-repository.test";
+import "../src/db/repositories/local-etf-repository.test";
 import "../src/db/bootstrap.test";
 import "../src/db/migrate.test";
 import "../src/app/api/v1/metrics/overview/etag.test";

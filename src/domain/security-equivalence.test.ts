@@ -57,14 +57,17 @@ test("merges depositary receipts and share classes into economic positions", () 
     holding("alphabet-c", "GOOG", "ALPHABET INC CLASS C", 10),
     holding("tsmc-primary", "2330", "TAIWAN SEMICONDUCTOR MANUFACTURING", 8),
     holding("tsmc-adr", "TSM", "TAIWAN SEMICONDUCTOR ADR", 2),
+    holding("asml-primary", "ASML", "ASML HOLDING", 4),
+    holding("asml-adr", "ASML", "ASML HOLDING ADR REPRESENTING", 1),
   ]);
 
-  assert.equal(merged.length, 2);
+  assert.equal(merged.length, 3);
   assert.deepEqual(
     merged.map(({ ticker, weight }) => [ticker, weight]),
     [
       ["GOOG / GOOGL", 22],
       ["TSM / 2330", 10],
+      ["ASML", 5],
     ],
   );
 });

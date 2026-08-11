@@ -8,6 +8,7 @@ import type {
   EtfCreatorCriteria,
 } from "@/domain/etf-creator";
 import {
+  applyCreatorManualCuration,
   filterCreatorHoldings,
   normalizeCreatorHoldings,
 } from "@/domain/etf-creator";
@@ -18,6 +19,7 @@ import type {
 } from "@/domain/etf";
 
 import { EtfSearch } from "./etf-search";
+import { LocalEtfManager } from "./local-etf-manager";
 
 interface EtfCreatorProps {
   catalog: CatalogGroup[];
@@ -139,6 +141,9 @@ export function EtfCreator({
   const [overlapSnapshot, setOverlapSnapshot] =
     useState<HoldingsSnapshot | null>(null);
   const [overlapLoading, setOverlapLoading] = useState(false);
+  const [manualInclusions, setManualInclusions] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [manualExclusions, setManualExclusions] = useState<Set<string>>(
     () => new Set(),
   );
@@ -280,12 +285,24 @@ export function EtfCreator({
       ),
     [criteria, overlapSecurityIds, sourceEquities],
   );
+  const automaticIds = useMemo(
+    () => new Set(automaticSelection.map((holding) => holding.securityId)),
+    [automaticSelection],
+  );
   const selectedHoldings = useMemo(
     () =>
-      automaticSelection.filter(
-        (holding) => !manualExclusions.has(holding.securityId),
+      applyCreatorManualCuration(
+        sourceEquities,
+        automaticSelection,
+        manualInclusions,
+        manualExclusions,
       ),
-    [automaticSelection, manualExclusions],
+    [
+      automaticSelection,
+      manualExclusions,
+      manualInclusions,
+      sourceEquities,
+    ],
   );
   const selectedIds = useMemo(
     () => new Set(selectedHoldings.map((holding) => holding.securityId)),
@@ -307,17 +324,53 @@ export function EtfCreator({
   ).size;
   const visibleHoldings = useMemo(() => {
     const query = resultQuery.trim().toLocaleUpperCase("en-US");
-    return automaticSelection.filter(
+    return sourceEquities.filter(
       (holding) =>
         !query ||
         holding.ticker.toLocaleUpperCase("en-US").includes(query) ||
         holding.name.toLocaleUpperCase("en-US").includes(query),
     );
-  }, [automaticSelection, resultQuery]);
+  }, [resultQuery, sourceEquities]);
   const normalizedWeights = useMemo(
     () => new Map(normalized.map((holding) => [holding.securityId, holding.weight])),
     [normalized],
   );
+  const effectiveManualInclusions = useMemo(
+    () =>
+      sourceEquities.filter(
+        (holding) =>
+          manualInclusions.has(holding.securityId) &&
+          !automaticIds.has(holding.securityId) &&
+          !manualExclusions.has(holding.securityId),
+      ),
+    [automaticIds, manualExclusions, manualInclusions, sourceEquities],
+  );
+  const effectiveManualExclusions = useMemo(
+    () =>
+      sourceEquities.filter(
+        (holding) =>
+          automaticIds.has(holding.securityId) &&
+          manualExclusions.has(holding.securityId),
+      ),
+    [automaticIds, manualExclusions, sourceEquities],
+  );
+  const overlapEtf = overlapEtfs.find((etf) => etf.id === overlapEtfId);
+
+  const updateManualSelection = (securityId: string, checked: boolean) => {
+    const automaticallySelected = automaticIds.has(securityId);
+    setManualInclusions((current) => {
+      const next = new Set(current);
+      if (checked && !automaticallySelected) next.add(securityId);
+      else next.delete(securityId);
+      return next;
+    });
+    setManualExclusions((current) => {
+      const next = new Set(current);
+      if (!checked && automaticallySelected) next.add(securityId);
+      else next.delete(securityId);
+      return next;
+    });
+  };
 
   const resetFilters = () => {
     setCountries([]);
@@ -325,6 +378,7 @@ export function EtfCreator({
     setOverlapMode("none");
     setOverlapSnapshot(null);
     setOverlapLoading(false);
+    setManualInclusions(new Set());
     setManualExclusions(new Set());
     setResultQuery("");
   };
@@ -342,6 +396,7 @@ export function EtfCreator({
     setOverlapMode("none");
     setOverlapSnapshot(null);
     setOverlapLoading(false);
+    setManualInclusions(new Set());
     setManualExclusions(new Set());
     setResultQuery("");
     setSavedEtf(null);
@@ -553,10 +608,14 @@ export function EtfCreator({
             <div>
               <span className="eyebrow">Step 4 · manual curation</span>
               <h2>Review constituents</h2>
+              <p>
+                Search the full base universe to add securities outside the
+                rules or remove rule matches.
+              </p>
             </div>
             <div className="creator-review-actions">
               <label>
-                <span className="sr-only">Search retained securities</span>
+                <span className="sr-only">Search all base ETF securities</span>
                 <input
                   type="search"
                   value={resultQuery}
@@ -566,29 +625,23 @@ export function EtfCreator({
               </label>
               <button
                 type="button"
-                onClick={() =>
-                  setManualExclusions((current) => {
-                    const next = new Set(current);
-                    for (const holding of automaticSelection) {
-                      next.delete(holding.securityId);
-                    }
-                    return next;
-                  })
-                }
+                onClick={() => {
+                  setManualInclusions(
+                    new Set(sourceEquities.map((holding) => holding.securityId)),
+                  );
+                  setManualExclusions(new Set());
+                }}
               >
                 Select all
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setManualExclusions((current) => {
-                    const next = new Set(current);
-                    for (const holding of automaticSelection) {
-                      next.add(holding.securityId);
-                    }
-                    return next;
-                  })
-                }
+                onClick={() => {
+                  setManualInclusions(new Set());
+                  setManualExclusions(
+                    new Set(sourceEquities.map((holding) => holding.securityId)),
+                  );
+                }}
               >
                 Clear all
               </button>
@@ -609,17 +662,19 @@ export function EtfCreator({
                   type="checkbox"
                   checked={selectedIds.has(holding.securityId)}
                   onChange={(event) =>
-                    setManualExclusions((current) => {
-                      const next = new Set(current);
-                      if (event.target.checked) next.delete(holding.securityId);
-                      else next.add(holding.securityId);
-                      return next;
-                    })
+                    updateManualSelection(
+                      holding.securityId,
+                      event.target.checked,
+                    )
                   }
                 />
                 <span className="creator-security">
                   <strong>{holding.ticker}</strong>
                   <small>{holding.name}</small>
+                  {!automaticIds.has(holding.securityId) &&
+                  selectedIds.has(holding.securityId) ? (
+                    <em>Added manually</em>
+                  ) : null}
                 </span>
                 <span className="creator-classification">
                   <strong>{holding.country}</strong>
@@ -635,15 +690,79 @@ export function EtfCreator({
             ))}
             {visibleHoldings.length === 0 ? (
               <div className="creator-empty-selection">
-                No selected security matches the current rules and search.
+                No base ETF security matches this search.
               </div>
             ) : null}
           </div>
           {visibleHoldings.length > 250 ? (
             <p className="creator-table-note">
-              Showing the first 250 of {visibleHoldings.length} selected securities. Use search to find another constituent.
+              Showing the first 250 of {visibleHoldings.length} base securities.
+              Use search to find another constituent.
             </p>
           ) : null}
+          <aside className="creator-recipe" aria-label="Final recipe applied">
+            <div className="creator-recipe-heading">
+              <div>
+                <span className="eyebrow">Final recipe applied</span>
+                <strong>{selectedHoldings.length} securities selected</strong>
+              </div>
+              <small>{automaticSelection.length} from rules</small>
+            </div>
+            <dl>
+              <div>
+                <dt>Geography</dt>
+                <dd>
+                  {countries.length === 0
+                    ? "No filter"
+                    : `${countryMode === "include" ? "Keep" : "Exclude"} ${countries.join(", ")}`}
+                </dd>
+              </div>
+              <div>
+                <dt>Sectors</dt>
+                <dd>
+                  {sectors.length === 0
+                    ? "No filter"
+                    : `${sectorMode === "include" ? "Keep" : "Exclude"} ${sectors.join(", ")}`}
+                </dd>
+              </div>
+              <div>
+                <dt>Overlap</dt>
+                <dd>
+                  {overlapMode === "none"
+                    ? "No rule"
+                    : `${overlapMode === "include" ? "Keep" : "Remove"} overlap with ${overlapEtf?.ticker ?? "reference ETF"}`}
+                </dd>
+              </div>
+              <div>
+                <dt>Manual</dt>
+                <dd>
+                  <span className="creator-recipe-addition">
+                    +{effectiveManualInclusions.length} added
+                  </span>
+                  <span className="creator-recipe-removal">
+                    −{effectiveManualExclusions.length} removed
+                  </span>
+                </dd>
+              </div>
+            </dl>
+            {effectiveManualInclusions.length > 0 ||
+            effectiveManualExclusions.length > 0 ? (
+              <p>
+                {effectiveManualInclusions.length > 0
+                  ? `Added: ${effectiveManualInclusions
+                      .slice(0, 6)
+                      .map((holding) => holding.ticker)
+                      .join(", ")}${effectiveManualInclusions.length > 6 ? ` +${effectiveManualInclusions.length - 6}` : ""}. `
+                  : ""}
+                {effectiveManualExclusions.length > 0
+                  ? `Removed: ${effectiveManualExclusions
+                      .slice(0, 6)
+                      .map((holding) => holding.ticker)
+                      .join(", ")}${effectiveManualExclusions.length > 6 ? ` +${effectiveManualExclusions.length - 6}` : ""}.`
+                  : ""}
+              </p>
+            ) : null}
+          </aside>
         </article>
 
         <article className="panel creator-save-panel">
@@ -705,6 +824,27 @@ export function EtfCreator({
           ) : null}
         </article>
       </section>
+      <LocalEtfManager
+        catalog={catalog}
+        fundType="custom"
+        onCatalogChanged={onCatalogChanged}
+        onDeleted={(etfId) => {
+          if (sourceEtfId === etfId) {
+            const replacement = sourceEtfs.find(
+              (etf) => etf.id !== etfId && etf.id === "acwi-us",
+            ) ?? sourceEtfs.find((etf) => etf.id !== etfId);
+            if (replacement) changeSourceEtf(replacement.id);
+          }
+          if (overlapEtfId === etfId) {
+            setOverlapMode("none");
+            setOverlapSnapshot(null);
+            setOverlapLoading(false);
+            setOverlapEtfId(
+              overlapEtfs.find((etf) => etf.id !== etfId)?.id ?? "",
+            );
+          }
+        }}
+      />
     </div>
   );
 }

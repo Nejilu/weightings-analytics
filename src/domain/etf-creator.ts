@@ -52,6 +52,24 @@ export function filterCreatorHoldings(
   });
 }
 
+export function applyCreatorManualCuration(
+  sourceHoldings: Holding[],
+  automaticHoldings: Holding[],
+  manualInclusions: ReadonlySet<string> = new Set(),
+  manualExclusions: ReadonlySet<string> = new Set(),
+): Holding[] {
+  const automaticIds = new Set(
+    automaticHoldings.map((holding) => holding.securityId),
+  );
+
+  return sourceHoldings.filter(
+    (holding) =>
+      (automaticIds.has(holding.securityId) ||
+        manualInclusions.has(holding.securityId)) &&
+      !manualExclusions.has(holding.securityId),
+  );
+}
+
 export function normalizeCreatorHoldings(holdings: Holding[]): Holding[] {
   const total = holdings.reduce(
     (sum, holding) => sum + Math.max(0, holding.weight),

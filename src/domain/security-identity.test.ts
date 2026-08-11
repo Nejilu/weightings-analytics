@@ -51,6 +51,43 @@ test("converges legacy name identities onto one unique ISIN identity", () => {
   );
 });
 
+test("converges provider name variants using one unambiguous ticker and country", () => {
+  assert.deepEqual(
+    planSecurityIdentityMerges([
+      {
+        securityId: "NAME:MICROSOFTCORP",
+        ticker: "MSFT",
+        name: "MICROSOFT CORP",
+        country: "United States",
+      },
+      {
+        securityId: "US5949181045",
+        ticker: "MSFT",
+        name: "MICROSOFT",
+        country: "United States",
+        isin: "US5949181045",
+      },
+      {
+        securityId: "NAME:ORACLECORP",
+        ticker: "ORCL",
+        name: "ORACLE CORP",
+        country: "United States",
+      },
+      {
+        securityId: "US68389X1054",
+        ticker: "ORCL",
+        name: "ORACLE",
+        country: "United States",
+        isin: "US68389X1054",
+      },
+    ]),
+    [
+      { sourceId: "NAME:MICROSOFTCORP", targetId: "US5949181045" },
+      { sourceId: "NAME:ORACLECORP", targetId: "US68389X1054" },
+    ],
+  );
+});
+
 test("keeps genuinely ambiguous strong identities and distinct share classes separate", () => {
   assert.deepEqual(
     planSecurityIdentityMerges([

@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { ETF_CATALOG } from "../data/catalog";
 import { getDb } from "./client";
+import { reconcilePersistedSecurityIdentities } from "./security-identity-repository";
 import {
   benchmarks,
   etfs,
@@ -212,4 +213,9 @@ export function seedCatalog(): void {
       }
     }
   });
+
+  // Existing databases can contain weak NAME:* identities from older source
+  // snapshots alongside newer ISIN-backed identities. Reconcile them on setup
+  // so saved portfolios immediately share one canonical security row.
+  reconcilePersistedSecurityIdentities();
 }

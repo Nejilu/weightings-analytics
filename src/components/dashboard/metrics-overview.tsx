@@ -63,7 +63,7 @@ const CONSENSUS_OPTIONS: Array<{
     description: "rolling two-quarter estimates, multiplied by two",
     historicalLabel: "last 2 historical estimates, annualized",
     forwardLabel: "next 2 consensus estimates, annualized",
-    stages: ["Last 2Q annualized", "+1Q", "Next 2Q annualized"],
+    stages: ["-2Q", "-1Q", "Last 2Q", "+1Q", "Next 2Q", "+3Q", "+4Q"],
   },
   {
     horizon: "1q",
@@ -71,7 +71,7 @@ const CONSENSUS_OPTIONS: Array<{
     description: "single-quarter estimates, multiplied by four",
     historicalLabel: "latest historical estimate, annualized",
     forwardLabel: "next-quarter consensus, annualized",
-    stages: ["Last Q annualized", "Next Q annualized"],
+    stages: ["-3Q", "-2Q", "-1Q", "Last Q", "Next Q", "+2Q", "+3Q", "+4Q"],
   },
 ];
 
@@ -124,8 +124,8 @@ function displayedMetricFor(
   horizon: ConsensusHorizon,
 ): WeightedMetric | ConsensusAggregate | undefined {
   const consensus = etf.consensusWindows[horizon];
-  if (key === "pe_estimate_window_0") return consensus.valuationPath[0];
-  if (key === "pe_estimate_window_4") return consensus.valuationPath.at(-1);
+  if (key === "pe_estimate_window_0") return consensus.valuationPath[4 - consensus.quarters];
+  if (key === "pe_estimate_window_4") return consensus.valuationPath[4];
   if (key === "eps_growth_estimate_forward_4q") return consensus.growth;
   return metricFor(etf.metrics, key);
 }
@@ -161,10 +161,11 @@ function displayComponentPoint(
     price: point.price,
     points: point.estimatePoints,
   }, consensusQuarters(horizon));
-  const peHistorical = derived?.pePath[0];
-  const peForward = derived?.pePath.at(-1);
+  if (!derived) return null;
+  const peHistorical = derived.pePath[4 - derived.quarters];
+  const peForward = derived.pePath[4];
   if (
-    !derived || derived.growth === null ||
+    derived.growth === null ||
     typeof peHistorical !== "number" || typeof peForward !== "number"
   ) return null;
   return {
@@ -258,7 +259,7 @@ function EtfGrowthValuationChart({
   const data = result.etfs.flatMap((etf, index) => {
     const consensus = etf.consensusWindows[horizon];
     const growth = consensus.growth.value;
-    const pe = consensus.valuationPath.at(-1)?.value;
+    const pe = consensus.valuationPath[4]?.value;
     return growth !== null && growth !== undefined && pe !== null && pe !== undefined
       ? [{ ticker: etf.ticker, growth, pe, size: 1, fill: FUND_COLORS[index] }]
       : [];

@@ -34,9 +34,9 @@ export function consensusQuarters(horizon: ConsensusHorizon): 1 | 2 | 4 {
 }
 
 /**
- * Builds comparable annual EPS windows around the latest reported quarter.
- * A two-quarter window is multiplied by two and a single quarter by four, so
- * every resulting P/E remains expressed on an annual basis.
+ * Builds every rolling annualized EPS window available in the eight-point
+ * series. A two-quarter window is multiplied by two and a single quarter by
+ * four, so every resulting P/E remains expressed on an annual basis.
  */
 export function deriveConsensusWindow(
   series: SecurityEstimateSeries,
@@ -47,15 +47,14 @@ export function deriveConsensusWindow(
   if (estimates.some((estimate) => !Number.isFinite(estimate))) return null;
 
   const annualizationFactor = (4 / quarters) as 1 | 2 | 4;
-  const firstWindowStart = 4 - quarters;
-  const annualizedEpsPath = Array.from({ length: quarters + 1 }, (_, offset) =>
+  const annualizedEpsPath = Array.from({ length: 9 - quarters }, (_, offset) =>
     estimates
-      .slice(firstWindowStart + offset, firstWindowStart + offset + quarters)
+      .slice(offset, offset + quarters)
       .reduce((sum, estimate) => sum + estimate, 0) * annualizationFactor);
   const pePath = annualizedEpsPath.map((annualizedEps) =>
     positive(annualizedEps) ? series.price / annualizedEps : null);
-  const historicalAnnualizedEps = annualizedEpsPath[0];
-  const forwardAnnualizedEps = annualizedEpsPath[annualizedEpsPath.length - 1];
+  const historicalAnnualizedEps = annualizedEpsPath[4 - quarters];
+  const forwardAnnualizedEps = annualizedEpsPath[4];
   const growth = positive(historicalAnnualizedEps) && positive(forwardAnnualizedEps)
     ? (forwardAnnualizedEps / historicalAnnualizedEps - 1) * 100
     : null;

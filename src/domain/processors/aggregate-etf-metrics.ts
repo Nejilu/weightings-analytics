@@ -50,7 +50,7 @@ export function aggregateConsensusWindow(
     const derived = series ? deriveConsensusWindow(series, quarters) : null;
     return derived ? [[holding.securityId, derived] as const] : [];
   }));
-  const valuationPath = Array.from({ length: quarters + 1 }, (_, index) =>
+  const valuationPath = Array.from({ length: 9 - quarters }, (_, index) =>
     aggregateHarmonicPe(
       eligible,
       totalWeight,
@@ -59,8 +59,8 @@ export function aggregateConsensusWindow(
     ));
   const coveredForGrowth = eligible.flatMap((holding) => {
     const derived = derivedBySecurity.get(holding.securityId);
-    const historicalPe = derived?.pePath[0];
-    const forwardPe = derived?.pePath[derived.pePath.length - 1];
+    const historicalPe = derived?.pePath[4 - quarters];
+    const forwardPe = derived?.pePath[4];
     return typeof historicalPe === "number" && historicalPe > 0 &&
       typeof forwardPe === "number" && forwardPe > 0
       ? [{ holding, historicalPe, forwardPe }]

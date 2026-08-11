@@ -173,9 +173,9 @@ test("aggregates annualized one-quarter consensus with common growth coverage", 
   );
 
   assert.equal(result.annualizationFactor, 4);
-  assert.equal(result.valuationPath.length, 2);
-  assert.ok(Math.abs((result.valuationPath[0].value ?? 0) - 80 / 5.6) < 1e-9);
-  assert.ok(Math.abs((result.valuationPath[1].value ?? 0) - 80 / 8.8) < 1e-9);
+  assert.equal(result.valuationPath.length, 8);
+  assert.ok(Math.abs((result.valuationPath[3].value ?? 0) - 80 / 5.6) < 1e-9);
+  assert.ok(Math.abs((result.valuationPath[4].value ?? 0) - 80 / 8.8) < 1e-9);
   assert.ok(Math.abs((result.growth.value ?? 0) - (8.8 / 5.6 - 1) * 100) < 1e-9);
   assert.equal(result.growth.coverageWeight, 80);
   assert.equal(result.growth.coveredHoldings, 2);

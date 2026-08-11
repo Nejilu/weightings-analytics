@@ -11,6 +11,7 @@ import type {
   PortfolioRecord,
 } from "@/domain/portfolio";
 import { EtfSearch } from "./etf-search";
+import { LocalEtfManager } from "./local-etf-manager";
 
 interface PortfolioAnalyticsProps {
   catalog: CatalogGroup[];
@@ -915,14 +916,11 @@ export function PortfolioAnalytics({
                         </i>
                       </div>
                       <div className="contribution-list">
-                        {position.contributions.slice(0, 3).map((contribution) => (
+                        {position.contributions.map((contribution) => (
                           <span key={contribution.itemId}>
                             {contribution.ticker} {formatPercent(contribution.weight)}
                           </span>
                         ))}
-                        {position.contributions.length > 3 ? (
-                          <small>+{position.contributions.length - 3} more</small>
-                        ) : null}
                       </div>
                       <strong className="synthetic-weight">
                         {formatPercent(position.weight)}
@@ -1002,6 +1000,11 @@ export function PortfolioAnalytics({
           </div>
         </section>
       )}
+      <LocalEtfManager
+        catalog={catalog}
+        fundType="portfolio"
+        onCatalogChanged={onCatalogChanged}
+      />
     </div>
   );
 }

@@ -41,6 +41,8 @@ interface ComparisonWorkbenchProps {
 
 type SelectionSide = "left" | "right";
 
+const INITIAL_VISIBLE_POSITIONS = 50;
+
 const COLORS = {
   left: "var(--left)",
   overlap: "var(--overlap)",
@@ -469,6 +471,7 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
   const [filter, setFilter] = useState<"active" | "overlap">("active");
   const [activeRankSide, setActiveRankSide] =
     useState<SelectionSide>("left");
+  const [expandedView, setExpandedView] = useState<string | null>(null);
   const activeWeightField =
     activeRankSide === "left" ? "leftActiveWeight" : "rightActiveWeight";
   const leftLabel = comparisonFundLabel(comparison, "left");
@@ -477,6 +480,8 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
     activeRankSide === "left"
       ? leftLabel
       : rightLabel;
+  const viewKey = `${comparison.calculatedAt}:${filter}:${activeRankSide}`;
+  const isExpanded = expandedView === viewKey;
 
   const rows = useMemo(() => {
     const filtered = comparison.positions.filter((position) =>
@@ -489,9 +494,12 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
         filter === "active"
           ? b[activeWeightField] - a[activeWeightField]
           : b.overlapWeight - a.overlapWeight,
-      )
-      .slice(0, 10);
+      );
   }, [activeWeightField, comparison, filter]);
+  const visibleRows = isExpanded
+    ? rows
+    : rows.slice(0, INITIAL_VISIBLE_POSITIONS);
+  const hasAdditionalRows = rows.length > INITIAL_VISIBLE_POSITIONS;
 
   return (
     <section className="panel positions-panel">
@@ -559,8 +567,8 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
               <th>Signal</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((position) => (
+          <tbody id="security-level-positions">
+            {visibleRows.map((position) => (
               <PositionRow
                 key={position.securityId}
                 position={position}
@@ -571,6 +579,27 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
           </tbody>
         </table>
       </div>
+      {hasAdditionalRows ? (
+        <button
+          type="button"
+          className="position-table-toggle"
+          aria-controls="security-level-positions"
+          aria-expanded={isExpanded}
+          onClick={() => setExpandedView(isExpanded ? null : viewKey)}
+        >
+          <span>
+            {isExpanded
+              ? `Show first ${INITIAL_VISIBLE_POSITIONS} positions`
+              : `Show all ${rows.length} positions`}
+          </span>
+          <small>
+            {isExpanded
+              ? `${rows.length} positions displayed`
+              : `${INITIAL_VISIBLE_POSITIONS} of ${rows.length} displayed`}
+          </small>
+          <b aria-hidden="true">{isExpanded ? "↑" : "↓"}</b>
+        </button>
+      ) : null}
     </section>
   );
 }
