@@ -218,6 +218,23 @@ export const portfolioItems = sqliteTable(
   ],
 );
 
+export const portfolioCashPositions = sqliteTable(
+  "portfolio_cash_positions",
+  {
+    portfolioId: text("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "cascade" }),
+    currency: text("currency").notNull(),
+    amount: real("amount").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.portfolioId, table.currency] }),
+    index("portfolio_cash_positions_portfolio_idx").on(table.portfolioId),
+  ],
+);
+
 export const marketPrices = sqliteTable(
   "market_prices",
   {

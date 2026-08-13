@@ -8,7 +8,9 @@ import { ensureLocalDatabase } from "../bootstrap";
 import { closeDatabase, getSqlite } from "../client";
 import {
   deleteLocalEtfRecord,
-  updateLocalEtfRecord,
+  migrateCustomEtfDefinitions,
+  replaceCustomEtfRecord,
+  replacePortfolioEtfRecord,
 } from "./local-etf-repository";
 
 test("updates and fully deletes custom and portfolio ETFs", () => {
@@ -66,20 +68,164 @@ test("updates and fully deletes custom and portfolio ETFs", () => {
       );
     `);
 
-    const updated = updateLocalEtfRecord({
-      id: "portfolio-etf-test",
-      ticker: "NEWP",
-      name: "New portfolio name",
-      description: "Updated description",
-    });
-    assert.equal(updated?.ticker, "NEWP");
+    sqlite.prepare("UPDATE etfs SET metadata_json = ? WHERE id = ?").run(
+      JSON.stringify({
+        compositionModel: "frozen-source-free-float",
+        sourceEtfId: "ivv-us",
+        sourceTicker: "IVV",
+        selectedCount: 1,
+        criteria: {
+          countryMode: "include",
+          countries: [],
+          sectorMode: "include",
+          sectors: [],
+          overlapMode: "none",
+        },
+        editableDescription: "Legacy note",
+        frozenAt: "2026-08-10T00:00:00Z",
+      }),
+      "custom-etf-test",
+    );
+    assert.equal(migrateCustomEtfDefinitions(), 1);
+    const migratedMetadata = JSON.parse(
+      (sqlite.prepare("SELECT metadata_json AS metadataJson FROM etfs WHERE id = ?")
+        .get("custom-etf-test") as { metadataJson: string }).metadataJson,
+    ) as {
+      compositionModel: string;
+      recalculation: string;
+      selectedSecurities: Array<{ securityId: string }>;
+      frozenAt?: string;
+    };
+    assert.equal(migratedMetadata.compositionModel, "dynamic-source-free-float");
+    assert.equal(migratedMetadata.recalculation, "on-read");
+    assert.equal(migratedMetadata.frozenAt, undefined);
+    assert.deepEqual(
+      migratedMetadata.selectedSecurities.map((security) => security.securityId),
+      ["LOCAL-SECURITY"],
+    );
+
+    sqlite.exec(`
+      INSERT INTO holding_snapshots (
+        id, etf_id, as_of, fetched_at, source_url, source_hash, source_status,
+        total_weight, row_count
+      ) VALUES (
+        'dynamic-custom-snapshot-test', 'custom-etf-test', '2026-08-11',
+        '2026-08-11T00:00:00Z', 'local://source', 'dynamic-hash', 'live', 100, 1
+      );
+      INSERT INTO holdings (snapshot_id, security_id, weight)
+      VALUES ('dynamic-custom-snapshot-test', 'LOCAL-SECURITY', 100);
+    `);
+    assert.equal(migrateCustomEtfDefinitions(), 0);
     assert.equal(
-      (
-        sqlite
-          .prepare("SELECT name FROM portfolios WHERE id = ?")
-          .get("saved-portfolio-test") as { name: string }
-      ).name,
-      "New portfolio name",
+      (sqlite
+        .prepare(
+          "SELECT COUNT(*) AS count FROM holding_snapshots WHERE etf_id = ? AND source_hash LIKE 'frozen:%'",
+        )
+        .get("custom-etf-test") as { count: number }).count,
+      0,
+    );
+    assert.equal(
+      (sqlite
+        .prepare(
+          "SELECT COUNT(*) AS count FROM holding_snapshots WHERE etf_id = ? AND source_hash = 'dynamic-hash'",
+        )
+        .get("custom-etf-test") as { count: number }).count,
+      1,
+    );
+
+    const rebuiltCustom = replaceCustomEtfRecord({
+      id: "custom-etf-test",
+      ticker: "NEWC",
+      name: "Rebuilt custom ETF",
+      description: "Rebuilt custom definition",
+      editableDescription: "My custom note",
+      sourceEtfId: "ivv-us",
+      sourceTicker: "IVV",
+      sourceAsOf: "2026-08-11",
+      sourceFetchedAt: "2026-08-11T00:00:00Z",
+      sourceUrl: "local://source",
+      criteria: {
+        countryMode: "include",
+        countries: [],
+        sectorMode: "include",
+        sectors: [],
+        overlapMode: "none",
+      },
+      selectedSecurities: [{
+        securityId: "LOCAL-SECURITY",
+        ticker: "LOCAL",
+      }],
+      selectedHoldings: [{
+        securityId: "LOCAL-SECURITY",
+        ticker: "LOCAL",
+        name: "Local security",
+        sector: "Technology",
+        assetClass: "Equity",
+        country: "United States",
+        currency: "USD",
+        weight: 100,
+      }],
+    });
+    assert.equal(rebuiltCustom?.ticker, "NEWC");
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM holding_snapshots WHERE etf_id = ?")
+        .get("custom-etf-test") as { count: number }).count,
+      1,
+    );
+    assert.equal(
+      (sqlite.prepare("SELECT as_of AS asOf FROM holding_snapshots WHERE etf_id = ?")
+        .get("custom-etf-test") as { asOf: string }).asOf,
+      "2026-08-11",
+    );
+    const customMetadata = JSON.parse(
+      (sqlite.prepare("SELECT metadata_json AS metadataJson FROM etfs WHERE id = ?")
+        .get("custom-etf-test") as { metadataJson: string }).metadataJson,
+    ) as {
+      compositionModel: string;
+      recalculation: string;
+      selectedSecurities: Array<{ securityId: string }>;
+    };
+    assert.equal(customMetadata.compositionModel, "dynamic-source-free-float");
+    assert.equal(customMetadata.recalculation, "on-read");
+    assert.deepEqual(
+      customMetadata.selectedSecurities.map((security) => security.securityId),
+      ["LOCAL-SECURITY"],
+    );
+
+    const rebuiltPortfolio = replacePortfolioEtfRecord({
+      id: "portfolio-etf-test",
+      portfolioId: "saved-portfolio-test",
+      ticker: "NEWP",
+      name: "Rebuilt portfolio ETF",
+      description: "Rebuilt portfolio definition",
+      editableDescription: "My portfolio note",
+      items: [{
+        id: "replacement-item",
+        kind: "security",
+        referenceId: "LOCAL-SECURITY",
+        ticker: "LOCAL",
+        name: "Local security",
+        allocationWeight: 80,
+        quantity: 5,
+        inputMode: "shares",
+        inputAmount: 5,
+        initialPriceUsd: 20,
+        initialValueUsd: 100,
+        priceSymbol: "LOCAL",
+        priceCurrency: "USD",
+      }],
+      cashPositions: [{ currency: "EUR", amount: 25 }],
+    });
+    assert.equal(rebuiltPortfolio?.name, "Rebuilt portfolio ETF");
+    assert.equal(
+      (sqlite.prepare("SELECT quantity FROM portfolio_items WHERE portfolio_id = ?")
+        .get("saved-portfolio-test") as { quantity: number }).quantity,
+      5,
+    );
+    assert.equal(
+      (sqlite.prepare("SELECT amount FROM portfolio_cash_positions WHERE portfolio_id = ? AND currency = 'EUR'")
+        .get("saved-portfolio-test") as { amount: number }).amount,
+      25,
     );
 
     assert.equal(deleteLocalEtfRecord("custom-etf-test"), true);
@@ -113,6 +259,11 @@ test("updates and fully deletes custom and portfolio ETFs", () => {
     );
     assert.equal(
       (sqlite.prepare("SELECT COUNT(*) AS count FROM portfolio_items WHERE portfolio_id = ?")
+        .get("saved-portfolio-test") as { count: number }).count,
+      0,
+    );
+    assert.equal(
+      (sqlite.prepare("SELECT COUNT(*) AS count FROM portfolio_cash_positions WHERE portfolio_id = ?")
         .get("saved-portfolio-test") as { count: number }).count,
       0,
     );

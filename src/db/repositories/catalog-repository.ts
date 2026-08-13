@@ -51,9 +51,7 @@ function mapDerivedHoldings(
     typeof record.constituentsReviewedAt === "string" &&
     Array.isArray(record.componentTickers) &&
     record.componentTickers.every((ticker) => typeof ticker === "string") &&
-    (record.missingComponentPolicy === undefined ||
-      record.missingComponentPolicy === "error" ||
-      record.missingComponentPolicy === "exclude-and-renormalize") &&
+    record.missingComponentPolicy === "exclude-and-renormalize" &&
     record.weighting === "source-market-value-normalized"
   ) {
     return {

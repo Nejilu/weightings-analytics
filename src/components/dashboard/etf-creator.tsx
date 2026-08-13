@@ -17,9 +17,9 @@ import type {
   EtfShareClass,
   HoldingsSnapshot,
 } from "@/domain/etf";
+import type { LocalEtfDetail } from "@/domain/local-etf";
 
 import { EtfSearch } from "./etf-search";
-import { LocalEtfManager } from "./local-etf-manager";
 
 interface EtfCreatorProps {
   catalog: CatalogGroup[];
@@ -108,9 +108,25 @@ export function EtfCreator({
     () => catalog.flatMap((group) => group.variants),
     [catalog],
   );
+  const customEtfs = useMemo(
+    () => sourceEtfs.filter((etf) => etf.fundType === "custom"),
+    [sourceEtfs],
+  );
   const defaultSourceEtfId =
     sourceEtfs.find((etf) => etf.id === "acwi-us")?.id ?? sourceEtfs[0]?.id ?? "";
   const [sourceEtfId, setSourceEtfId] = useState(defaultSourceEtfId);
+  const [workflowMode, setWorkflowMode] = useState<"create" | "edit">("create");
+  const [editingEtfId, setEditingEtfId] = useState("");
+  const [definitionLoading, setDefinitionLoading] = useState(false);
+  const [pendingEditSelection, setPendingEditSelection] = useState<{
+    sourceEtfId: string;
+    selectedIds: Set<string>;
+  } | null>(null);
+  const [editUnavailableSelectedIds, setEditUnavailableSelectedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [compositionDirty, setCompositionDirty] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const overlapCatalog = useMemo(
     () =>
       catalog
@@ -289,6 +305,39 @@ export function EtfCreator({
     () => new Set(automaticSelection.map((holding) => holding.securityId)),
     [automaticSelection],
   );
+  useEffect(() => {
+    if (
+      workflowMode !== "edit" ||
+      !pendingEditSelection ||
+      pendingEditSelection.sourceEtfId !== sourceEtfId ||
+      source?.etf.id !== sourceEtfId ||
+      sourceLoading ||
+      (overlapMode !== "none" &&
+        overlapSnapshot?.etf.id !== overlapEtfId)
+    ) return;
+
+    queueMicrotask(() => {
+      const selectedIds = pendingEditSelection.selectedIds;
+      setManualInclusions(
+        new Set([...selectedIds].filter((id) => !automaticIds.has(id))),
+      );
+      setManualExclusions(
+        new Set([...automaticIds].filter((id) => !selectedIds.has(id))),
+      );
+      setPendingEditSelection(null);
+      setCompositionDirty(false);
+    });
+  }, [
+    automaticIds,
+    overlapMode,
+    overlapSnapshot,
+    pendingEditSelection,
+    source,
+    sourceEtfId,
+    sourceLoading,
+    overlapEtfId,
+    workflowMode,
+  ]);
   const selectedHoldings = useMemo(
     () =>
       applyCreatorManualCuration(
@@ -335,6 +384,8 @@ export function EtfCreator({
     () => new Map(normalized.map((holding) => [holding.securityId, holding.weight])),
     [normalized],
   );
+  const previewNormalizedWeights = normalizedWeights;
+  const previewTop10Weight = top10Weight;
   const effectiveManualInclusions = useMemo(
     () =>
       sourceEquities.filter(
@@ -357,6 +408,7 @@ export function EtfCreator({
   const overlapEtf = overlapEtfs.find((etf) => etf.id === overlapEtfId);
 
   const updateManualSelection = (securityId: string, checked: boolean) => {
+    setCompositionDirty(true);
     const automaticallySelected = automaticIds.has(securityId);
     setManualInclusions((current) => {
       const next = new Set(current);
@@ -373,6 +425,7 @@ export function EtfCreator({
   };
 
   const resetFilters = () => {
+    setCompositionDirty(true);
     setCountries([]);
     setSectors([]);
     setOverlapMode("none");
@@ -384,6 +437,7 @@ export function EtfCreator({
   };
 
   const changeSourceEtf = (nextSourceEtfId: string) => {
+    setCompositionDirty(true);
     setSourceEtfId(nextSourceEtfId);
     if (nextSourceEtfId === overlapEtfId) {
       const replacement = overlapEtfs.find(
@@ -403,7 +457,118 @@ export function EtfCreator({
     setError(null);
   };
 
+  const startCreateMode = () => {
+    setWorkflowMode("create");
+    setEditingEtfId("");
+    setConfirmDelete(false);
+    setPendingEditSelection(null);
+    setEditUnavailableSelectedIds(new Set());
+    setCompositionDirty(false);
+    setTicker("");
+    setName("My Custom ETF");
+    setDescription("");
+    setSavedEtf(null);
+    changeSourceEtf(defaultSourceEtfId);
+    setCompositionDirty(false);
+  };
+
+  const loadEditableEtf = async (etfId: string) => {
+    if (!etfId) return;
+    setDefinitionLoading(true);
+    setError(null);
+    setSavedEtf(null);
+    setConfirmDelete(false);
+    try {
+      const response = await fetch(
+        `/api/v1/local-etfs/${encodeURIComponent(etfId)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json()) as {
+        data?: LocalEtfDetail;
+        error?: string;
+      };
+      if (!response.ok || !payload.data || payload.data.kind !== "custom") {
+        throw new Error(payload.error ?? "The custom ETF could not be loaded.");
+      }
+      const detail = payload.data;
+      setWorkflowMode("edit");
+      setEditingEtfId(detail.etf.id);
+      setTicker(detail.etf.ticker);
+      setName(detail.etf.name);
+      setDescription(detail.editableDescription);
+      setCountryMode(detail.criteria.countryMode);
+      setCountries(detail.criteria.countries);
+      setSectorMode(detail.criteria.sectorMode);
+      setSectors(detail.criteria.sectors);
+      setOverlapMode(detail.criteria.overlapMode);
+      setOverlapEtfId(detail.criteria.overlapEtfId ?? overlapEtfs[0]?.id ?? "");
+      setOverlapSnapshot(null);
+      setOverlapLoading(detail.criteria.overlapMode !== "none");
+      setManualInclusions(new Set());
+      setManualExclusions(new Set());
+      setSourceEtfId(detail.sourceEtfId);
+      setPendingEditSelection({
+        sourceEtfId: detail.sourceEtfId,
+        selectedIds: new Set(detail.selectedSecurityIds),
+      });
+      const availableIds = new Set(
+        detail.holdings.map((holding) => holding.securityId),
+      );
+      setEditUnavailableSelectedIds(
+        new Set(
+          detail.selectedSecurityIds.filter(
+            (securityId) => !availableIds.has(securityId),
+          ),
+        ),
+      );
+      setCompositionDirty(false);
+      setResultQuery("");
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "The custom ETF could not be loaded.",
+      );
+    } finally {
+      setDefinitionLoading(false);
+    }
+  };
+
+  const deleteEditingEtf = async () => {
+    if (!editingEtfId) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDefinitionLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/v1/local-etfs/${encodeURIComponent(editingEtfId)}`,
+        { method: "DELETE" },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "The custom ETF could not be deleted.");
+      }
+      await onCatalogChanged();
+      startCreateMode();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "The custom ETF could not be deleted.",
+      );
+    } finally {
+      setDefinitionLoading(false);
+    }
+  };
+
   const save = async () => {
+    if (pendingEditSelection || source?.etf.id !== sourceEtfId) {
+      setError("Wait for the saved ETF definition to finish loading before updating it.");
+      return;
+    }
     if (overlapMode !== "none" && !overlapSnapshot) {
       setError("Wait for the overlap ETF holdings before saving.");
       return;
@@ -412,18 +577,25 @@ export function EtfCreator({
     setSavedEtf(null);
     setError(null);
     try {
-      const response = await fetch("/api/v1/etf-creator", {
-        method: "POST",
+      const isEditing = workflowMode === "edit" && editingEtfId;
+      const response = await fetch(
+        isEditing
+          ? `/api/v1/local-etfs/${encodeURIComponent(editingEtfId)}`
+          : "/api/v1/etf-creator",
+        {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker,
           name,
           description,
-          selectedSecurityIds: selectedHoldings.map(
-            (holding) => holding.securityId,
-          ),
+          selectedSecurityIds: [
+            ...selectedHoldings.map((holding) => holding.securityId),
+            ...(!compositionDirty ? editUnavailableSelectedIds : []),
+          ],
           sourceEtfId,
           criteria,
+          ...(isEditing ? { kind: "custom" } : {}),
         }),
       });
       const payload = (await response.json()) as {
@@ -434,8 +606,13 @@ export function EtfCreator({
         throw new Error(payload.error ?? "The custom ETF could not be saved.");
       }
       setSavedEtf(payload.data);
-      setTicker("");
       await onCatalogChanged();
+      if (isEditing) {
+        await loadEditableEtf(payload.data.id);
+        setSavedEtf(payload.data);
+      } else {
+        setTicker("");
+      }
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -447,7 +624,7 @@ export function EtfCreator({
     }
   };
 
-  if (sourceLoading) {
+  if (sourceLoading && !source) {
     return (
       <section className="panel creator-loading" aria-live="polite">
         <span className="spinner" />
@@ -458,13 +635,85 @@ export function EtfCreator({
 
   return (
     <div className="creator-workspace" id="etf-creator">
+      <section className="panel local-etf-workflow-switcher">
+        <div>
+          <span className="eyebrow">ETF definition</span>
+          <h2>{workflowMode === "edit" ? "Edit an existing ETF" : "Create a new ETF"}</h2>
+          <p>
+            Editing reloads the original source, rules and manual curation.
+            Weights always follow the latest available source snapshot.
+          </p>
+        </div>
+        <div className="local-etf-workflow-controls">
+          <div className="local-etf-mode-toggle" aria-label="Creator mode">
+            <button
+              type="button"
+              className={workflowMode === "create" ? "is-active" : ""}
+              onClick={startCreateMode}
+            >
+              Create new
+            </button>
+            <button
+              type="button"
+              className={workflowMode === "edit" ? "is-active" : ""}
+              disabled={customEtfs.length === 0}
+              onClick={() => {
+                const nextId = editingEtfId || customEtfs[0]?.id || "";
+                setWorkflowMode("edit");
+                setEditingEtfId(nextId);
+                if (nextId) void loadEditableEtf(nextId);
+              }}
+            >
+              Edit existing
+            </button>
+          </div>
+          {workflowMode === "edit" ? (
+            <label className="local-etf-picker">
+              <span>Custom ETF</span>
+              <select
+                value={editingEtfId}
+                disabled={definitionLoading}
+                onChange={(event) => void loadEditableEtf(event.target.value)}
+              >
+                {customEtfs.map((etf) => (
+                  <option key={etf.id} value={etf.id}>
+                    {etf.ticker} · {etf.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {workflowMode === "edit" ? (
+            <div className="local-etf-delete-control">
+              {confirmDelete ? <span>This removes the ETF definition and its saved snapshots.</span> : null}
+              <button
+                type="button"
+                className={confirmDelete ? "is-confirming" : ""}
+                disabled={definitionLoading}
+                onClick={() => void deleteEditingEtf()}
+              >
+                {definitionLoading
+                  ? "Working…"
+                  : confirmDelete
+                    ? "Confirm delete"
+                    : "Delete ETF"}
+              </button>
+              {confirmDelete ? (
+                <button type="button" onClick={() => setConfirmDelete(false)}>
+                  Cancel
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
       <section className="creator-hero">
         <div>
           <span className="eyebrow">Rules-based construction</span>
           <h1>ETF Creator</h1>
           <p>
             Start with any registered ETF, apply geography, sector and overlap
-            rules, then curate the remaining securities before freezing a
+            rules, then curate the securities used by a dynamically weighted
             synthetic ETF.
           </p>
           <div className="creator-source-selector">
@@ -497,13 +746,22 @@ export function EtfCreator({
               <span className="creator-step">01</span>
               <h2>Geography</h2>
             </div>
-            <ToggleMode value={countryMode} onChange={setCountryMode} />
+            <ToggleMode
+              value={countryMode}
+              onChange={(value) => {
+                setCountryMode(value);
+                setCompositionDirty(true);
+              }}
+            />
           </div>
           <p>Choose countries to keep or remove from the selected ETF universe.</p>
           <FilterOptions
             options={countriesOptions}
             selected={countries}
-            onChange={setCountries}
+            onChange={(values) => {
+              setCountries(values);
+              setCompositionDirty(true);
+            }}
             emptyLabel="No countries available."
           />
         </article>
@@ -514,13 +772,22 @@ export function EtfCreator({
               <span className="creator-step">02</span>
               <h2>Sectors</h2>
             </div>
-            <ToggleMode value={sectorMode} onChange={setSectorMode} />
+            <ToggleMode
+              value={sectorMode}
+              onChange={(value) => {
+                setSectorMode(value);
+                setCompositionDirty(true);
+              }}
+            />
           </div>
           <p>Apply a keep or exclusion rule to GICS sector classifications.</p>
           <FilterOptions
             options={sectorOptions}
             selected={sectors}
-            onChange={setSectors}
+            onChange={(values) => {
+              setSectors(values);
+              setCompositionDirty(true);
+            }}
             emptyLabel="No sectors available."
           />
         </article>
@@ -542,6 +809,7 @@ export function EtfCreator({
                   className={overlapMode === mode ? "is-active" : ""}
                   aria-pressed={overlapMode === mode}
                   onClick={() => {
+                    setCompositionDirty(true);
                     setOverlapMode(mode);
                     setOverlapSnapshot(null);
                     setOverlapLoading(mode !== "none");
@@ -558,6 +826,7 @@ export function EtfCreator({
               selectedId={overlapEtfId}
               label="Reference ETF"
               onSelect={(etfId) => {
+                setCompositionDirty(true);
                 setOverlapSnapshot(null);
                 setOverlapEtfId(etfId);
               }}
@@ -597,7 +866,7 @@ export function EtfCreator({
         </article>
         <article>
           <span>Top 10 concentration</span>
-          <strong>{formatPercent(top10Weight)}</strong>
+          <strong>{formatPercent(previewTop10Weight)}</strong>
           <small>{representedCountries} countries represented</small>
         </article>
       </section>
@@ -626,6 +895,7 @@ export function EtfCreator({
               <button
                 type="button"
                 onClick={() => {
+                  setCompositionDirty(true);
                   setManualInclusions(
                     new Set(sourceEquities.map((holding) => holding.securityId)),
                   );
@@ -637,6 +907,7 @@ export function EtfCreator({
               <button
                 type="button"
                 onClick={() => {
+                  setCompositionDirty(true);
                   setManualInclusions(new Set());
                   setManualExclusions(
                     new Set(sourceEquities.map((holding) => holding.securityId)),
@@ -683,7 +954,7 @@ export function EtfCreator({
                 <span>{formatPercent(holding.weight, 3)}</span>
                 <strong>
                   {selectedIds.has(holding.securityId)
-                    ? formatPercent(normalizedWeights.get(holding.securityId) ?? 0, 3)
+                    ? formatPercent(previewNormalizedWeights.get(holding.securityId) ?? 0, 3)
                     : "Excluded"}
                 </strong>
               </label>
@@ -767,12 +1038,12 @@ export function EtfCreator({
 
         <article className="panel creator-save-panel">
           <div>
-            <span className="eyebrow">Step 5 · freeze definition</span>
-            <h2>Save to supported ETFs</h2>
+            <span className="eyebrow">Step 5 · dynamic definition</span>
+            <h2>{workflowMode === "edit" ? "Update this ETF" : "Save to supported ETFs"}</h2>
             <p>
-              The constituent list and normalized weights are frozen at save
-              time. Future changes in the selected source ETF will not alter
-              this ETF.
+              The selected constituent list is saved. Its available free-float
+              weights are recalculated and normalized from the latest source
+              snapshot whenever this ETF is read.
             </p>
           </div>
           <div className="creator-save-fields">
@@ -804,47 +1075,36 @@ export function EtfCreator({
             </label>
           </div>
           <div className="creator-definition-summary">
-            <span><b>{selectedHoldings.length}</b> frozen constituents</span>
-            <span><b>100%</b> normalized weight</span>
-            <span><b>{source ? formatDate(source.asOf) : "—"}</b> {source?.etf.ticker ?? "Source"} snapshot</span>
+            <span><b>{selectedHoldings.length}</b> selected constituents</span>
+            <span><b>100%</b> dynamically normalized</span>
+            <span><b>{source ? formatDate(source.asOf) : "—"}</b> current {source?.etf.ticker ?? "source"} snapshot</span>
           </div>
           <button
             className="primary-button creator-save-button"
             type="button"
-            disabled={saving || selectedHoldings.length === 0}
+            disabled={
+              saving ||
+              definitionLoading ||
+              sourceLoading ||
+              Boolean(pendingEditSelection) ||
+              selectedHoldings.length === 0
+            }
             onClick={save}
           >
             {saving ? <span className="spinner" /> : null}
-            {saving ? "Saving ETF…" : "Save custom ETF"}
+            {saving
+              ? "Saving ETF…"
+              : workflowMode === "edit"
+                ? "Update custom ETF"
+                : "Save custom ETF"}
           </button>
           {savedEtf ? (
             <div className="saved-etf-success">
-              {savedEtf.ticker} is now available in the supported ETF list with its frozen source weights.
+              {savedEtf.ticker} {workflowMode === "edit" ? "was updated" : "is now available in the supported ETF list"} with dynamic source weights.
             </div>
           ) : null}
         </article>
       </section>
-      <LocalEtfManager
-        catalog={catalog}
-        fundType="custom"
-        onCatalogChanged={onCatalogChanged}
-        onDeleted={(etfId) => {
-          if (sourceEtfId === etfId) {
-            const replacement = sourceEtfs.find(
-              (etf) => etf.id !== etfId && etf.id === "acwi-us",
-            ) ?? sourceEtfs.find((etf) => etf.id !== etfId);
-            if (replacement) changeSourceEtf(replacement.id);
-          }
-          if (overlapEtfId === etfId) {
-            setOverlapMode("none");
-            setOverlapSnapshot(null);
-            setOverlapLoading(false);
-            setOverlapEtfId(
-              overlapEtfs.find((etf) => etf.id !== etfId)?.id ?? "",
-            );
-          }
-        }}
-      />
     </div>
   );
 }

@@ -3,15 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
-import type {
-  MarketPrice,
-  PortfolioAssetKind,
-  PortfolioInputMode,
-  PortfolioItem,
-  PortfolioRecord,
+import type { LocalEtfDetail } from "@/domain/local-etf";
+import {
+  SUPPORTED_CASH_CURRENCIES,
+  type PortfolioCashPosition,
+  type PortfolioExposureMode,
+  type MarketPrice,
+  type PortfolioAssetKind,
+  type PortfolioInputMode,
+  type PortfolioItem,
+  type PortfolioRecord,
 } from "@/domain/portfolio";
 import { EtfSearch } from "./etf-search";
-import { LocalEtfManager } from "./local-etf-manager";
 
 interface PortfolioAnalyticsProps {
   catalog: CatalogGroup[];
@@ -27,6 +30,15 @@ interface SecuritySearchResult {
   quoteSymbol?: string;
   instrumentType?: "ADR" | "GDR";
   underlyingTicker?: string;
+}
+
+interface CompositionRow {
+  id: string;
+  kind: "security" | "cash" | "financing";
+  ticker: string;
+  name: string;
+  weight: number;
+  sources: Array<{ id: string; label: string; weight: number }>;
 }
 
 function formatPercent(value: number, digits = 2) {
@@ -73,7 +85,19 @@ export function PortfolioAnalytics({
     () => sourceCatalog.flatMap((benchmark) => benchmark.variants),
     [sourceCatalog],
   );
+  const portfolioEtfs = useMemo(
+    () =>
+      catalog
+        .flatMap((benchmark) => benchmark.variants)
+        .filter((etf) => etf.fundType === "portfolio"),
+    [catalog],
+  );
+  const [workflowMode, setWorkflowMode] = useState<"create" | "edit">("create");
+  const [editingEtfId, setEditingEtfId] = useState("");
+  const [definitionLoading, setDefinitionLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [items, setItems] = useState<PortfolioItem[]>([]);
+  const [cashPositions, setCashPositions] = useState<PortfolioCashPosition[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioRecord | null>(null);
   const [kind, setKind] = useState<PortfolioAssetKind>("etf");
   const [selectedEtfId, setSelectedEtfId] = useState(etfs[0]?.id ?? "");
@@ -83,6 +107,10 @@ export function PortfolioAnalytics({
     useState<SecuritySearchResult | null>(null);
   const [inputMode, setInputMode] = useState<PortfolioInputMode>("value");
   const [inputAmount, setInputAmount] = useState("1000");
+  const [cashCurrency, setCashCurrency] = useState<PortfolioCashPosition["currency"]>("USD");
+  const [cashAmount, setCashAmount] = useState("1000");
+  const [exposureMode, setExposureMode] =
+    useState<PortfolioExposureMode>("gross-normalized");
   const [quote, setQuote] = useState<MarketPrice | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -97,6 +125,112 @@ export function PortfolioAnalytics({
   const [etfDescription, setEtfDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const applyPortfolioRecord = (record: PortfolioRecord) => {
+    setPortfolio(record);
+    setItems(record.items);
+    setCashPositions(record.cashPositions ?? []);
+  };
+
+  const loadDefaultPortfolio = async () => {
+    setDefinitionLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/v1/portfolio", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        data?: PortfolioRecord;
+        error?: string;
+      };
+      if (!response.ok || !payload.data) {
+        throw new Error(payload.error ?? "The saved portfolio could not be loaded.");
+      }
+      applyPortfolioRecord(payload.data);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "The saved portfolio could not be loaded.",
+      );
+    } finally {
+      setDefinitionLoading(false);
+    }
+  };
+
+  const startCreateMode = () => {
+    setWorkflowMode("create");
+    setEditingEtfId("");
+    setConfirmDelete(false);
+    setEtfTicker("");
+    setEtfName("My Portfolio ETF");
+    setEtfDescription("");
+    setSavedEtf(null);
+    void loadDefaultPortfolio();
+  };
+
+  const loadEditablePortfolioEtf = async (etfId: string) => {
+    if (!etfId) return;
+    setDefinitionLoading(true);
+    setError(null);
+    setSavedEtf(null);
+    setConfirmDelete(false);
+    try {
+      const response = await fetch(
+        `/api/v1/local-etfs/${encodeURIComponent(etfId)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json()) as {
+        data?: LocalEtfDetail;
+        error?: string;
+      };
+      if (!response.ok || !payload.data || payload.data.kind !== "portfolio") {
+        throw new Error(payload.error ?? "The portfolio ETF could not be loaded.");
+      }
+      setWorkflowMode("edit");
+      setEditingEtfId(payload.data.etf.id);
+      setEtfTicker(payload.data.etf.ticker);
+      setEtfName(payload.data.etf.name);
+      setEtfDescription(payload.data.editableDescription);
+      applyPortfolioRecord(payload.data.portfolio);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "The portfolio ETF could not be loaded.",
+      );
+    } finally {
+      setDefinitionLoading(false);
+    }
+  };
+
+  const deleteEditingPortfolioEtf = async () => {
+    if (!editingEtfId) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDefinitionLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/v1/local-etfs/${encodeURIComponent(editingEtfId)}`,
+        { method: "DELETE" },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "The portfolio ETF could not be deleted.");
+      }
+      await onCatalogChanged();
+      startCreateMode();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "The portfolio ETF could not be deleted.",
+      );
+    } finally {
+      setDefinitionLoading(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -110,8 +244,7 @@ export function PortfolioAnalytics({
           throw new Error(payload.error ?? "The saved portfolio could not be loaded.");
         }
         if (active) {
-          setPortfolio(payload.data);
-          setItems(payload.data.items);
+          applyPortfolioRecord(payload.data);
         }
       } catch (loadError) {
         if (active) {
@@ -228,7 +361,7 @@ export function PortfolioAnalytics({
       : null;
   const activeQuoteLoading = Boolean(selectedReferenceId) && quoteLoading;
 
-  const draftMarketValue = items.reduce(
+  const draftPositionsValue = items.reduce(
     (sum, item) =>
       sum +
       (Number.isFinite(item.currentValueUsd)
@@ -236,6 +369,15 @@ export function PortfolioAnalytics({
         : (item.quantity ?? 0) * (item.currentPriceUsd ?? 0)),
     0,
   );
+  const draftCashValue = cashPositions.reduce(
+    (sum, position) =>
+      sum +
+      (Number.isFinite(position.valueUsd)
+        ? Number(position.valueUsd)
+        : position.amount * (position.fxToUsd ?? 0)),
+    0,
+  );
+  const draftMarketValue = draftPositionsValue + draftCashValue;
   const normalizedItems = useMemo(
     () =>
       items.map((item) => {
@@ -252,15 +394,18 @@ export function PortfolioAnalytics({
     [items, draftMarketValue],
   );
   const hasUnsavedChanges =
-    JSON.stringify(
+    JSON.stringify({
+      items:
       normalizedItems.map(({ id, kind: itemKind, referenceId, quantity }) => ({
         id,
         kind: itemKind,
         referenceId,
         quantity,
       })),
-    ) !==
-    JSON.stringify(
+      cashPositions: cashPositions.map(({ currency, amount }) => ({ currency, amount })),
+    }) !==
+    JSON.stringify({
+      items:
       (portfolio?.items ?? []).map(
         ({ id, kind: itemKind, referenceId, quantity }) => ({
           id,
@@ -269,15 +414,19 @@ export function PortfolioAnalytics({
           quantity,
         }),
       ),
-    );
+      cashPositions: (portfolio?.cashPositions ?? []).map(({ currency, amount }) => ({
+        currency,
+        amount,
+      })),
+    });
 
   const addItem = () => {
     const numericAmount = Number(inputAmount);
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    if (!Number.isFinite(numericAmount) || numericAmount === 0) {
       setError(
         inputMode === "value"
-          ? "Enter a position value greater than $0."
-          : "Enter a share quantity greater than 0.",
+          ? "Enter a non-zero position value. Use a negative value for a short."
+          : "Enter a non-zero share quantity. Use a negative quantity for a short.",
       );
       return;
     }
@@ -347,19 +496,50 @@ export function PortfolioAnalytics({
     }
   };
 
+  const addCashPosition = () => {
+    const amount = Number(cashAmount);
+    if (!Number.isFinite(amount) || amount === 0) {
+      setError("Enter a non-zero cash amount. Use a negative amount for borrowing.");
+      return;
+    }
+    if (cashPositions.some((position) => position.currency === cashCurrency)) {
+      setError(`${cashCurrency} cash already exists. Edit the existing line instead.`);
+      return;
+    }
+    setCashPositions((current) => [...current, { currency: cashCurrency, amount }]);
+    setError(null);
+  };
+
   const save = async () => {
-    if (normalizedItems.some((item) => !item.quantity || item.quantity <= 0)) {
-      setError("Every line must have a share quantity greater than 0.");
+    if (normalizedItems.some((item) => !item.quantity || !Number.isFinite(item.quantity))) {
+      setError("Every security line must have a non-zero share quantity.");
+      return;
+    }
+    if (cashPositions.some((position) => !position.amount || !Number.isFinite(position.amount))) {
+      setError("Every cash line must have a non-zero amount.");
       return;
     }
 
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch("/api/v1/portfolio", {
-        method: "PUT",
+      const isEditing = workflowMode === "edit" && editingEtfId;
+      const response = await fetch(
+        isEditing
+          ? `/api/v1/local-etfs/${encodeURIComponent(editingEtfId)}`
+          : "/api/v1/portfolio",
+        {
+        method: isEditing ? "PATCH" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(isEditing
+            ? {
+                kind: "portfolio",
+                ticker: etfTicker,
+                name: etfName,
+                description: etfDescription,
+              }
+            : {}),
           items: normalizedItems.map(({ id, kind: itemKind, referenceId, quantity }) => ({
             id,
             kind: itemKind,
@@ -367,17 +547,25 @@ export function PortfolioAnalytics({
             inputMode: "shares",
             inputAmount: quantity,
           })),
+          cashPositions: cashPositions.map(({ currency, amount }) => ({
+            currency,
+            amount,
+          })),
         }),
       });
       const payload = (await response.json()) as {
-        data?: PortfolioRecord;
+        data?: PortfolioRecord | EtfShareClass;
         error?: string;
       };
       if (!response.ok || !payload.data) {
         throw new Error(payload.error ?? "The portfolio could not be saved.");
       }
-      setPortfolio(payload.data);
-      setItems(payload.data.items);
+      if (isEditing) {
+        await onCatalogChanged();
+        await loadEditablePortfolioEtf(editingEtfId);
+      } else {
+        applyPortfolioRecord(payload.data as PortfolioRecord);
+      }
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -390,7 +578,8 @@ export function PortfolioAnalytics({
   };
 
   const saveAsEtf = async () => {
-    if (hasUnsavedChanges) {
+    const isEditing = workflowMode === "edit" && editingEtfId;
+    if (!isEditing && hasUnsavedChanges) {
       setError("Save and analyse the portfolio before creating its ETF.");
       return;
     }
@@ -398,13 +587,35 @@ export function PortfolioAnalytics({
     setSavedEtf(null);
     setError(null);
     try {
-      const response = await fetch("/api/v1/portfolio/save-as-etf", {
-        method: "POST",
+      const response = await fetch(
+        isEditing
+          ? `/api/v1/local-etfs/${encodeURIComponent(editingEtfId)}`
+          : "/api/v1/portfolio/save-as-etf",
+        {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: etfTicker,
           name: etfName,
           description: etfDescription,
+          ...(isEditing
+            ? {
+                kind: "portfolio",
+                items: normalizedItems.map(
+                  ({ id, kind: itemKind, referenceId, quantity }) => ({
+                    id,
+                    kind: itemKind,
+                    referenceId,
+                    inputMode: "shares",
+                    inputAmount: quantity,
+                  }),
+                ),
+                cashPositions: cashPositions.map(({ currency, amount }) => ({
+                  currency,
+                  amount,
+                })),
+              }
+            : {}),
         }),
       });
       const payload = (await response.json()) as {
@@ -415,8 +626,13 @@ export function PortfolioAnalytics({
         throw new Error(payload.error ?? "The portfolio ETF could not be saved.");
       }
       setSavedEtf(payload.data);
-      setEtfTicker("");
       await onCatalogChanged();
+      if (isEditing) {
+        await loadEditablePortfolioEtf(payload.data.id);
+        setSavedEtf(payload.data);
+      } else {
+        setEtfTicker("");
+      }
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -428,15 +644,66 @@ export function PortfolioAnalytics({
     }
   };
 
+  const compositionRows = useMemo<CompositionRow[]>(() => {
+    const analysis = portfolio?.analysis;
+    if (!analysis) return [];
+    const scale = exposureMode === "gross-normalized" && analysis.grossExposureWeight > 0
+      ? 100 / analysis.grossExposureWeight
+      : 1;
+    const rows: CompositionRow[] = analysis.positions.map((position) => ({
+      id: position.securityId,
+      kind: "security",
+      ticker: position.ticker,
+      name: position.name,
+      weight: position.weight * scale,
+      sources: position.contributions.map((contribution) => ({
+        id: contribution.itemId,
+        label: contribution.ticker,
+        weight: contribution.weight * scale,
+      })),
+    }));
+    if (exposureMode === "net-total") {
+      for (const position of portfolio.cashPositions ?? []) {
+        rows.push({
+          id: `cash:${position.currency}`,
+          kind: "cash",
+          ticker: position.currency,
+          name: "Cash & cash equivalents",
+          weight: position.weight ?? 0,
+          sources: [{
+            id: `cash:${position.currency}`,
+            label: position.amount < 0 ? "Borrowed cash" : "Cash",
+            weight: position.weight ?? 0,
+          }],
+        });
+      }
+      if (Math.abs(analysis.financingWeight) > 0.000001) {
+        rows.push({
+          id: "cash:implicit-financing",
+          kind: "financing",
+          ticker: "FIN",
+          name: "Implicit leveraged-ETF financing",
+          weight: analysis.financingWeight,
+          sources: [{
+            id: "cash:implicit-financing",
+            label: "ETF financing",
+            weight: analysis.financingWeight,
+          }],
+        });
+      }
+    }
+    return rows.sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight));
+  }, [portfolio, exposureMode]);
+
   const filteredPositions = useMemo(() => {
     const normalizedFilter = resultFilter.trim().toLocaleUpperCase("en-US");
-    return (portfolio?.analysis?.positions ?? []).filter(
+    return compositionRows.filter(
       (position) =>
         !normalizedFilter ||
         position.ticker.toLocaleUpperCase("en-US").includes(normalizedFilter) ||
         position.name.toLocaleUpperCase("en-US").includes(normalizedFilter),
     );
-  }, [portfolio, resultFilter]);
+  }, [compositionRows, resultFilter]);
 
   if (loading) {
     return (
@@ -448,21 +715,116 @@ export function PortfolioAnalytics({
   }
 
   const analysis = portfolio?.analysis;
-  const maxPositionWeight = analysis?.positions[0]?.weight ?? 0;
+  const maxPositionWeight = compositionRows.reduce(
+    (maximum, position) => Math.max(maximum, Math.abs(position.weight)),
+    0,
+  );
+  const exposureScale =
+    exposureMode === "gross-normalized" && (analysis?.grossExposureWeight ?? 0) > 0
+      ? 100 / (analysis?.grossExposureWeight ?? 100)
+      : 1;
+  const displayedSectors = analysis
+    ? [
+        ...analysis.sectors.map((sector) => ({
+          ...sector,
+          weight: sector.weight * exposureScale,
+        })),
+        ...(exposureMode === "net-total" && Math.abs(analysis.cashWeight) > 0.000001
+          ? [{ sector: "Cash & financing", weight: analysis.cashWeight }]
+          : []),
+      ].sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight))
+    : [];
+  const displayedTop10 = compositionRows
+    .slice(0, 10)
+    .reduce((sum, position) => sum + Math.abs(position.weight), 0);
   const numericInputAmount = Number(inputAmount);
   const previewQuantity =
-    activeQuote && numericInputAmount > 0
+    activeQuote && numericInputAmount !== 0
       ? inputMode === "shares"
         ? numericInputAmount
         : numericInputAmount / activeQuote.priceUsd
       : 0;
   const previewValueUsd =
-    activeQuote && previewQuantity > 0
+    activeQuote && previewQuantity !== 0
       ? previewQuantity * activeQuote.priceUsd
       : 0;
 
   return (
     <div className="portfolio-workspace" id="portfolio">
+      <section className="panel local-etf-workflow-switcher">
+        <div>
+          <span className="eyebrow">Portfolio ETF definition</span>
+          <h2>{workflowMode === "edit" ? "Edit an existing portfolio ETF" : "Create a new portfolio ETF"}</h2>
+          <p>
+            Editing reloads the saved ETF sleeves, stocks, cash balances and
+            share quantities into the same portfolio builder.
+          </p>
+        </div>
+        <div className="local-etf-workflow-controls">
+          <div className="local-etf-mode-toggle" aria-label="Portfolio ETF mode">
+            <button
+              type="button"
+              className={workflowMode === "create" ? "is-active" : ""}
+              onClick={startCreateMode}
+            >
+              Create new
+            </button>
+            <button
+              type="button"
+              className={workflowMode === "edit" ? "is-active" : ""}
+              disabled={portfolioEtfs.length === 0}
+              onClick={() => {
+                const nextId = editingEtfId || portfolioEtfs[0]?.id || "";
+                setWorkflowMode("edit");
+                setEditingEtfId(nextId);
+                if (nextId) void loadEditablePortfolioEtf(nextId);
+              }}
+            >
+              Edit existing
+            </button>
+          </div>
+          {workflowMode === "edit" ? (
+            <label className="local-etf-picker">
+              <span>Portfolio ETF</span>
+              <select
+                value={editingEtfId}
+                disabled={definitionLoading}
+                onChange={(event) =>
+                  void loadEditablePortfolioEtf(event.target.value)
+                }
+              >
+                {portfolioEtfs.map((etf) => (
+                  <option key={etf.id} value={etf.id}>
+                    {etf.ticker} · {etf.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {workflowMode === "edit" ? (
+            <div className="local-etf-delete-control">
+              {confirmDelete ? <span>This removes the ETF and its saved portfolio.</span> : null}
+              <button
+                type="button"
+                className={confirmDelete ? "is-confirming" : ""}
+                disabled={definitionLoading}
+                onClick={() => void deleteEditingPortfolioEtf()}
+              >
+                {definitionLoading
+                  ? "Working…"
+                  : confirmDelete
+                    ? "Confirm delete"
+                    : "Delete ETF"}
+              </button>
+              {confirmDelete ? (
+                <button type="button" onClick={() => setConfirmDelete(false)}>
+                  Cancel
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
       <section className="portfolio-hero">
         <div>
           <span className="eyebrow">Look-through aggregation</span>
@@ -473,9 +835,12 @@ export function PortfolioAnalytics({
           </p>
         </div>
         <div className="portfolio-total">
-          <span>Current market value</span>
+          <span>Draft net asset value</span>
           <strong>{formatUsd(draftMarketValue)}</strong>
-          <small>{items.length} priced position{items.length === 1 ? "" : "s"}</small>
+          <small>
+            {items.length} priced position{items.length === 1 ? "" : "s"} ·{" "}
+            {cashPositions.length} cash line{cashPositions.length === 1 ? "" : "s"}
+          </small>
         </div>
       </section>
 
@@ -615,7 +980,6 @@ export function PortfolioAnalytics({
                 {inputMode === "value" ? <b>$</b> : null}
                 <input
                   type="number"
-                  min="0.000001"
                   step={inputMode === "value" ? "0.01" : "0.000001"}
                   value={inputAmount}
                   onChange={(event) => setInputAmount(event.target.value)}
@@ -641,9 +1005,10 @@ export function PortfolioAnalytics({
                   {activeQuote.providerSymbol}: <b>{activeQuote.price.toLocaleString("en-US")} {activeQuote.currency}</b>
                   {" · "}{formatUsd(activeQuote.priceUsd)} per share
                 </span>
-                {previewQuantity > 0 ? (
+                {previewQuantity !== 0 ? (
                   <strong>
                     {formatQuantity(previewQuantity)} shares · {formatUsd(previewValueUsd)}
+                    {previewQuantity < 0 ? " · short" : " · long"}
                   </strong>
                 ) : null}
                 <small>
@@ -665,17 +1030,23 @@ export function PortfolioAnalytics({
           <div className="panel-heading">
             <div>
               <span className="eyebrow">Step 2</span>
-              <h2>Portfolio sleeves</h2>
+              <h2>Positions and cash</h2>
             </div>
-            <span className="info-chip">{items.length} lines</span>
+            <span className="info-chip">{items.length + cashPositions.length} lines</span>
           </div>
 
           {items.length > 0 ? (
             <div className="portfolio-lines">
               {normalizedItems.map((item) => (
                 <div className="portfolio-line" key={item.id}>
-                  <span className={`asset-badge asset-badge--${item.kind}`}>
-                    {item.kind === "etf" ? "ETF" : "Stock"}
+                  <span className={`asset-badge ${
+                    item.quantity && item.quantity < 0
+                      ? "asset-badge--short"
+                      : `asset-badge--${item.kind}`
+                  }`}>
+                    {item.quantity && item.quantity < 0
+                      ? `Short ${item.kind === "etf" ? "ETF" : "stock"}`
+                      : item.kind === "etf" ? "ETF" : "Stock"}
                   </span>
                   <div className="portfolio-line__identity">
                     <strong>{item.ticker}</strong>
@@ -686,7 +1057,6 @@ export function PortfolioAnalytics({
                     <input
                       aria-label={`${item.ticker} shares`}
                       type="number"
-                      min="0.000001"
                       step="0.000001"
                       value={item.quantity ?? ""}
                       onChange={(event) => {
@@ -731,9 +1101,98 @@ export function PortfolioAnalytics({
             </div>
           ) : (
             <div className="portfolio-empty-lines">
-              Add at least one ETF or stock to build the look-through portfolio.
+              Add an ETF, a stock, or a cash balance to build the portfolio.
             </div>
           )}
+
+          <div className="cash-editor">
+            <div className="cash-editor__heading">
+              <div>
+                <strong>Cash & cash equivalents</strong>
+                <span>Positive balance or negative borrowing, converted to USD.</span>
+              </div>
+              <span className="info-chip">{SUPPORTED_CASH_CURRENCIES.length} currencies</span>
+            </div>
+            {cashPositions.length > 0 ? (
+              <div className="cash-lines">
+                {cashPositions.map((position) => (
+                  <div className="cash-line" key={position.currency}>
+                    <span className={`asset-badge ${position.amount < 0 ? "asset-badge--short" : "asset-badge--cash"}`}>
+                      {position.amount < 0 ? "Borrowed" : "Cash"}
+                    </span>
+                    <strong>{position.currency}</strong>
+                    <input
+                      aria-label={`${position.currency} cash amount`}
+                      type="number"
+                      step="0.01"
+                      value={position.amount}
+                      onChange={(event) => {
+                        const amount = Number(event.target.value);
+                        setCashPositions((current) =>
+                          current.map((candidate) =>
+                            candidate.currency === position.currency
+                              ? {
+                                  ...candidate,
+                                  amount,
+                                  valueUsd: candidate.fxToUsd !== undefined
+                                    ? amount * candidate.fxToUsd
+                                    : undefined,
+                                }
+                              : candidate,
+                          ),
+                        );
+                      }}
+                    />
+                    <small>
+                      {position.valueUsd !== undefined
+                        ? `${formatUsd(position.valueUsd)} · ${formatPercent(position.weight ?? 0)}`
+                        : "USD value calculated on save"}
+                    </small>
+                    <button
+                      className="remove-line"
+                      type="button"
+                      aria-label={`Remove ${position.currency} cash`}
+                      onClick={() => setCashPositions((current) =>
+                        current.filter((candidate) => candidate.currency !== position.currency)
+                      )}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="cash-add-row">
+              <label className="field">
+                <span>Currency</span>
+                <select
+                  value={cashCurrency}
+                  onChange={(event) => setCashCurrency(
+                    event.target.value as PortfolioCashPosition["currency"],
+                  )}
+                >
+                  {SUPPORTED_CASH_CURRENCIES.map((currency) => (
+                    <option key={currency} value={currency}>{currency}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Cash amount</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={cashAmount}
+                  onChange={(event) => setCashAmount(event.target.value)}
+                />
+              </label>
+              <button className="secondary-button" type="button" onClick={addCashPosition}>
+                Add cash
+              </button>
+            </div>
+            <small className="cash-editor__hint">
+              Example: USD −100,000 with USD 200,000 of equities produces −100% cash and 200% equity exposure on a USD 100,000 NAV.
+            </small>
+          </div>
 
           <div className="portfolio-save-row">
             <span>
@@ -746,7 +1205,7 @@ export function PortfolioAnalytics({
             <button
               className="primary-button"
               type="button"
-              disabled={saving || items.length === 0}
+              disabled={saving || (items.length === 0 && cashPositions.length === 0)}
               onClick={save}
             >
               {saving ? <span className="spinner" /> : "Save & analyse"}
@@ -757,37 +1216,74 @@ export function PortfolioAnalytics({
 
       {analysis ? (
         <>
+          <section className="panel portfolio-exposure-switch" aria-label="Composition display mode">
+            <div>
+              <span className="eyebrow">Composition basis</span>
+              <h2>
+                {exposureMode === "gross-normalized"
+                  ? "Equity exposure normalized to 100%"
+                  : "Total net exposure including cash"}
+              </h2>
+              <p>
+                {exposureMode === "gross-normalized"
+                  ? "Cash is hidden. Long and short look-through positions are scaled by gross absolute equity exposure."
+                  : "Every weight uses net asset value: cash, borrowing, long positions and shorts remain signed."}
+              </p>
+            </div>
+            <div className="exposure-mode-toggle" role="group" aria-label="Exposure basis">
+              <button
+                type="button"
+                className={exposureMode === "gross-normalized" ? "is-active" : ""}
+                aria-pressed={exposureMode === "gross-normalized"}
+                onClick={() => setExposureMode("gross-normalized")}
+              >
+                Equity normalized
+                <small>No cash · gross = 100%</small>
+              </button>
+              <button
+                type="button"
+                className={exposureMode === "net-total" ? "is-active" : ""}
+                aria-pressed={exposureMode === "net-total"}
+                onClick={() => setExposureMode("net-total")}
+              >
+                Total net exposure
+                <small>Cash included · signed weights</small>
+              </button>
+            </div>
+          </section>
+
           <section className="portfolio-metrics" aria-label="Portfolio metrics">
             <article>
-              <span>Market value</span>
+              <span>Net asset value</span>
               <strong>
                 {formatUsd(analysis.totalMarketValueUsd ?? draftMarketValue)}
               </strong>
-              <small>quantity × latest cached price</small>
+              <small>positions + cash − borrowing</small>
             </article>
             <article>
-              <span>Look-through holdings</span>
-              <strong>{analysis.positionsCount}</strong>
-              <small>after merging duplicate exposures</small>
+              <span>Gross equity exposure</span>
+              <strong>{formatPercent(analysis.grossExposureWeight)}</strong>
+              <small>sum of absolute look-through weights</small>
             </article>
             <article>
               <span>Top 10 concentration</span>
-              <strong>{formatPercent(analysis.top10Concentration)}</strong>
-              <small>of the total portfolio</small>
+              <strong>{formatPercent(displayedTop10)}</strong>
+              <small>on the selected composition basis</small>
             </article>
             <article>
-              <span>Portfolio building blocks</span>
-              <strong>
-                {analysis.etfSleevesCount} + {analysis.directPositionsCount}
-              </strong>
-              <small>ETF sleeves + direct stocks</small>
+              <span>Cash & financing</span>
+              <strong>{formatPercent(analysis.cashWeight)}</strong>
+              <small>
+                {formatPercent(analysis.explicitCashWeight)} explicit ·{" "}
+                {formatPercent(analysis.financingWeight)} ETF financing
+              </small>
             </article>
           </section>
 
           <section className="panel save-portfolio-etf-panel">
             <div className="save-portfolio-etf-copy">
               <span className="eyebrow">Reusable local instrument</span>
-              <h2>Save this portfolio as an ETF</h2>
+              <h2>{workflowMode === "edit" ? "Update this portfolio ETF" : "Save this portfolio as an ETF"}</h2>
               <p>
                 IndexLens stores the number of ETF and stock shares, not frozen
                 percentages or a frozen holdings list. Component weights are
@@ -803,6 +1299,17 @@ export function PortfolioAnalytics({
                     <small>
                       {formatUsd(item.currentValueUsd ?? 0)} ·{" "}
                       {formatPercent(item.allocationWeight)} now
+                    </small>
+                  </span>
+                ))}
+                {cashPositions.map((position) => (
+                  <span key={`cash:${position.currency}`}>
+                    <b>{formatQuantity(position.amount)} {position.currency}</b>{" "}
+                    {position.amount < 0 ? "borrowed cash" : "cash"}
+                    <small>
+                      {position.valueUsd !== undefined
+                        ? `${formatUsd(position.valueUsd)} · ${formatPercent(position.weight ?? 0)} now`
+                        : "valued at the latest FX rate"}
                     </small>
                   </span>
                 ))}
@@ -841,27 +1348,37 @@ export function PortfolioAnalytics({
               </label>
               <div className="save-etf-action">
                 <span>
-                  {hasUnsavedChanges
-                    ? "Save the latest changes first."
-                    : "Ready for the ETF catalog."}
+                  {workflowMode === "edit"
+                    ? "Updates the selected ETF in place."
+                    : hasUnsavedChanges
+                      ? "Save the latest changes first."
+                      : "Ready for the ETF catalog."}
                 </span>
                 <button
                   className="primary-button"
                   type="button"
                   disabled={
                     savingEtf ||
-                    hasUnsavedChanges ||
-                    items.length === 0
+                    (workflowMode !== "edit" && hasUnsavedChanges) ||
+                    (items.length === 0 && cashPositions.length === 0)
                   }
                   onClick={saveAsEtf}
                 >
-                  {savingEtf ? <span className="spinner" /> : "Save as ETF"}
+                  {savingEtf ? (
+                    <span className="spinner" />
+                  ) : workflowMode === "edit" ? (
+                    "Update ETF"
+                  ) : (
+                    "Save as ETF"
+                  )}
                 </button>
               </div>
               {savedEtf ? (
                 <div className="saved-etf-success">
-                  <strong>{savedEtf.ticker}</strong> is now available in ETF
-                  comparison under Saved portfolios.
+                  <strong>{savedEtf.ticker}</strong>{" "}
+                  {workflowMode === "edit"
+                    ? "was updated in Saved portfolios."
+                    : "is now available in ETF comparison under Saved portfolios."}
                 </div>
               ) : null}
             </div>
@@ -890,25 +1407,26 @@ export function PortfolioAnalytics({
                   <span>#</span>
                   <span>Security</span>
                   <span>Sources</span>
-                  <span>Actual weight</span>
+                  <span>{exposureMode === "gross-normalized" ? "Normalized weight" : "NAV weight"}</span>
                 </div>
                 {filteredPositions.slice(0, 30).map((position) => {
                   const rank =
-                    analysis.positions.findIndex(
-                      (candidate) => candidate.securityId === position.securityId,
+                    compositionRows.findIndex(
+                      (candidate) => candidate.id === position.id,
                     ) + 1;
                   return (
-                    <div className="synthetic-ranking__row" key={position.securityId}>
+                    <div className={`synthetic-ranking__row ${position.weight < 0 ? "is-negative" : ""}`} key={position.id}>
                       <span className="synthetic-rank">{rank}</span>
                       <div className="synthetic-security">
                         <strong>{position.ticker}</strong>
                         <span>{position.name}</span>
                         <i aria-hidden="true">
                           <b
+                            className={position.weight < 0 ? "is-negative" : ""}
                             style={{
                               width: `${
                                 maxPositionWeight > 0
-                                  ? (position.weight / maxPositionWeight) * 100
+                                  ? (Math.abs(position.weight) / maxPositionWeight) * 100
                                   : 0
                               }%`,
                             }}
@@ -916,9 +1434,9 @@ export function PortfolioAnalytics({
                         </i>
                       </div>
                       <div className="contribution-list">
-                        {position.contributions.map((contribution) => (
-                          <span key={contribution.itemId}>
-                            {contribution.ticker} {formatPercent(contribution.weight)}
+                        {position.sources.map((source) => (
+                          <span key={source.id}>
+                            {source.label} {formatPercent(source.weight)}
                           </span>
                         ))}
                       </div>
@@ -940,12 +1458,19 @@ export function PortfolioAnalytics({
                   </div>
                 </div>
                 <div className="sector-exposure-list">
-                  {analysis.sectors.slice(0, 8).map((sector) => (
+                  {displayedSectors.slice(0, 8).map((sector) => (
                     <div key={sector.sector}>
                       <span>{sector.sector}</span>
                       <strong>{formatPercent(sector.weight)}</strong>
                       <i aria-hidden="true">
-                        <b style={{ width: `${Math.min(100, sector.weight)}%` }} />
+                        <b
+                          className={sector.weight < 0 ? "is-negative" : ""}
+                          style={{
+                            width: `${maxPositionWeight > 0
+                              ? Math.min(100, Math.abs(sector.weight))
+                              : 0}%`,
+                          }}
+                        />
                       </i>
                     </div>
                   ))}
@@ -1000,11 +1525,6 @@ export function PortfolioAnalytics({
           </div>
         </section>
       )}
-      <LocalEtfManager
-        catalog={catalog}
-        fundType="portfolio"
-        onCatalogChanged={onCatalogChanged}
-      />
     </div>
   );
 }

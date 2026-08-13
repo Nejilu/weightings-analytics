@@ -7,7 +7,10 @@ import {
 } from "@/db/repositories/catalog-repository";
 import { saveCreatedEtf } from "@/db/repositories/etf-creator-repository";
 import type { EtfCreatorCriteria } from "@/domain/etf-creator";
-import { normalizeCreatorHoldings } from "@/domain/etf-creator";
+import {
+  dynamicCreatorDescription,
+  normalizeCreatorHoldings,
+} from "@/domain/etf-creator";
 import type { EtfShareClass } from "@/domain/etf";
 
 import { getHoldingsSnapshot } from "./holdings-service";
@@ -43,7 +46,7 @@ export class EtfCreatorUnavailableError extends Error {
   }
 }
 
-function validatedCriteria(criteria: EtfCreatorCriteria): EtfCreatorCriteria {
+export function validatedCreatorCriteria(criteria: EtfCreatorCriteria): EtfCreatorCriteria {
   if (!criteria || typeof criteria !== "object" || Array.isArray(criteria)) {
     throw new EtfCreatorRequestError("Invalid selection criteria.");
   }
@@ -141,7 +144,7 @@ export async function createEtfFromSource(
       throw new EtfCreatorRequestError(`An ETF can contain up to ${MAX_SELECTED_SECURITIES} securities.`);
     }
 
-    const criteria = validatedCriteria(draft.criteria);
+    const criteria = validatedCreatorCriteria(draft.criteria);
     const source = await getHoldingsSnapshot(sourceEtf.id);
     const sourceEquities = source.holdings.filter(
       (holding) => holding.assetClass === "Equity",
@@ -160,13 +163,11 @@ export async function createEtfFromSource(
     if (normalized.length === 0) {
       throw new EtfCreatorRequestError("The retained source securities have no usable free-float weight.");
     }
-    const description = [
-      customDescription,
-      `${normalized.length} ${source.etf.ticker} constituents, frozen and normalized to 100% from source free-float weights as of ${source.asOf}.`,
-      "The saved definition keeps these securities and weights unchanged.",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const description = dynamicCreatorDescription(
+      customDescription ?? "",
+      normalized.length,
+      source.etf.ticker,
+    );
 
     return saveCreatedEtf({
       ticker,
@@ -175,6 +176,7 @@ export async function createEtfFromSource(
       source,
       selectedHoldings: normalized,
       criteria,
+      editableDescription: customDescription ?? "",
     });
   } catch (error) {
     if (error instanceof EtfCreatorRequestError) throw error;

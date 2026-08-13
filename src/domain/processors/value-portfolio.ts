@@ -3,21 +3,21 @@ import type { MarketPrice, PortfolioItem } from "../portfolio";
 export function valuePortfolioPositions(
   items: PortfolioItem[],
   prices: ReadonlyMap<string, MarketPrice>,
+  cashValueUsd = 0,
 ): { items: PortfolioItem[]; totalMarketValueUsd: number } {
   const valued = items.map((item) => {
     const price = prices.get(`${item.kind}:${item.referenceId}`);
     if (!price) throw new Error(`Price for ${item.ticker} is unavailable.`);
-    const fallbackValue =
-      item.initialValueUsd ??
-      (item.allocationWeight > 0 ? item.allocationWeight : undefined);
+    const fallbackValue = item.initialValueUsd ??
+      (item.allocationWeight !== 0 ? item.allocationWeight : undefined);
     const quantity =
       item.quantity ??
-      (item.inputMode === "shares" && item.inputAmount
+      (item.inputMode === "shares" && item.inputAmount !== undefined
         ? item.inputAmount
-        : fallbackValue
+        : fallbackValue !== undefined
           ? fallbackValue / price.priceUsd
           : undefined);
-    if (!quantity || !Number.isFinite(quantity) || quantity <= 0) {
+    if (quantity === undefined || !Number.isFinite(quantity) || quantity === 0) {
       throw new Error(`A valid share quantity is required for ${item.ticker}.`);
     }
     return {
@@ -34,7 +34,7 @@ export function valuePortfolioPositions(
   });
   const totalMarketValueUsd = valued.reduce(
     (sum, item) => sum + (item.currentValueUsd ?? 0),
-    0,
+    cashValueUsd,
   );
   if (totalMarketValueUsd <= 0) {
     throw new Error("The portfolio has no positive market value.");

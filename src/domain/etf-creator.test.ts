@@ -4,6 +4,8 @@ import test from "node:test";
 import type { Holding } from "./etf";
 import {
   applyCreatorManualCuration,
+  deriveDynamicCreatorHoldings,
+  dynamicCreatorDescription,
   filterCreatorHoldings,
   normalizeCreatorHoldings,
 } from "./etf-creator";
@@ -74,4 +76,30 @@ test("manual curation can add filtered-out holdings and remove rule matches", ()
   );
 
   assert.deepEqual(result.map((holding) => holding.securityId), ["B", "C"]);
+});
+
+test("dynamic creator holdings exclude missing selections and renormalize on read", () => {
+  const result = deriveDynamicCreatorHoldings(
+    [holdings[0], { ...holdings[1], weight: 40 }],
+    [
+      { securityId: "A", ticker: "AAA" },
+      { securityId: "MISSING", ticker: "MISS" },
+      { securityId: "B", ticker: "BBB" },
+    ],
+  );
+
+  assert.deepEqual(
+    result.holdings.map(({ securityId, weight }) => [securityId, weight]),
+    [["A", 60], ["B", 40]],
+  );
+  assert.deepEqual(result.missingSecurities, [
+    { securityId: "MISSING", ticker: "MISS" },
+  ]);
+});
+
+test("dynamic creator descriptions explain on-read weighting", () => {
+  assert.equal(
+    dynamicCreatorDescription("My rules.", 12, "ACWI"),
+    "My rules. 12 ACWI constituents selected; available source free-float weights are recalculated and normalized to 100% on every read.",
+  );
 });

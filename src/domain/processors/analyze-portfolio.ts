@@ -20,7 +20,7 @@ function addPosition(
   weight: number,
   contribution: PortfolioContribution,
 ) {
-  if (!Number.isFinite(weight) || weight <= 0) return;
+  if (!Number.isFinite(weight) || Math.abs(weight) <= EPSILON) return;
 
   const identity = economicSecurityIdentity(security);
   const existing = positions.get(identity.securityId);
@@ -49,6 +49,7 @@ export function analyzePortfolio({
   items,
   etfSnapshots,
   directSecurities,
+  cashWeight,
   calculatedAt = new Date().toISOString(),
 }: PortfolioAnalysisInput): PortfolioAnalysis {
   const allocationWeight = items.reduce(
@@ -56,15 +57,12 @@ export function analyzePortfolio({
     0,
   );
 
-  if (allocationWeight > 100 + EPSILON) {
-    throw new Error("Portfolio allocations cannot exceed 100%.");
-  }
-
   const positions = new Map<string, PortfolioLookThroughPosition>();
+  let financingWeight = 0;
 
   for (const item of items) {
-    if (!Number.isFinite(item.allocationWeight) || item.allocationWeight <= 0) {
-      throw new Error("Every portfolio allocation must be greater than 0%.");
+    if (!Number.isFinite(item.allocationWeight) || Math.abs(item.allocationWeight) <= EPSILON) {
+      throw new Error("Every portfolio allocation must be non-zero.");
     }
 
     if (item.kind === "security") {
@@ -94,9 +92,10 @@ export function analyzePortfolio({
       (sum, holding) => sum + holding.weight,
       0,
     );
-    if (sourceTotal <= EPSILON) {
+    if (Math.abs(sourceTotal) <= EPSILON) {
       throw new Error(`Holdings for ${item.ticker} have no usable weight.`);
     }
+    financingWeight += item.allocationWeight * (1 - sourceTotal / 100);
 
     for (const holding of calculationHoldings) {
       const weight = item.allocationWeight * (holding.weight / 100);
@@ -121,9 +120,9 @@ export function analyzePortfolio({
     }
   }
 
-  const rawRankedPositions = [...positions.values()].sort(
-    (left, right) => right.weight - left.weight,
-  );
+  const rawRankedPositions = [...positions.values()]
+    .filter((position) => Math.abs(position.weight) > EPSILON)
+    .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight));
   const rankedPositions = rawRankedPositions.map((position) => ({
     ...position,
     weight: roundWeight(position.weight),
@@ -132,7 +131,7 @@ export function analyzePortfolio({
         ...contribution,
         weight: roundWeight(contribution.weight),
       }))
-      .sort((left, right) => right.weight - left.weight),
+      .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight)),
   }));
 
   const sectors = new Map<string, number>();
@@ -143,22 +142,37 @@ export function analyzePortfolio({
     );
   }
 
+  const explicitCashWeight = cashWeight ?? Math.max(0, 100 - allocationWeight);
+  const totalCashWeight = explicitCashWeight + financingWeight;
+  const netExposureWeight = rawRankedPositions.reduce(
+    (sum, position) => sum + position.weight,
+    0,
+  );
+  const grossExposureWeight = rawRankedPositions.reduce(
+    (sum, position) => sum + Math.abs(position.weight),
+    0,
+  );
+
   return {
     calculatedAt,
     allocationWeight: roundWeight(allocationWeight),
-    cashWeight: roundWeight(Math.max(0, 100 - allocationWeight)),
+    cashWeight: roundWeight(totalCashWeight),
+    explicitCashWeight: roundWeight(explicitCashWeight),
+    financingWeight: roundWeight(financingWeight),
+    netExposureWeight: roundWeight(netExposureWeight),
+    grossExposureWeight: roundWeight(grossExposureWeight),
     positionsCount: rankedPositions.length,
     directPositionsCount: items.filter((item) => item.kind === "security").length,
     etfSleevesCount: items.filter((item) => item.kind === "etf").length,
     top10Concentration: roundWeight(
       rawRankedPositions
         .slice(0, 10)
-        .reduce((sum, position) => sum + position.weight, 0),
+        .reduce((sum, position) => sum + Math.abs(position.weight), 0),
     ),
     positions: rankedPositions,
     sectors: [...sectors.entries()]
       .map(([sector, weight]) => ({ sector, weight: roundWeight(weight) }))
-      .sort((left, right) => right.weight - left.weight),
+      .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight)),
     sources: [...etfSnapshots.values()].map((snapshot) => ({
       referenceId: snapshot.etf.id ?? snapshot.etf.ticker,
       ticker: snapshot.etf.ticker,

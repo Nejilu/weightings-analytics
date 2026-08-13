@@ -1,13 +1,13 @@
 import type { Holding } from "../etf";
 
-export interface DerivedMarketValueHoldings {
+interface DerivedMarketValueHoldings {
   holdings: Holding[];
   sourceMarketValue: number;
   missingTickers: string[];
 }
 
 interface DeriveMarketValueHoldingsOptions {
-  missingComponentPolicy?: "error" | "exclude-and-renormalize";
+  missingComponentPolicy?: "exclude-and-renormalize";
 }
 
 export function deriveMarketValueHoldings(

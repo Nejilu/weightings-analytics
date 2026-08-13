@@ -18,6 +18,7 @@ import type {
   FxRate,
   MarketPrice,
   PortfolioAssetKind,
+  PortfolioCashPosition,
   PortfolioItem,
   PortfolioSecurity,
 } from "@/domain/portfolio";
@@ -314,9 +315,13 @@ export async function getMarketPrices(
 
 export async function valuePortfolioItems(
   items: PortfolioItem[],
+  cashValueUsd = 0,
 ): Promise<{ items: PortfolioItem[]; totalMarketValueUsd: number }> {
   if (items.length === 0) {
-    return { items: [], totalMarketValueUsd: 0 };
+    if (cashValueUsd <= 0) {
+      return { items: [], totalMarketValueUsd: cashValueUsd };
+    }
+    return { items: [], totalMarketValueUsd: cashValueUsd };
   }
   const prices = await getMarketPrices(
     items.map((item) => ({
@@ -325,5 +330,24 @@ export async function valuePortfolioItems(
     })),
   );
 
-  return valuePortfolioPositions(items, prices);
+  return valuePortfolioPositions(items, prices, cashValueUsd);
+}
+
+export async function valueCashPositions(
+  positions: PortfolioCashPosition[],
+): Promise<PortfolioCashPosition[]> {
+  return mapWithConcurrency(
+    positions,
+    marketPriceConcurrency(),
+    async (position) => {
+      const fx = await getFxRate(position.currency);
+      return {
+        ...position,
+        fxToUsd: fx.rateToUsd,
+        valueUsd: position.amount * fx.rateToUsd,
+        fxAsOf: fx.asOf,
+        fxStatus: fx.sourceStatus,
+      };
+    },
+  );
 }

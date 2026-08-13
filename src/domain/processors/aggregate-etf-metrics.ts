@@ -1,6 +1,8 @@
 import {
   METRIC_DEFINITIONS,
   type ConsensusAggregate,
+  type MetricCaptureWindow,
+  type MetricKey,
   type ConsensusWindowView,
   type SecurityMetricValues,
   type WeightedMetric,
@@ -10,10 +12,20 @@ import { deriveConsensusWindow } from "./derive-estimate-metrics";
 
 const EARNINGS_GROWTH_KEY = "eps_growth_estimate_forward_4q";
 
+function captureWindow(values: Array<string | undefined>): MetricCaptureWindow | null {
+  const timestamps = values
+    .filter((value): value is string => Number.isFinite(Date.parse(value ?? "")))
+    .sort();
+  return timestamps.length > 0
+    ? { oldest: timestamps[0], latest: timestamps[timestamps.length - 1] }
+    : null;
+}
+
 function aggregateHarmonicPe(
   eligible: Holding[],
   totalWeight: number,
   peBySecurity: ReadonlyMap<string, number | null>,
+  capturedAtBySecurity: ReadonlyMap<string, string | undefined>,
 ): ConsensusAggregate {
   const covered = eligible.flatMap((holding) => {
     const pe = peBySecurity.get(holding.securityId);
@@ -34,6 +46,8 @@ function aggregateHarmonicPe(
     coverageWeight: totalWeight > 0 ? (coveredWeight / totalWeight) * 100 : 0,
     coveredHoldings: covered.length,
     totalHoldings: eligible.length,
+    captureWindow: captureWindow(covered.map((item) =>
+      capturedAtBySecurity.get(item.holding.securityId))),
   };
 }
 
@@ -56,6 +70,10 @@ export function aggregateConsensusWindow(
       totalWeight,
       new Map([...derivedBySecurity].map(([securityId, derived]) =>
         [securityId, derived.pePath[index]])),
+      new Map(eligible.map((holding) => [
+        holding.securityId,
+        metricsBySecurity.get(holding.securityId)?.estimateCapturedAt,
+      ])),
     ));
   const coveredForGrowth = eligible.flatMap((holding) => {
     const derived = derivedBySecurity.get(holding.securityId);
@@ -88,6 +106,8 @@ export function aggregateConsensusWindow(
       coverageWeight: totalWeight > 0 ? (coveredWeight / totalWeight) * 100 : 0,
       coveredHoldings: coveredForGrowth.length,
       totalHoldings: eligible.length,
+      captureWindow: captureWindow(coveredForGrowth.map((item) =>
+        metricsBySecurity.get(item.holding.securityId)?.estimateCapturedAt)),
     },
   };
 }
@@ -124,7 +144,23 @@ function aggregateEarningsYieldGrowth(
     coverageWeight: totalWeight > 0 ? (coveredWeight / totalWeight) * 100 : 0,
     coveredHoldings: covered.length,
     totalHoldings: eligible.length,
+    captureWindow: captureWindow(covered.map((item) =>
+      metricsBySecurity.get(item.holding.securityId)?.estimateCapturedAt)),
   };
+}
+
+function weightedMedian(
+  values: Array<{ holding: Holding; value: number }>,
+  coveredWeight: number,
+): number | null {
+  if (coveredWeight <= 0) return null;
+  const ordered = [...values].sort((left, right) => left.value - right.value);
+  let cumulativeWeight = 0;
+  for (const item of ordered) {
+    cumulativeWeight += item.holding.weight;
+    if (cumulativeWeight >= coveredWeight / 2) return item.value;
+  }
+  return ordered.at(-1)?.value ?? null;
 }
 
 export function aggregateEtfMetrics(
@@ -154,13 +190,21 @@ export function aggregateEtfMetrics(
     const coveredWeight = covered.reduce((sum, item) => sum + item.holding.weight, 0);
     const weightedValue = definition.aggregation === "weighted_harmonic"
       ? coveredWeight / covered.reduce((sum, item) => sum + item.holding.weight / item.value, 0)
-      : covered.reduce((sum, item) => sum + item.value * item.holding.weight, 0) / coveredWeight;
+      : definition.aggregation === "weighted_median"
+        ? weightedMedian(covered, coveredWeight)
+        : covered.reduce((sum, item) => sum + item.value * item.holding.weight, 0) / coveredWeight;
     return {
       key: definition.key,
-      value: coveredWeight > 0 && Number.isFinite(weightedValue) ? weightedValue : null,
+      value: coveredWeight > 0 && typeof weightedValue === "number" && Number.isFinite(weightedValue)
+        ? weightedValue
+        : null,
       coverageWeight: totalWeight > 0 ? (coveredWeight / totalWeight) * 100 : 0,
       coveredHoldings: covered.length,
       totalHoldings: eligible.length,
+      captureWindow: captureWindow(covered.map((item) =>
+        metricsBySecurity.get(item.holding.securityId)?.capturedAtByKey?.[
+          definition.key as MetricKey
+        ])),
     };
   });
 }

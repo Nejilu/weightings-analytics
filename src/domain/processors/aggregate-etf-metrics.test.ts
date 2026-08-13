@@ -66,6 +66,78 @@ test("uses harmonic aggregation for market-cap valuation ratios and arithmetic a
   assert.equal(result.find((metric) => metric.key === "dividend_yield")?.value, 2.5);
 });
 
+test("aggregates the new fundamental set with the intended economic methods and capture window", () => {
+  const values = new Map<string, SecurityMetricValues>([
+    ["A", {
+      securityId: "A",
+      providerSymbol: "NASDAQ:A",
+      values: {
+        price_earnings_ttm: 10,
+        enterprise_value_to_ebitda: 8,
+        price_to_free_cash_flow: 12,
+        operating_margin: 20,
+        return_on_invested_capital: 15,
+        revenue_growth_ttm: 10,
+        eps_diluted_growth_ttm: -5,
+        market_cap: 100_000_000_000,
+      },
+      capturedAtByKey: {
+        price_earnings_ttm: "2026-08-01T00:00:00.000Z",
+        enterprise_value_to_ebitda: "2026-08-01T00:00:00.000Z",
+        price_to_free_cash_flow: "2026-08-01T00:00:00.000Z",
+        operating_margin: "2026-08-01T00:00:00.000Z",
+        return_on_invested_capital: "2026-08-01T00:00:00.000Z",
+        revenue_growth_ttm: "2026-08-01T00:00:00.000Z",
+        eps_diluted_growth_ttm: "2026-08-01T00:00:00.000Z",
+        market_cap: "2026-08-01T00:00:00.000Z",
+      },
+    }],
+    ["B", {
+      securityId: "B",
+      providerSymbol: "NYSE:B",
+      values: {
+        price_earnings_ttm: 20,
+        enterprise_value_to_ebitda: 16,
+        price_to_free_cash_flow: 24,
+        operating_margin: -10,
+        return_on_invested_capital: 5,
+        revenue_growth_ttm: 20,
+        eps_diluted_growth_ttm: 25,
+        market_cap: 200_000_000_000,
+      },
+      capturedAtByKey: Object.fromEntries([
+        "price_earnings_ttm",
+        "enterprise_value_to_ebitda",
+        "price_to_free_cash_flow",
+        "operating_margin",
+        "return_on_invested_capital",
+        "revenue_growth_ttm",
+        "eps_diluted_growth_ttm",
+        "market_cap",
+      ].map((key) => [key, "2026-08-02T00:00:00.000Z"])),
+    }],
+    ["C", {
+      securityId: "C",
+      providerSymbol: "NYSE:C",
+      values: { market_cap: 300_000_000_000 },
+      capturedAtByKey: { market_cap: "2026-08-03T00:00:00.000Z" },
+    }],
+  ]);
+  const result = aggregateEtfMetrics([
+    holding("A", 40),
+    holding("B", 30),
+    holding("C", 30),
+  ], values);
+
+  assert.ok(Math.abs((result.find((metric) => metric.key === "price_earnings_ttm")?.value ?? 0) - 70 / 5.5) < 1e-9);
+  assert.equal(result.find((metric) => metric.key === "operating_margin")?.value, 50 / 7);
+  assert.equal(result.find((metric) => metric.key === "market_cap")?.value, 200_000_000_000);
+  assert.deepEqual(result.find((metric) => metric.key === "market_cap")?.captureWindow, {
+    oldest: "2026-08-01T00:00:00.000Z",
+    latest: "2026-08-03T00:00:00.000Z",
+  });
+});
+
 test("reconstructs ETF earnings growth from historical and forward earnings yields", () => {
   const values = new Map<string, SecurityMetricValues>([
     ["A", {

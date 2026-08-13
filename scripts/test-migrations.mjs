@@ -155,6 +155,7 @@ try {
   );
   executeMigration("0009_retire_legacy_metric_definitions.sql");
   executeMigration("0010_persist_provider_negative_cache.sql");
+  executeMigration("0011_melodic_cerise.sql");
 
   const upgradedEtf = sqlite
     .prepare(
@@ -173,14 +174,20 @@ try {
     .prepare(
       `SELECT name FROM sqlite_master
        WHERE type = 'table' AND name IN (
-         'portfolios', 'portfolio_items', 'security_provider_symbols'
+         'portfolio_cash_positions', 'portfolios', 'portfolio_items',
+         'security_provider_symbols'
        )
        ORDER BY name`,
     )
     .all();
   assert.deepEqual(
     tables.map((table) => table.name),
-    ["portfolio_items", "portfolios", "security_provider_symbols"],
+    [
+      "portfolio_cash_positions",
+      "portfolio_items",
+      "portfolios",
+      "security_provider_symbols",
+    ],
   );
 
   const metricIndexes = sqlite

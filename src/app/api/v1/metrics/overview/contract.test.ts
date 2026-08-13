@@ -6,6 +6,14 @@ import { metricsOverviewHttpResponse } from "./etag";
 
 const result: MetricsOverviewResult = {
   calculatedAt: "2026-08-03T12:00:00.000Z",
+  fundamentalsCaptureWindow: {
+    oldest: "2026-08-02T08:00:00.000Z",
+    latest: "2026-08-03T08:00:00.000Z",
+  },
+  estimatesCaptureWindow: {
+    oldest: "2026-08-01T08:00:00.000Z",
+    latest: "2026-08-03T09:00:00.000Z",
+  },
   source: "TradingView Screener + Estimates",
   sourceStatus: "partial",
   sourceWarnings: ["estimates-partial"],
@@ -25,6 +33,10 @@ const result: MetricsOverviewResult = {
       coverageWeight: 80,
       coveredHoldings: 1,
       totalHoldings: 2,
+      captureWindow: {
+        oldest: "2026-08-01T08:00:00.000Z",
+        latest: "2026-08-03T09:00:00.000Z",
+      },
     }],
     consensusWindows: {
       "4q": {
@@ -35,8 +47,9 @@ const result: MetricsOverviewResult = {
           coverageWeight: 80,
           coveredHoldings: 1,
           totalHoldings: 2,
+          captureWindow: null,
         })),
-        growth: { value: 25, coverageWeight: 80, coveredHoldings: 1, totalHoldings: 2 },
+        growth: { value: 25, coverageWeight: 80, coveredHoldings: 1, totalHoldings: 2, captureWindow: null },
       },
       "2q": {
         quarters: 2,
@@ -46,8 +59,9 @@ const result: MetricsOverviewResult = {
           coverageWeight: 80,
           coveredHoldings: 1,
           totalHoldings: 2,
+          captureWindow: null,
         })),
-        growth: { value: 20, coverageWeight: 80, coveredHoldings: 1, totalHoldings: 2 },
+        growth: { value: 20, coverageWeight: 80, coveredHoldings: 1, totalHoldings: 2, captureWindow: null },
       },
       "1q": {
         quarters: 1,
@@ -57,8 +71,9 @@ const result: MetricsOverviewResult = {
           coverageWeight: 80,
           coveredHoldings: 1,
           totalHoldings: 2,
+          captureWindow: null,
         })),
-        growth: { value: 15, coverageWeight: 80, coveredHoldings: 1, totalHoldings: 2 },
+        growth: { value: 15, coverageWeight: 80, coveredHoldings: 1, totalHoldings: 2, captureWindow: null },
       },
     },
     componentValuation: {

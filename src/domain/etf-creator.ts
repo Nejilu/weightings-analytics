@@ -12,9 +12,14 @@ export interface EtfCreatorCriteria {
   overlapEtfId?: string;
 }
 
-export interface EtfCreatorSelection {
-  criteria: EtfCreatorCriteria;
-  selectedSecurityIds: string[];
+export interface CreatorSelectedSecurity {
+  securityId: string;
+  ticker: string;
+}
+
+interface DynamicCreatorHoldings {
+  holdings: Holding[];
+  missingSecurities: CreatorSelectedSecurity[];
 }
 
 export function filterCreatorHoldings(
@@ -95,4 +100,44 @@ export function normalizeCreatorHoldings(holdings: Holding[]): Holding[] {
     };
   }
   return normalized;
+}
+
+export function deriveDynamicCreatorHoldings(
+  sourceHoldings: Holding[],
+  selectedSecurities: CreatorSelectedSecurity[],
+): DynamicCreatorHoldings {
+  const sourceBySecurityId = new Map(
+    sourceHoldings.map((holding) => [holding.securityId, holding]),
+  );
+  const uniqueSelection = selectedSecurities.filter(
+    (security, index) =>
+      security.securityId.trim() &&
+      selectedSecurities.findIndex(
+        (candidate) => candidate.securityId === security.securityId,
+      ) === index,
+  );
+  const missingSecurities = uniqueSelection.filter(
+    (security) => !sourceBySecurityId.has(security.securityId),
+  );
+  const holdings = normalizeCreatorHoldings(
+    uniqueSelection.flatMap((security) => {
+      const holding = sourceBySecurityId.get(security.securityId);
+      return holding ? [holding] : [];
+    }),
+  );
+
+  return { holdings, missingSecurities };
+}
+
+export function dynamicCreatorDescription(
+  editableDescription: string,
+  selectedCount: number,
+  sourceTicker: string,
+): string {
+  return [
+    editableDescription.trim(),
+    `${selectedCount} ${sourceTicker} constituents selected; available source free-float weights are recalculated and normalized to 100% on every read.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

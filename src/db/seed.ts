@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { ETF_CATALOG } from "../data/catalog";
 import { getDb } from "./client";
+import { migrateCustomEtfDefinitions } from "./repositories/local-etf-repository";
 import { reconcilePersistedSecurityIdentities } from "./security-identity-repository";
 import {
   benchmarks,
@@ -218,4 +219,5 @@ export function seedCatalog(): void {
   // snapshots alongside newer ISIN-backed identities. Reconcile them on setup
   // so saved portfolios immediately share one canonical security row.
   reconcilePersistedSecurityIdentities();
+  migrateCustomEtfDefinitions();
 }

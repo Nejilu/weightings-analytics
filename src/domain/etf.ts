@@ -17,7 +17,7 @@ export interface MarketValueDerivedHoldingsDefinition {
   compositionSourceUrl: string;
   weighting: "source-market-value-normalized";
   componentTickers: string[];
-  missingComponentPolicy?: "error" | "exclude-and-renormalize";
+  missingComponentPolicy: "exclude-and-renormalize";
 }
 
 export interface ScaledSourceDerivedHoldingsDefinition {

@@ -23,6 +23,7 @@ interface SaveCreatedEtfInput {
   source: HoldingsSnapshot;
   selectedHoldings: Holding[];
   criteria: EtfCreatorCriteria;
+  editableDescription?: string;
 }
 
 function batches<T>(rows: T[]): T[][] {
@@ -39,7 +40,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
   const snapshotId = randomUUID();
   const localIsin = `LOCAL-${randomUUID()}`;
   const now = new Date().toISOString();
-  const sourceHash = `frozen:${input.source.etf.id}:${input.source.asOf}:${snapshotId}`;
+  const sourceHash = `dynamic:${input.source.etf.id}:${input.source.asOf}:${snapshotId}`;
 
   db.transaction((transaction) => {
     transaction
@@ -50,7 +51,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
         provider: "IndexLens",
         region: "Custom ETF universes",
         description:
-          "User-created, free-float-weighted selections frozen from a supported ETF snapshot.",
+          "User-created selections whose free-float weights are recalculated from a supported ETF source on read.",
       })
       .onConflictDoUpdate({
         target: benchmarks.id,
@@ -58,7 +59,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
           name: "Custom ETFs",
           region: "Custom ETF universes",
           description:
-            "User-created, free-float-weighted selections frozen from a supported ETF snapshot.",
+            "User-created selections whose free-float weights are recalculated from a supported ETF source on read.",
           updatedAt: sql`CURRENT_TIMESTAMP`,
         },
       })
@@ -87,14 +88,20 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
         description: input.description,
         active: true,
         metadataJson: {
-          compositionModel: "frozen-source-free-float",
+          compositionModel: "dynamic-source-free-float",
           sourceEtfId: input.source.etf.id,
           sourceTicker: input.source.etf.ticker,
           sourceAsOf: input.source.asOf,
           sourceFetchedAt: input.source.fetchedAt,
           selectedCount: input.selectedHoldings.length,
+          selectedSecurities: input.selectedHoldings.map((holding) => ({
+            securityId: holding.securityId,
+            ticker: holding.ticker,
+          })),
           criteria: input.criteria,
-          frozenAt: now,
+          editableDescription: input.editableDescription ?? "",
+          recalculation: "on-read",
+          definitionUpdatedAt: now,
         },
         createdAt: now,
         updatedAt: now,
@@ -148,7 +155,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
         ),
         rowCount: input.selectedHoldings.length,
         rawMetadataJson: {
-          frozen: true,
+          dynamic: true,
           sourceEtfId: input.source.etf.id,
           sourceAsOf: input.source.asOf,
         },
@@ -169,7 +176,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
             sourceRowJson: {
               sourceEtfId: input.source.etf.id,
               sourceAsOf: input.source.asOf,
-              frozen: true,
+              dynamic: true,
             },
           })),
         )

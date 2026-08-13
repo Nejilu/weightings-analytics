@@ -14,7 +14,7 @@ export async function generateMetadata(): Promise<Metadata> {
   );
   const title = "IndexLens — ETF & Portfolio Look-Through Analytics";
   const description =
-    "Compare iShares ETF holdings or combine ETFs and ACWI stocks into one true, security-level portfolio.";
+    "Explore ETF holdings, free-float weight distortion, optional peer comparisons, and security-level portfolios.";
 
   return {
     metadataBase,

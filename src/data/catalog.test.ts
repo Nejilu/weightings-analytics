@@ -41,3 +41,17 @@ test("iShares selector labels lead with the underlying index and end with ticker
   assert.equal(etfSelectorLabel(sp500.name, cspx), "S&P 500 - Acc (CSPX)");
   assert.equal(etfSelectorLabel("Nasdaq-100", qld), "ProShares Ultra QQQ (QLD)");
 });
+
+test("fixed-component synthetic ETFs exclude unavailable source constituents and renormalize", () => {
+  for (const id of ["chip-ucits", "panx-ucits"]) {
+    const etf = getEtfById(id);
+    assert.ok(etf, id);
+    assert.equal(etf.derivedHoldings?.model, "component-market-value");
+    if (etf.derivedHoldings?.model === "component-market-value") {
+      assert.equal(
+        etf.derivedHoldings.missingComponentPolicy,
+        "exclude-and-renormalize",
+      );
+    }
+  }
+});

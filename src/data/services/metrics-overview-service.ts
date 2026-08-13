@@ -3,6 +3,7 @@ import "server-only";
 import {
   DERIVED_METRIC_KEYS,
   OVERVIEW_METRIC_DEFINITIONS,
+  type MetricCaptureWindow,
   type MetricsOverviewResult,
   type MetricsOverviewWarning,
   type SecurityMetricValues,
@@ -53,7 +54,6 @@ import {
 } from "./holdings-service";
 import {
   buildEtfMetricsOverview,
-  latestTimestamp,
   uniqueEquityHoldings,
 } from "./metrics-overview-model";
 
@@ -147,6 +147,20 @@ function resultForOrder(
 function materiallyDifferent(left: number | undefined, right: number | undefined): boolean {
   if (left === undefined || right === undefined) return left !== right;
   return Math.abs(left - right) > Math.max(1e-9, Math.abs(right) * 1e-9);
+}
+
+function captureWindow(values: Iterable<string | undefined>): MetricCaptureWindow | null {
+  let oldest = Number.POSITIVE_INFINITY;
+  let latest = 0;
+  for (const value of values) {
+    const timestamp = Date.parse(value ?? "");
+    if (!Number.isFinite(timestamp)) continue;
+    oldest = Math.min(oldest, timestamp);
+    latest = Math.max(latest, timestamp);
+  }
+  return latest > 0
+    ? { oldest: new Date(oldest).toISOString(), latest: new Date(latest).toISOString() }
+    : null;
 }
 
 async function providerOrUnavailable<T>(
@@ -275,6 +289,15 @@ async function buildOverview(references: string[]): Promise<MetricsOverviewResul
       providerSymbol,
       values: correctedValues,
       estimateSeries: estimateCache?.series,
+      capturedAtByKey: Object.fromEntries([
+        ...[...cached?.sourceCapturedAtByKey.entries() ?? []]
+          .filter(([key]) => correctedValues[key] !== undefined),
+        ...DERIVED_METRIC_KEYS.flatMap((key) =>
+          correctedValues[key] !== undefined && estimateCache?.capturedAt
+            ? [[key, estimateCache.capturedAt] as const]
+            : []),
+      ]),
+      estimateCapturedAt: estimateCache?.capturedAt,
     });
   }
   saveDerivedSecurityMetricsBatch(derivedWrites);
@@ -285,18 +308,21 @@ async function buildOverview(references: string[]): Promise<MetricsOverviewResul
       providerRefreshes.some((refresh) => refresh.hasPartialCoverage),
     providerRefreshes.some((refresh) => refresh.hasLiveSource),
   );
-  const calculatedAt = latestTimestamp([
-    ...snapshots.map((snapshot) => snapshot.fetchedAt),
-    ...[...providerSymbols.values()].map((record) => record.lastVerifiedAt),
-    ...[...cachedMetrics.values()].map((record) => record.capturedAt),
-    ...[...cachedEstimateSeries.values()].map((record) => record.capturedAt),
-  ]);
+  const calculatedAt = new Date().toISOString();
+  const fundamentalsCaptureWindow = captureWindow([...metricsBySecurity.values()].flatMap((metric) =>
+    Object.entries(metric.capturedAtByKey ?? {})
+      .filter(([key]) => !DERIVED_METRIC_KEYS.includes(key as typeof DERIVED_METRIC_KEYS[number]))
+      .map(([, capturedAt]) => capturedAt)));
+  const estimatesCaptureWindow = captureWindow([...metricsBySecurity.values()].map((metric) =>
+    metric.estimateCapturedAt));
   const resolvedSecurityIds = new Set([...providerSymbols.entries()]
     .filter(([, record]) => Boolean(resolvedProviderSymbol(record)))
     .map(([securityId]) => securityId));
 
   return {
     calculatedAt,
+    fundamentalsCaptureWindow,
+    estimatesCaptureWindow,
     source: "TradingView Screener + Estimates",
     sourceStatus,
     sourceWarnings: [...sourceWarnings].sort(),

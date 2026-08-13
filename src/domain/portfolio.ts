@@ -3,6 +3,26 @@ import type { HoldingsSnapshot } from "./etf";
 export type PortfolioAssetKind = "etf" | "security";
 export type PortfolioInputMode = "value" | "shares";
 export type PriceStatus = "live" | "cached" | "stale";
+export type PortfolioExposureMode = "gross-normalized" | "net-total";
+
+export const SUPPORTED_CASH_CURRENCIES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "CHF",
+  "JPY",
+  "CAD",
+  "AUD",
+  "NZD",
+  "SEK",
+  "NOK",
+  "DKK",
+  "HKD",
+  "SGD",
+  "CNY",
+] as const;
+
+export type PortfolioCashCurrency = (typeof SUPPORTED_CASH_CURRENCIES)[number];
 
 export class MarketPriceRequestError extends Error {
   constructor(message: string) {
@@ -77,6 +97,16 @@ export interface FxRate {
   sourceStatus: PriceStatus;
 }
 
+export interface PortfolioCashPosition {
+  currency: PortfolioCashCurrency;
+  amount: number;
+  fxToUsd?: number;
+  valueUsd?: number;
+  weight?: number;
+  fxAsOf?: string;
+  fxStatus?: PriceStatus;
+}
+
 export interface PortfolioContribution {
   itemId: string;
   ticker: string;
@@ -106,6 +136,10 @@ export interface PortfolioAnalysis {
   calculatedAt: string;
   allocationWeight: number;
   cashWeight: number;
+  explicitCashWeight: number;
+  financingWeight: number;
+  netExposureWeight: number;
+  grossExposureWeight: number;
   positionsCount: number;
   directPositionsCount: number;
   etfSleevesCount: number;
@@ -122,6 +156,7 @@ export interface PortfolioRecord {
   baseCurrency: string;
   updatedAt: string;
   items: PortfolioItem[];
+  cashPositions: PortfolioCashPosition[];
   analysis: PortfolioAnalysis | null;
   analysisError?: string;
   priceError?: string;
@@ -131,5 +166,6 @@ export interface PortfolioAnalysisInput {
   items: PortfolioItem[];
   etfSnapshots: Map<string, HoldingsSnapshot>;
   directSecurities: Map<string, PortfolioSecurity>;
+  cashWeight?: number;
   calculatedAt?: string;
 }

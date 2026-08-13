@@ -17,6 +17,11 @@ interface PortfolioRequestItem {
   inputAmount: number;
 }
 
+interface PortfolioRequestCashPosition {
+  currency: string;
+  amount: number;
+}
+
 function errorResponse(error: unknown, fallback: string): Response {
   if (error instanceof SyntaxError) {
     return Response.json(
@@ -58,6 +63,7 @@ export async function PUT(request: Request) {
   try {
     const payload = (await request.json()) as {
       items?: PortfolioRequestItem[];
+      cashPositions?: PortfolioRequestCashPosition[];
     };
     if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
       return Response.json(
@@ -66,7 +72,20 @@ export async function PUT(request: Request) {
       );
     }
 
-    const portfolio = await savePortfolio(payload.items);
+    if (
+      payload.cashPositions !== undefined &&
+      !Array.isArray(payload.cashPositions)
+    ) {
+      return Response.json(
+        { error: "The cash positions value must be an array." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const portfolio = await savePortfolio(
+      payload.items,
+      payload.cashPositions ?? [],
+    );
     return Response.json(
       { data: portfolio },
       { headers: { "Cache-Control": "no-store" } },

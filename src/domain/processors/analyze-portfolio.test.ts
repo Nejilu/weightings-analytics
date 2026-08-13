@@ -169,25 +169,61 @@ test("recalculates a saved component definition from updated ETF holdings", () =
   assert.equal(updated.positions[0].ticker, "MSFT");
 });
 
-test("rejects allocations above 100%", () => {
-  assert.throws(
-    () =>
-      analyzePortfolio({
-        items: [
-          {
-            id: "direct",
-            kind: "security",
-            referenceId: apple.securityId,
-            ticker: apple.ticker,
-            name: apple.name,
-            allocationWeight: 101,
-          },
-        ],
-        etfSnapshots: new Map(),
-        directSecurities: new Map([[apple.securityId, apple]]),
-      }),
-    /cannot exceed 100%/,
-  );
+test("preserves leveraged allocations above 100% with negative cash", () => {
+  const result = analyzePortfolio({
+    items: [
+      {
+        id: "direct",
+        kind: "security",
+        referenceId: apple.securityId,
+        ticker: apple.ticker,
+        name: apple.name,
+        allocationWeight: 200,
+      },
+    ],
+    etfSnapshots: new Map(),
+    directSecurities: new Map([[apple.securityId, apple]]),
+    cashWeight: -100,
+  });
+
+  assert.equal(result.positions[0].weight, 200);
+  assert.equal(result.cashWeight, -100);
+  assert.equal(result.netExposureWeight, 200);
+  assert.equal(result.grossExposureWeight, 200);
+});
+
+test("keeps short positions signed and ranks them by absolute exposure", () => {
+  const result = analyzePortfolio({
+    items: [
+      {
+        id: "long",
+        kind: "security",
+        referenceId: apple.securityId,
+        ticker: apple.ticker,
+        name: apple.name,
+        allocationWeight: 150,
+      },
+      {
+        id: "short",
+        kind: "security",
+        referenceId: microsoft.securityId,
+        ticker: microsoft.ticker,
+        name: microsoft.name,
+        allocationWeight: -50,
+      },
+    ],
+    etfSnapshots: new Map(),
+    directSecurities: new Map([
+      [apple.securityId, apple],
+      [microsoft.securityId, microsoft],
+    ]),
+    cashWeight: 0,
+  });
+
+  assert.deepEqual(result.positions.map((position) => position.weight), [150, -50]);
+  assert.equal(result.netExposureWeight, 100);
+  assert.equal(result.grossExposureWeight, 200);
+  assert.equal(result.top10Concentration, 200);
 });
 
 test("recalculates component weights when prices diverge while shares stay fixed", () => {
@@ -313,5 +349,42 @@ test("preserves leveraged ETF exposure above portfolio NAV", () => {
   });
 
   assert.equal(result.positions[0].weight, 100);
-  assert.equal(result.cashWeight, 50);
+  assert.equal(result.explicitCashWeight, 50);
+  assert.equal(result.financingWeight, -50);
+  assert.equal(result.cashWeight, 0);
+});
+
+test("values leverage against explicit negative cash", () => {
+  const items: PortfolioItem[] = [
+    {
+      id: "stock",
+      kind: "security",
+      referenceId: apple.securityId,
+      ticker: apple.ticker,
+      name: apple.name,
+      allocationWeight: 0,
+      quantity: 200,
+    },
+  ];
+  const marketPrice = {
+    assetKind: "security" as const,
+    assetId: apple.securityId,
+    providerSymbol: "AAPL",
+    price: 1_000,
+    currency: "USD",
+    fxToUsd: 1,
+    priceUsd: 1_000,
+    asOf: "2026-08-12T00:00:00.000Z",
+    fetchedAt: "2026-08-12T00:00:00.000Z",
+    sourceStatus: "cached" as const,
+  };
+
+  const result = valuePortfolioPositions(
+    items,
+    new Map([[`security:${apple.securityId}`, marketPrice]]),
+    -100_000,
+  );
+
+  assert.equal(result.totalMarketValueUsd, 100_000);
+  assert.equal(result.items[0].allocationWeight, 200);
 });

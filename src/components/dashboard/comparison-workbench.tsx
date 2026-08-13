@@ -25,6 +25,10 @@ import type {
   ImplicitSleeve,
   SleevePosition,
 } from "@/domain/etf";
+import type {
+  HoldingsAnalysisPosition,
+  HoldingsAnalysisResult,
+} from "@/domain/holdings-analysis";
 import { EtfSearch } from "./etf-search";
 
 const MetricsOverview = dynamic(
@@ -115,11 +119,13 @@ function FundSelector({
   etfId,
   catalog,
   onEtfChange,
+  label,
 }: {
   side: SelectionSide;
   etfId: string;
   catalog: CatalogGroup[];
   onEtfChange: (side: SelectionSide, value: string) => void;
+  label?: string;
 }) {
   const etfs = catalog.flatMap((benchmark) => benchmark.variants);
   const etf = etfs.find((variant) => variant.id === etfId) ?? etfs[0];
@@ -128,12 +134,12 @@ function FundSelector({
     <section className={`fund-selector fund-selector--${side}`}>
       <div className="fund-selector__eyebrow">
         <span className="fund-dot" aria-hidden="true" />
-        ETF {side === "left" ? "A" : "B"}
+        {label ?? `ETF ${side === "left" ? "A" : "B"}`}
       </div>
       <EtfSearch
         catalog={catalog}
         selectedId={etf.id}
-        label={`Search ETF ${side === "left" ? "A" : "B"}`}
+        label={label ? `Search ${label.toLowerCase()}` : `Search ETF ${side === "left" ? "A" : "B"}`}
         onSelect={(value) => onEtfChange(side, value)}
       />
       <div className="fund-identity">
@@ -643,6 +649,377 @@ function PositionRow({
   );
 }
 
+function distortionReading(score: number | null) {
+  if (score === null) return "Unavailable";
+  if (score < 2) return "Closely aligned with free float";
+  if (score < 10) return "Limited weighting distortion";
+  if (score < 25) return "Material weighting distortion";
+  return "High weighting distortion";
+}
+
+function signedPercent(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function HoldingsDistortionPanel({
+  analysis,
+}: {
+  analysis: HoldingsAnalysisResult;
+}) {
+  const contributors = analysis.positions
+    .filter(
+      (position): position is HoldingsAnalysisPosition & {
+        actualWeight: number;
+        counterfactualWeight: number;
+        weightDelta: number;
+        distortionContribution: number;
+      } => position.distortionStatus === "covered",
+    )
+    .slice(0, 8);
+  const largestContribution = Math.max(
+    ...contributors.map((position) => position.distortionContribution),
+    0,
+  );
+
+  return (
+    <article className="panel holdings-distortion-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">ACWI free-float counterfactual</span>
+          <h2>Where the weighting departs from free float</h2>
+        </div>
+        <span className="info-chip">
+          {distortionReading(analysis.distortion.score)}
+        </span>
+      </div>
+      <p className="holdings-method-copy">
+        The index is the minimum share of portfolio weight that would need to be
+        reallocated to match ACWI-implied free-float weights across the same
+        covered securities. A score of 0 is aligned; 100 is the theoretical
+        maximum.
+      </p>
+      <div className="distortion-contributors">
+        {contributors.map((position) => (
+          <div className="distortion-row" key={position.securityId}>
+            <div className="distortion-row__identity">
+              <strong>{position.ticker}</strong>
+              <span>{position.name}</span>
+            </div>
+            <div className="distortion-row__bar" aria-hidden="true">
+              <span
+                className={position.weightDelta >= 0 ? "is-over" : "is-under"}
+                style={{
+                  width: `${largestContribution > 0 ? (position.distortionContribution / largestContribution) * 100 : 0}%`,
+                }}
+              />
+            </div>
+            <strong className={position.weightDelta >= 0 ? "is-over" : "is-under"}>
+              {signedPercent(position.weightDelta)}
+            </strong>
+            <small>{position.distortionContribution.toFixed(2)} pts</small>
+          </div>
+        ))}
+      </div>
+      <div className="holdings-method-note">
+        <span>
+          Coverage {analysis.distortion.coverageWeight.toFixed(1)}% · {analysis.distortion.coveredHoldings}/
+          {analysis.distortion.eligibleHoldings} equity holdings
+        </span>
+        <span>
+          ACWI as of {formatDate(analysis.distortion.referenceAsOf)} · score
+          computed on the covered universe and renormalized to 100%
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function HoldingsSectorPanel({
+  analysis,
+}: {
+  analysis: HoldingsAnalysisResult;
+}) {
+  const sectors = analysis.sectors.slice(0, 9);
+  const largestWeight = Math.max(...sectors.map((sector) => sector.weight), 1);
+  return (
+    <article className="panel holdings-sector-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Allocation</span>
+          <h2>Sector structure</h2>
+        </div>
+        <span className="info-chip">Published weights</span>
+      </div>
+      <div className="holdings-sector-list">
+        {sectors.map((sector) => (
+          <div key={sector.sector}>
+            <span>{sector.sector}</span>
+            <div aria-hidden="true">
+              <i style={{ width: `${(sector.weight / largestWeight) * 100}%` }} />
+            </div>
+            <strong>{formatPercent(sector.weight, 1)}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function DistortionPositionsTable({
+  analysis,
+}: {
+  analysis: HoldingsAnalysisResult;
+}) {
+  const [ranking, setRanking] = useState<"distortion" | "weight">("distortion");
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const viewKey = `${analysis.calculatedAt}:${ranking}`;
+  const rows = useMemo(
+    () =>
+      [...analysis.positions].sort((left, right) =>
+        ranking === "weight"
+          ? right.publishedWeight - left.publishedWeight
+          : (right.distortionContribution ?? -1) -
+            (left.distortionContribution ?? -1),
+      ),
+    [analysis.positions, ranking],
+  );
+  const isExpanded = expandedKey === viewKey;
+  const visibleRows = isExpanded
+    ? rows
+    : rows.slice(0, INITIAL_VISIBLE_POSITIONS);
+  const hasAdditionalRows = rows.length > INITIAL_VISIBLE_POSITIONS;
+
+  return (
+    <section className="panel holdings-position-table">
+      <div className="panel-heading panel-heading--table">
+        <div>
+          <span className="eyebrow">Security-level analysis</span>
+          <h2>{analysis.etf.ticker} holdings and counterfactual weights</h2>
+        </div>
+        <div className="segmented-control" aria-label="Rank holdings">
+          <button
+            type="button"
+            className={ranking === "distortion" ? "is-active" : ""}
+            aria-pressed={ranking === "distortion"}
+            onClick={() => setRanking("distortion")}
+          >
+            Distortion
+          </button>
+          <button
+            type="button"
+            className={ranking === "weight" ? "is-active" : ""}
+            aria-pressed={ranking === "weight"}
+            onClick={() => setRanking("weight")}
+          >
+            ETF weight
+          </button>
+        </div>
+      </div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Security</th>
+              <th>Published weight</th>
+              <th>Covered ETF weight</th>
+              <th>ACWI-implied weight</th>
+              <th>Delta</th>
+              <th>Score contribution</th>
+            </tr>
+          </thead>
+          <tbody id="holdings-analysis-positions">
+            {visibleRows.map((position) => (
+              <tr key={position.securityId}>
+                <td>
+                  <div className="security-cell">
+                    <span className="security-avatar">{position.ticker.slice(0, 2)}</span>
+                    <div>
+                      <strong>{position.ticker}</strong>
+                      <span>{position.name} · {position.country}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>{formatPercent(position.publishedWeight, 2)}</td>
+                <td>{position.actualWeight === null ? "—" : formatPercent(position.actualWeight, 2)}</td>
+                <td>{position.counterfactualWeight === null ? "—" : formatPercent(position.counterfactualWeight, 2)}</td>
+                <td>
+                  {position.weightDelta === null ? (
+                    <span className="reading">
+                      {position.distortionStatus === "non-equity" ? "Non-equity" : "Not in ACWI"}
+                    </span>
+                  ) : (
+                    <span className={position.weightDelta >= 0 ? "distortion-over" : "distortion-under"}>
+                      {signedPercent(position.weightDelta)}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {position.distortionContribution === null
+                    ? "—"
+                    : position.distortionContribution.toFixed(3)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasAdditionalRows ? (
+        <button
+          type="button"
+          className="position-table-toggle"
+          aria-controls="holdings-analysis-positions"
+          aria-expanded={isExpanded}
+          onClick={() => setExpandedKey(isExpanded ? null : viewKey)}
+        >
+          <span>
+            {isExpanded
+              ? `Show first ${INITIAL_VISIBLE_POSITIONS} holdings`
+              : `Show all ${rows.length} holdings`}
+          </span>
+          <small>
+            {isExpanded
+              ? `${rows.length} holdings displayed`
+              : `${INITIAL_VISIBLE_POSITIONS} of ${rows.length} displayed`}
+          </small>
+          <b aria-hidden="true">{isExpanded ? "↑" : "↓"}</b>
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function HoldingsTopPositionsPanel({
+  analysis,
+}: {
+  analysis: HoldingsAnalysisResult;
+}) {
+  const positions = [...analysis.positions]
+    .sort((left, right) => right.publishedWeight - left.publishedWeight)
+    .slice(0, 10);
+  const largestWeight = Math.max(
+    ...positions.map((position) => position.publishedWeight),
+    1,
+  );
+
+  return (
+    <article className="panel holdings-top-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Concentration</span>
+          <h2>Largest holdings</h2>
+        </div>
+        <span className="info-chip">Top 10</span>
+      </div>
+      <div className="holdings-top-list">
+        {positions.map((position) => (
+          <div key={position.securityId}>
+            <div>
+              <strong>{position.ticker}</strong>
+              <span>{position.name}</span>
+            </div>
+            <div aria-hidden="true">
+              <i
+                style={{
+                  width: `${(position.publishedWeight / largestWeight) * 100}%`,
+                }}
+              />
+            </div>
+            <strong>{formatPercent(position.publishedWeight, 2)}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function HoldingsOverviewTable({
+  analysis,
+}: {
+  analysis: HoldingsAnalysisResult;
+}) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const viewKey = analysis.calculatedAt;
+  const rows = useMemo(
+    () =>
+      [...analysis.positions].sort(
+        (left, right) => right.publishedWeight - left.publishedWeight,
+      ),
+    [analysis.positions],
+  );
+  const isExpanded = expandedKey === viewKey;
+  const visibleRows = isExpanded
+    ? rows
+    : rows.slice(0, INITIAL_VISIBLE_POSITIONS);
+  const hasAdditionalRows = rows.length > INITIAL_VISIBLE_POSITIONS;
+
+  return (
+    <section className="panel holdings-position-table holdings-overview-table">
+      <div className="panel-heading panel-heading--table">
+        <div>
+          <span className="eyebrow">Portfolio composition</span>
+          <h2>{analysis.etf.ticker} holdings</h2>
+        </div>
+        <span className="info-chip">Published weights</span>
+      </div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Security</th>
+              <th>Weight</th>
+              <th>Sector</th>
+              <th>Country</th>
+              <th>Asset class</th>
+            </tr>
+          </thead>
+          <tbody id="holdings-overview-positions">
+            {visibleRows.map((position) => (
+              <tr key={position.securityId}>
+                <td>
+                  <div className="security-cell">
+                    <span className="security-avatar">
+                      {position.ticker.slice(0, 2)}
+                    </span>
+                    <div>
+                      <strong>{position.ticker}</strong>
+                      <span>{position.name}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>{formatPercent(position.publishedWeight, 2)}</td>
+                <td>{position.sector}</td>
+                <td>{position.country}</td>
+                <td>{position.assetClass}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasAdditionalRows ? (
+        <button
+          type="button"
+          className="position-table-toggle"
+          aria-controls="holdings-overview-positions"
+          aria-expanded={isExpanded}
+          onClick={() => setExpandedKey(isExpanded ? null : viewKey)}
+        >
+          <span>
+            {isExpanded
+              ? `Show first ${INITIAL_VISIBLE_POSITIONS} holdings`
+              : `Show all ${rows.length} holdings`}
+          </span>
+          <small>
+            {isExpanded
+              ? `${rows.length} holdings displayed`
+              : `${INITIAL_VISIBLE_POSITIONS} of ${rows.length} displayed`}
+          </small>
+          <b aria-hidden="true">{isExpanded ? "↑" : "↓"}</b>
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 function DataUnavailableState({
   leftEtf,
   rightEtf,
@@ -674,7 +1051,7 @@ function DataUnavailableState({
         </h2>
         <p>
           {hasError
-            ? "The comparison remains empty until the required source data is available."
+            ? "The holdings deep dive remains empty until the required source data is available."
             : "IndexLens loads official provider and index data, then caches each response for 24 hours."}
         </p>
       </div>
@@ -700,6 +1077,11 @@ export function ComparisonWorkbench({
   >("compare");
   const [leftEtfId, setLeftEtfId] = useState("ivv-us");
   const [rightEtfId, setRightEtfId] = useState("acwi-us");
+  const [holdingsView, setHoldingsView] = useState<
+    "holdings" | "distortion"
+  >("holdings");
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [analysis, setAnalysis] = useState<HoldingsAnalysisResult | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -733,31 +1115,61 @@ export function ComparisonWorkbench({
     setAvailableCatalog(payload.data);
   };
 
-  const compare = async () => {
+  const loadHoldingsAnalysis = async () => {
     setLoading(true);
     setError(null);
     setUnavailable([]);
+    setAnalysis(null);
     setComparison(null);
     try {
-      const response = await fetch(
-        `/api/v1/compare?left=${encodeURIComponent(leftEtfId)}&right=${encodeURIComponent(rightEtfId)}`,
+      const analysisRequest = fetch(
+        `/api/v1/holdings/${encodeURIComponent(leftEtfId)}/analysis`,
+        { cache: "no-cache" },
       );
-      const payload = (await response.json()) as {
-        data?: ComparisonResult;
+      const comparisonRequest = comparisonMode && holdingsView === "holdings"
+        ? fetch(
+            `/api/v1/compare?left=${encodeURIComponent(leftEtfId)}&right=${encodeURIComponent(rightEtfId)}`,
+            { cache: "no-cache" },
+          )
+        : null;
+      const [analysisResponse, comparisonResponse] = await Promise.all([
+        analysisRequest,
+        comparisonRequest,
+      ]);
+      const analysisPayload = (await analysisResponse.json()) as {
+        data?: HoldingsAnalysisResult;
         error?: string;
         unavailable?: string[];
       };
-      if (!response.ok || !payload.data) {
-        setUnavailable(payload.unavailable ?? []);
+      if (!analysisResponse.ok || !analysisPayload.data) {
+        setUnavailable(analysisPayload.unavailable ?? []);
         setError(
-          payload.error ??
-            "iShares data is unavailable. No figures are shown.",
+          analysisPayload.error ??
+            "Holdings data is unavailable. No figures are shown.",
         );
         return;
       }
-      setComparison(payload.data);
+      setAnalysis(analysisPayload.data);
+
+      if (comparisonResponse) {
+        const comparisonPayload = (await comparisonResponse.json()) as {
+          data?: ComparisonResult;
+          error?: string;
+          unavailable?: string[];
+        };
+        if (!comparisonResponse.ok || !comparisonPayload.data) {
+          setUnavailable(comparisonPayload.unavailable ?? []);
+          setError(
+            `The ${leftEtf?.ticker ?? "primary ETF"} deep dive loaded, but the optional comparison is unavailable. ${comparisonPayload.error ?? ""}`.trim(),
+          );
+        } else {
+          setComparison(comparisonPayload.data);
+        }
+      }
     } catch (requestError) {
-      setUnavailable([leftEtfId, rightEtfId]);
+      setUnavailable(
+        comparisonMode ? [leftEtfId, rightEtfId] : [leftEtfId],
+      );
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -787,8 +1199,8 @@ export function ComparisonWorkbench({
             aria-pressed={workspaceView === "compare"}
             onClick={() => setWorkspaceView("compare")}
           >
-            <span className="nav-icon">↔</span>
-            Compare
+            <span className="nav-icon">◎</span>
+            Holdings
           </button>
           <button
             className={`nav-item${workspaceView === "portfolio" ? " nav-item--active" : ""}`}
@@ -807,20 +1219,6 @@ export function ComparisonWorkbench({
           >
             <span className="nav-icon">+</span>
             ETF Creator
-          </button>
-          <a
-            className="nav-item"
-            href="#positions"
-            onClick={() => setWorkspaceView("compare")}
-          >
-            <span className="nav-icon">◎</span>
-            Holdings
-          </a>
-          <span className="nav-caption">Research modules</span>
-          <button className="nav-item nav-item--disabled" type="button">
-            <span className="nav-icon">⌁</span>
-            Exposures
-            <small>Soon</small>
           </button>
           <button
             className={`nav-item${workspaceView === "metrics" ? " nav-item--active" : ""}`}
@@ -851,7 +1249,7 @@ export function ComparisonWorkbench({
           <div className="breadcrumb">
             Analysis <span>/</span>{" "}
             {workspaceView === "compare"
-              ? "ETF comparison"
+              ? "Holdings deep dive"
               : workspaceView === "portfolio"
                 ? "Portfolio analytics"
                 : workspaceView === "creator"
@@ -867,7 +1265,7 @@ export function ComparisonWorkbench({
                     ? ""
                   : error
                     ? "source-badge--error"
-                    : comparison
+                    : analysis
                       ? ""
                       : "source-badge--idle"
               }`}
@@ -881,7 +1279,7 @@ export function ComparisonWorkbench({
                   ? "TradingView"
                 : error
                   ? "Unavailable"
-                  : comparison
+                  : analysis
                     ? "Live data"
                     : "Not loaded"}
             </span>
@@ -896,7 +1294,7 @@ export function ComparisonWorkbench({
               className={workspaceView === "compare" ? "is-active" : ""}
               onClick={() => setWorkspaceView("compare")}
             >
-              ETF comparison
+              Holdings
             </button>
             <button
               type="button"
@@ -921,137 +1319,297 @@ export function ComparisonWorkbench({
             </button>
           </div>
           {workspaceView === "compare" ? (
-            <>
-          <section className="comparison-builder" id="comparison">
-            <FundSelector
-              side="left"
-              etfId={leftEtfId}
-              catalog={researchCatalog}
-              onEtfChange={(_, value) => setLeftEtfId(value)}
-            />
-            <div className="versus" aria-hidden="true"><span>VS</span></div>
-            <FundSelector
-              side="right"
-              etfId={rightEtfId}
-              catalog={researchCatalog}
-              onEtfChange={(_, value) => setRightEtfId(value)}
-            />
-            <div className="builder-action">
-              <button
-                className="primary-button"
-                type="button"
-                onClick={compare}
-                disabled={loading}
-              >
-                {loading ? <span className="spinner" /> : <span>Run comparison</span>}
-                {!loading && <b aria-hidden="true">→</b>}
-              </button>
-              <small>
-                {comparison
-                  ? `${comparisonFundLabel(comparison, "left")} as of ${formatDate(comparison.left.asOf)} · ${comparisonFundLabel(comparison, "right")} as of ${formatDate(comparison.right.asOf)} · ${comparison.cacheTtlHours}h cache`
-                  : "Official provider/index sources · 24h cache"}
-              </small>
-            </div>
-          </section>
-
-          {error && <div className="alert alert--error">{error}</div>}
-          {comparison &&
-            ([comparison.left, comparison.right] as const).map((side) =>
-              side.constituentCoverage ? (
-                <div className="alert" key={side.etf.id}>
-                  {normalizationMessage(
-                    side.etf.ticker,
-                    side.constituentCoverage,
-                  )}
+            <div className="holdings-overview">
+              <section className="metrics-hero holdings-hero panel">
+                <div>
+                  <span className="eyebrow">Constituent structure</span>
+                  <h1>Holdings deep dive</h1>
+                  <p>
+                    Explore concentration, sectors and security-level weights for
+                    one ETF. Add a peer only when a side-by-side comparison is useful.
+                  </p>
                 </div>
-              ) : null,
-            )}
-          {comparison ? (
-            <>
-              <section className="metric-grid" aria-label="Comparison metrics">
-                <MetricCard
-                  label="Weighted overlap"
-                  value={formatPercent(comparison.overlapWeight)}
-                  detail={`${comparison.sharedPositionsCount} shared securities`}
-                  tone="positive"
-                />
-                <MetricCard
-                  label={`${comparisonFundLabel(comparison, "left")} active sleeve`}
-                  value={formatPercent(comparison.leftActiveWeight)}
-                  detail={`Top 10 = ${formatPercent(comparison.left.top10Concentration)}`}
-                  tone="left"
-                />
-                <MetricCard
-                  label={`${comparisonFundLabel(comparison, "right")} active sleeve`}
-                  value={formatPercent(comparison.rightActiveWeight)}
-                  detail={`Top 10 = ${formatPercent(comparison.right.top10Concentration)}`}
-                  tone="right"
-                />
-                <MetricCard
-                  label="Holdings universe"
-                  value={`${comparison.left.holdingsCount} / ${comparison.right.holdingsCount}`}
-                  detail="positions in each ETF"
-                />
+                <div className="metrics-provider-mark">
+                  <span>DATA</span>
+                  <div>
+                    <strong>Official holdings</strong>
+                    <small>Fund and index providers · daily cache</small>
+                  </div>
+                </div>
               </section>
 
-              <section className="analysis-grid">
-                <article className="panel overlap-panel">
-                  <div className="panel-heading">
+              <section
+                className={`comparison-builder holdings-builder${comparisonMode && holdingsView === "holdings" ? "" : " holdings-builder--single"}`}
+                id="holdings"
+              >
+                <FundSelector
+                  side="left"
+                  label="ETF to analyze"
+                  etfId={leftEtfId}
+                  catalog={researchCatalog}
+                  onEtfChange={(_, value) => {
+                    setLeftEtfId(value);
+                    setHoldingsView("holdings");
+                    setAnalysis(null);
+                    setComparison(null);
+                    setError(null);
+                  }}
+                />
+                {comparisonMode && holdingsView === "holdings" ? (
+                  <>
+                    <div className="versus" aria-hidden="true"><span>VS</span></div>
+                    <FundSelector
+                      side="right"
+                      label="Optional comparison ETF"
+                      etfId={rightEtfId}
+                      catalog={researchCatalog}
+                      onEtfChange={(_, value) => {
+                        setRightEtfId(value);
+                        setComparison(null);
+                        setError(null);
+                      }}
+                    />
+                  </>
+                ) : null}
+                <div className="builder-action holdings-builder-action">
+                  <small>
+                    {analysis
+                      ? `${analysis.etf.ticker} as of ${formatDate(analysis.asOf)} · ${analysis.cacheTtlHours}h cache`
+                      : "Official fund and index holdings · 24h cache"}
+                  </small>
+                  {holdingsView === "holdings" ? (
+                    <button
+                      className="secondary-button holdings-compare-toggle"
+                      type="button"
+                      aria-pressed={comparisonMode}
+                      onClick={() => {
+                        setComparisonMode((current) => !current);
+                        setComparison(null);
+                        setError(null);
+                      }}
+                    >
+                      {comparisonMode ? "Remove comparison" : "+ Compare another ETF"}
+                    </button>
+                  ) : null}
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={loadHoldingsAnalysis}
+                    disabled={loading}
+                  >
+                    {loading ? <span className="spinner" /> : <span>Analyze holdings</span>}
+                    {!loading && <b aria-hidden="true">→</b>}
+                  </button>
+                </div>
+              </section>
+
+              {error && <div className="alert alert--error">{error}</div>}
+
+              {analysis ? (
+                <>
+                  <section className="holdings-view-switch panel">
                     <div>
-                      <span className="eyebrow">Sleeve decomposition</span>
-                      <h2>Overlap vs active</h2>
-                    </div>
-                    <span className="info-chip">Normalised weights</span>
-                  </div>
-                  <div className="overlap-layout">
-                    <OverlapDonut comparison={comparison} />
-                    <div className="overlap-copy">
+                      <span className="eyebrow">Analysis view</span>
                       <strong>
-                        {comparison.overlapWeight >= 75
-                          ? "Closely aligned exposures"
-                          : comparison.overlapWeight >= 45
-                            ? "Material shared core"
-                            : "Distinct exposure profiles"}
+                        {holdingsView === "holdings"
+                          ? "Portfolio composition"
+                          : "Free-float distortion"}
                       </strong>
-                      <p>
-                        Overlap is the sum of the lower weight for every shared
-                        security. Each portfolio&apos;s residual weight forms its
-                        active sleeve.
-                      </p>
-                      <SleeveBars comparison={comparison} />
                     </div>
-                  </div>
-                </article>
+                    <div
+                      className="holdings-view-tabs"
+                      role="tablist"
+                      aria-label="Holdings analysis view"
+                    >
+                      <button
+                        id="holdings-overview-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected={holdingsView === "holdings"}
+                        aria-controls="holdings-overview-panel"
+                        onClick={() => setHoldingsView("holdings")}
+                      >
+                        Holdings
+                      </button>
+                      <button
+                        id="distortion-details-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected={holdingsView === "distortion"}
+                        aria-controls="distortion-details-panel"
+                        onClick={() => setHoldingsView("distortion")}
+                      >
+                        Distortion details
+                      </button>
+                    </div>
+                  </section>
 
-                <article className="panel sector-panel">
-                  <div className="panel-heading">
+                  {holdingsView === "holdings" ? (
+                    <div
+                      id="holdings-overview-panel"
+                      role="tabpanel"
+                      aria-labelledby="holdings-overview-tab"
+                      className="holdings-subview"
+                    >
+                      <section className="metric-grid" aria-label="Holdings overview metrics">
+                        <MetricCard
+                          label="Weight distortion index"
+                          value={analysis.distortion.score === null ? "—" : analysis.distortion.score.toFixed(1)}
+                          detail="Open Distortion details for the full breakdown"
+                          tone={analysis.distortion.score !== null && analysis.distortion.score < 2 ? "positive" : "left"}
+                        />
+                        <MetricCard
+                          label="Holdings universe"
+                          value={`${analysis.holdingsCount}`}
+                          detail={`${analysis.equityHoldingsCount} equity positions`}
+                        />
+                        <MetricCard
+                          label="Top 10 concentration"
+                          value={formatPercent(analysis.top10Concentration, 1)}
+                          detail="Share held by the ten largest positions"
+                          tone="right"
+                        />
+                        <MetricCard
+                          label="Largest holding"
+                          value={analysis.topPosition?.ticker ?? "—"}
+                          detail={analysis.topPosition ? `${analysis.topPosition.name} · ${formatPercent(analysis.topPosition.weight, 2)}` : "No positions"}
+                        />
+                      </section>
+                      <section className="analysis-grid holdings-analysis-grid">
+                        <HoldingsTopPositionsPanel analysis={analysis} />
+                        <HoldingsSectorPanel analysis={analysis} />
+                      </section>
+                      <HoldingsOverviewTable analysis={analysis} />
+                    </div>
+                  ) : (
+                    <div
+                      id="distortion-details-panel"
+                      role="tabpanel"
+                      aria-labelledby="distortion-details-tab"
+                      className="holdings-subview"
+                    >
+                      {analysis.distortion.coverageStatus !== "complete" ? (
+                        <div className="alert holdings-distortion-alert">
+                          Distortion coverage is {analysis.distortion.coverageWeight.toFixed(1)}%:
+                          {" "}{analysis.distortion.missingHoldings} equity holding{analysis.distortion.missingHoldings === 1 ? " is" : "s are"} absent from the current ACWI universe. The score is calculated only on common securities and renormalized to 100%.
+                        </div>
+                      ) : null}
+                      <section className="metric-grid" aria-label="Distortion metrics">
+                        <MetricCard
+                          label="Weight distortion index"
+                          value={analysis.distortion.score === null ? "—" : analysis.distortion.score.toFixed(1)}
+                          detail="1 point = 1% of weight to reallocate · 0 to 100"
+                          tone={analysis.distortion.score !== null && analysis.distortion.score < 2 ? "positive" : "left"}
+                        />
+                        <MetricCard
+                          label="ACWI coverage"
+                          value={formatPercent(analysis.distortion.coverageWeight, 1)}
+                          detail={`${analysis.distortion.coveredHoldings} of ${analysis.distortion.eligibleHoldings} equity holdings`}
+                          tone={analysis.distortion.coverageStatus === "complete" ? "positive" : "neutral"}
+                        />
+                        <MetricCard
+                          label="Common equity holdings"
+                          value={`${analysis.distortion.coveredHoldings}`}
+                          detail="Positions used in both distributions"
+                        />
+                        <MetricCard
+                          label="Outside ACWI"
+                          value={`${analysis.distortion.missingHoldings}`}
+                          detail="Equity positions excluded from the score"
+                          tone={analysis.distortion.missingHoldings === 0 ? "positive" : "right"}
+                        />
+                      </section>
+                      <HoldingsDistortionPanel analysis={analysis} />
+                      <DistortionPositionsTable analysis={analysis} />
+                    </div>
+                  )}
+                </>
+              ) : !loading ? (
+                <DataUnavailableState
+                  leftEtf={leftEtf}
+                  rightEtf={comparisonMode ? rightEtf : undefined}
+                  hasError={Boolean(error)}
+                  unavailable={unavailable}
+                />
+              ) : (
+                <section className="metrics-loading panel">
+                  <span className="spinner" />
+                  <strong>Loading holdings analysis…</strong>
+                </section>
+              )}
+
+              {comparison && comparisonMode && holdingsView === "holdings" ? (
+                <section className="holdings-comparison-section">
+                  <div className="holdings-comparison-heading panel">
                     <div>
-                      <span className="eyebrow">Allocation</span>
-                      <h2>Sector comparison</h2>
-                    </div>
-                    <div className="mini-legend">
-                      <span><i style={{ background: COLORS.left }} />{comparisonFundLabel(comparison, "left")}</span>
-                      <span><i style={{ background: COLORS.right }} />{comparisonFundLabel(comparison, "right")}</span>
+                      <span className="eyebrow">Optional peer analysis</span>
+                      <h2>{comparisonFundLabel(comparison, "left")} vs {comparisonFundLabel(comparison, "right")}</h2>
+                      <p>The primary ETF deep dive remains independent; this section adds relative overlap, active sleeves and sector differences.</p>
                     </div>
                   </div>
-                  <SectorChart comparison={comparison} />
-                </article>
-              </section>
-
-              <div id="positions">
-                <ImplicitSleevesPanel comparison={comparison} />
-                <PositionTable comparison={comparison} />
-              </div>
-            </>
-          ) : (
-            <DataUnavailableState
-              leftEtf={leftEtf}
-              rightEtf={rightEtf}
-              hasError={Boolean(error)}
-              unavailable={unavailable}
-            />
-          )}
-            </>
+                  {([comparison.left, comparison.right] as const).map((side) =>
+                    side.constituentCoverage ? (
+                      <div className="alert" key={side.etf.id}>
+                        {normalizationMessage(side.etf.ticker, side.constituentCoverage)}
+                      </div>
+                    ) : null,
+                  )}
+                  <section className="metric-grid" aria-label="Optional comparison metrics">
+                    <MetricCard
+                      label="Weighted overlap"
+                      value={formatPercent(comparison.overlapWeight)}
+                      detail={`${comparison.sharedPositionsCount} shared securities`}
+                      tone="positive"
+                    />
+                    <MetricCard
+                      label={`${comparisonFundLabel(comparison, "left")} active sleeve`}
+                      value={formatPercent(comparison.leftActiveWeight)}
+                      detail={`Top 10 = ${formatPercent(comparison.left.top10Concentration)}`}
+                      tone="left"
+                    />
+                    <MetricCard
+                      label={`${comparisonFundLabel(comparison, "right")} active sleeve`}
+                      value={formatPercent(comparison.rightActiveWeight)}
+                      detail={`Top 10 = ${formatPercent(comparison.right.top10Concentration)}`}
+                      tone="right"
+                    />
+                    <MetricCard
+                      label="Holdings universe"
+                      value={`${comparison.left.holdingsCount} / ${comparison.right.holdingsCount}`}
+                      detail="positions in each ETF"
+                    />
+                  </section>
+                  <section className="analysis-grid">
+                    <article className="panel overlap-panel">
+                      <div className="panel-heading">
+                        <div><span className="eyebrow">Sleeve decomposition</span><h2>Overlap vs active</h2></div>
+                        <span className="info-chip">Normalised weights</span>
+                      </div>
+                      <div className="overlap-layout">
+                        <OverlapDonut comparison={comparison} />
+                        <div className="overlap-copy">
+                          <strong>{comparison.overlapWeight >= 75 ? "Closely aligned exposures" : comparison.overlapWeight >= 45 ? "Material shared core" : "Distinct exposure profiles"}</strong>
+                          <p>Overlap is the sum of the lower weight for every shared security. Each portfolio&apos;s residual weight forms its active sleeve.</p>
+                          <SleeveBars comparison={comparison} />
+                        </div>
+                      </div>
+                    </article>
+                    <article className="panel sector-panel">
+                      <div className="panel-heading">
+                        <div><span className="eyebrow">Allocation</span><h2>Sector comparison</h2></div>
+                        <div className="mini-legend">
+                          <span><i style={{ background: COLORS.left }} />{comparisonFundLabel(comparison, "left")}</span>
+                          <span><i style={{ background: COLORS.right }} />{comparisonFundLabel(comparison, "right")}</span>
+                        </div>
+                      </div>
+                      <SectorChart comparison={comparison} />
+                    </article>
+                  </section>
+                  <ImplicitSleevesPanel comparison={comparison} />
+                  <PositionTable comparison={comparison} />
+                </section>
+              ) : null}
+            </div>
           ) : workspaceView === "portfolio" ? (
             <PortfolioAnalytics
               catalog={availableCatalog}

@@ -1,9 +1,16 @@
 import {
   deleteLocalEtf,
+  getLocalEtfDetail,
   LocalEtfNotFoundError,
   LocalEtfRequestError,
-  updateLocalEtf,
+  updateCustomLocalEtf,
+  updatePortfolioLocalEtf,
 } from "@/data/services/local-etf-service";
+import type { EtfCreatorCriteria } from "@/domain/etf-creator";
+import type {
+  PortfolioAssetKind,
+  PortfolioInputMode,
+} from "@/domain/portfolio";
 
 function errorResponse(error: unknown, fallback: string): Response {
   if (error instanceof SyntaxError) {
@@ -37,9 +44,21 @@ export async function PATCH(
   try {
     const { etfId } = await context.params;
     const payload = (await request.json()) as {
+      kind?: "custom" | "portfolio";
       ticker?: string;
       name?: string;
       description?: string;
+      sourceEtfId?: string;
+      selectedSecurityIds?: string[];
+      criteria?: EtfCreatorCriteria;
+      items?: Array<{
+        id: string;
+        kind: PortfolioAssetKind;
+        referenceId: string;
+        inputMode: PortfolioInputMode;
+        inputAmount: number;
+      }>;
+      cashPositions?: Array<{ currency: string; amount: number }>;
     };
     if (
       !payload ||
@@ -47,7 +66,8 @@ export async function PATCH(
       Array.isArray(payload) ||
       typeof payload.ticker !== "string" ||
       typeof payload.name !== "string" ||
-      typeof payload.description !== "string"
+      typeof payload.description !== "string" ||
+      (payload.kind !== "custom" && payload.kind !== "portfolio")
     ) {
       return Response.json(
         { error: "Ticker, ETF name and description are required." },
@@ -55,18 +75,72 @@ export async function PATCH(
       );
     }
 
+    if (payload.kind === "custom") {
+      if (
+        typeof payload.sourceEtfId !== "string" ||
+        !Array.isArray(payload.selectedSecurityIds) ||
+        payload.selectedSecurityIds.some((value) => typeof value !== "string") ||
+        !payload.criteria ||
+        typeof payload.criteria !== "object" ||
+        Array.isArray(payload.criteria)
+      ) {
+        return Response.json(
+          { error: "The complete custom ETF definition is required." },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      return Response.json(
+        {
+          data: await updateCustomLocalEtf(etfId, {
+            kind: "custom",
+            ticker: payload.ticker,
+            name: payload.name,
+            description: payload.description,
+            sourceEtfId: payload.sourceEtfId,
+            selectedSecurityIds: payload.selectedSecurityIds,
+            criteria: payload.criteria,
+          }),
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (!Array.isArray(payload.items) || !Array.isArray(payload.cashPositions)) {
+      return Response.json(
+        { error: "The complete portfolio ETF definition is required." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     return Response.json(
       {
-        data: updateLocalEtf(etfId, {
+        data: await updatePortfolioLocalEtf(etfId, {
+          kind: "portfolio",
           ticker: payload.ticker,
           name: payload.name,
           description: payload.description,
+          items: payload.items,
+          cashPositions: payload.cashPositions,
         }),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     return errorResponse(error, "The local ETF could not be updated.");
+  }
+}
+
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ etfId: string }> },
+) {
+  try {
+    const { etfId } = await context.params;
+    return Response.json(
+      { data: await getLocalEtfDetail(etfId) },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return errorResponse(error, "The local ETF could not be loaded.");
   }
 }
 

@@ -5,8 +5,16 @@ export const METRIC_KEYS = [
   "pe_estimate_window_3",
   "pe_estimate_window_4",
   "eps_growth_estimate_forward_4q",
+  "price_earnings_ttm",
   "price_to_book",
   "price_to_sales",
+  "enterprise_value_to_ebitda",
+  "price_to_free_cash_flow",
+  "operating_margin",
+  "return_on_invested_capital",
+  "revenue_growth_ttm",
+  "eps_diluted_growth_ttm",
+  "market_cap",
   "dividend_yield",
   "return_on_equity",
   "debt_to_equity",
@@ -29,14 +37,14 @@ export interface MetricDefinitionView {
   name: string;
   shortName: string;
   description: string;
-  category: "Valuation" | "Earnings" | "Quality" | "Income & risk";
-  unit: "multiple" | "percent" | "number";
+  category: "Valuation" | "Earnings" | "Quality" | "Income & risk" | "Size";
+  unit: "multiple" | "percent" | "number" | "compact_number";
   tradingViewColumn: string | null;
   decimals: number;
   aggregate: boolean;
   showInOverview: boolean;
   formula?: string;
-  aggregation?: "weighted_mean" | "weighted_harmonic" | "weighted_earnings_yield_growth";
+  aggregation?: "weighted_mean" | "weighted_harmonic" | "weighted_earnings_yield_growth" | "weighted_median";
   validRange?: { min: number; max: number };
 }
 
@@ -84,6 +92,20 @@ export const METRIC_DEFINITIONS: readonly MetricDefinitionView[] = [
     aggregation: "weighted_earnings_yield_growth",
   },
   {
+    key: "price_earnings_ttm",
+    name: "Price / earnings (TTM)",
+    shortName: "P/E TTM",
+    description: "Holding-weighted harmonic trailing price-to-earnings multiple on profitable companies.",
+    category: "Valuation",
+    unit: "multiple",
+    tradingViewColumn: "price_earnings_ttm",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+    formula: "sum(holding_weight) / sum(holding_weight / price_earnings_ttm)",
+    aggregation: "weighted_harmonic",
+  },
+  {
     key: "price_to_book",
     name: "Price / book",
     shortName: "P/B",
@@ -110,6 +132,96 @@ export const METRIC_DEFINITIONS: readonly MetricDefinitionView[] = [
     showInOverview: true,
     formula: "sum(holding_weight) / sum(holding_weight / price_to_sales)",
     aggregation: "weighted_harmonic",
+  },
+  {
+    key: "enterprise_value_to_ebitda",
+    name: "Enterprise value / EBITDA (TTM)",
+    shortName: "EV/EBITDA",
+    description: "Holding-weighted harmonic EV/EBITDA multiple on positive EBITDA.",
+    category: "Valuation",
+    unit: "multiple",
+    tradingViewColumn: "enterprise_value_ebitda_ttm",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+    formula: "sum(holding_weight) / sum(holding_weight / enterprise_value_to_ebitda)",
+    aggregation: "weighted_harmonic",
+  },
+  {
+    key: "price_to_free_cash_flow",
+    name: "Price / free cash flow (TTM)",
+    shortName: "P/FCF",
+    description: "Holding-weighted harmonic price-to-free-cash-flow multiple on positive free cash flow.",
+    category: "Valuation",
+    unit: "multiple",
+    tradingViewColumn: "price_free_cash_flow_ttm",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+    formula: "sum(holding_weight) / sum(holding_weight / price_to_free_cash_flow)",
+    aggregation: "weighted_harmonic",
+  },
+  {
+    key: "operating_margin",
+    name: "Operating margin",
+    shortName: "Operating margin",
+    description: "Holding-weighted operating margin, including profitable and loss-making constituents.",
+    category: "Quality",
+    unit: "percent",
+    tradingViewColumn: "operating_margin",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+  },
+  {
+    key: "return_on_invested_capital",
+    name: "Return on invested capital",
+    shortName: "ROIC",
+    description: "Holding-weighted return on invested capital.",
+    category: "Quality",
+    unit: "percent",
+    tradingViewColumn: "return_on_invested_capital",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+  },
+  {
+    key: "revenue_growth_ttm",
+    name: "Revenue growth (TTM YoY)",
+    shortName: "Revenue growth",
+    description: "Holding-weighted trailing revenue growth versus the prior-year period.",
+    category: "Earnings",
+    unit: "percent",
+    tradingViewColumn: "total_revenue_yoy_growth_ttm",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+  },
+  {
+    key: "eps_diluted_growth_ttm",
+    name: "Diluted EPS growth (TTM YoY)",
+    shortName: "EPS growth TTM",
+    description: "Holding-weighted trailing diluted EPS growth versus the prior-year period.",
+    category: "Earnings",
+    unit: "percent",
+    tradingViewColumn: "earnings_per_share_diluted_yoy_growth_ttm",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+  },
+  {
+    key: "market_cap",
+    name: "Market-cap profile",
+    shortName: "Market cap",
+    description: "Holding-weighted median TradingView market capitalization on its global comparison basis.",
+    category: "Size",
+    unit: "compact_number",
+    tradingViewColumn: "market_cap_basic",
+    decimals: 1,
+    aggregate: true,
+    showInOverview: true,
+    formula: "weighted_median(market_cap_basic, holding_weight)",
+    aggregation: "weighted_median",
   },
   {
     key: "dividend_yield",
@@ -190,6 +302,13 @@ export interface SecurityMetricValues {
   providerSymbol: string;
   values: Partial<Record<MetricKey, number>>;
   estimateSeries?: SecurityEstimateSeries;
+  capturedAtByKey?: Partial<Record<MetricKey, string>>;
+  estimateCapturedAt?: string;
+}
+
+export interface MetricCaptureWindow {
+  oldest: string;
+  latest: string;
 }
 
 export interface WeightedMetric {
@@ -198,6 +317,7 @@ export interface WeightedMetric {
   coverageWeight: number;
   coveredHoldings: number;
   totalHoldings: number;
+  captureWindow: MetricCaptureWindow | null;
 }
 
 export const CONSENSUS_HORIZONS = ["4q", "2q", "1q"] as const;
@@ -209,6 +329,7 @@ export interface ConsensusAggregate {
   coverageWeight: number;
   coveredHoldings: number;
   totalHoldings: number;
+  captureWindow: MetricCaptureWindow | null;
 }
 
 export interface ConsensusWindowView {
@@ -281,6 +402,8 @@ export type MetricsOverviewWarning =
 
 export interface MetricsOverviewResult {
   calculatedAt: string;
+  fundamentalsCaptureWindow: MetricCaptureWindow | null;
+  estimatesCaptureWindow: MetricCaptureWindow | null;
   source: "TradingView Screener + Estimates";
   sourceStatus: "live" | "cached" | "partial" | "stale";
   sourceWarnings: MetricsOverviewWarning[];

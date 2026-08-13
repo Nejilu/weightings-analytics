@@ -346,6 +346,7 @@ export const ETF_CATALOG: CatalogGroup[] = [
           compositionSourceUrl:
             "https://www.solactive.com/announcements/62871",
           weighting: "source-market-value-normalized",
+          missingComponentPolicy: "exclude-and-renormalize",
           componentTickers: [
             "ADBE",
             "AMD",

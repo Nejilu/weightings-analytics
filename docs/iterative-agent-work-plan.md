@@ -1,5 +1,11 @@
 # Plan final dirigé — stabilisation et simplification
 
+> **Statut : plan historique terminé.** Les phases ci-dessous décrivent la
+> consolidation Metrics Overview achevée avant les évolutions produit du
+> 2026-08-13. Ce fichier n’est plus une file de travaux active. Le comportement
+> courant est décrit dans l’[architecture](metrics-overview-architecture.md) et
+> les évolutions postérieures dans le [bilan d’ingénierie](engineering-review.md).
+
 **Statut :** terminé — P0 à P6 validés et livrés en commits logiques
 **Dernière révision :** 2026-08-03
 **Périmètre principal :** Metrics Overview, son contrat API et les chemins

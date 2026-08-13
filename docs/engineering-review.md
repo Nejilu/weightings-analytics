@@ -1,12 +1,12 @@
 # Bilan consolidé des revues d’ingénierie
 
-**État observé :** 2026-08-03
+**État observé :** 2026-08-13
 **Objet :** conserver les décisions utiles de la boucle d’optimisation sans
 maintenir un journal chronologique redondant.
 
-Le détail d’exécution a été condensé. Les prochaines actions sont dirigées par
-le [plan final](iterative-agent-work-plan.md) et les contrats courants par
-l’[architecture Metrics Overview](metrics-overview-architecture.md).
+Le détail d’exécution a été condensé. Le
+[plan final](iterative-agent-work-plan.md) est désormais un historique terminé ;
+les contrats courants restent décrits par l’[architecture Metrics Overview](metrics-overview-architecture.md).
 
 ## Verdict
 
@@ -97,8 +97,8 @@ abstraction bornée avec persistance SQLite, pas comme deux caches indépendants
 
 | Sujet | Résultat observé |
 | --- | --- |
-| Audit mapping strict actuel | 3 224 résolus, 1 unresolved, 0 mismatch d’identité, provenance résolue complète |
-| Couverture mapping actuelle | ACWI, CHIP, IVV et SP20 à 100 % du poids ; IEMG à 97,37 % |
+| Audit mapping strict local du 2026-08-13 | 3 270 résolus, 1 unresolved, 0 mismatch d’identité ; échec strict dû à 995 mappings hérités sans provenance et 7 références orphelines |
+| Couverture mapping locale | ACWI, CHIP, IEMG, IQQ, IVV, NDXWLD, PANX, QLD, QTOP, SP20, TQQQ et URTH à 100 % du poids arrondi ; la complétude pondérale ne remplace pas la provenance |
 | Cache négatif inter-processus | IEMG d’environ 5,9 s à environ 309 ms, 0 symbole redemandé |
 | Capture de `databasePath()` | `derive-and-write` environ 126,7 → 49–54 ms |
 | Mapping plan | environ 138–149 → 40–48 ms |
@@ -106,7 +106,7 @@ abstraction bornée avec persistance SQLite, pas comme deux caches indépendants
 | DTO compact | variante mesurée puis rejetée : elle supprimait des champs v1 |
 | Validation HTTP | réponses 200 puis 304 avec ETag stable sur les univers contrôlés |
 | Baseline séquentielle | IVV 1,1 s/654 Ko/32,3 %, ACWI 3,8 s/672 Ko/36,4 %, CHIP 35 ms/71 Ko/116,6 %, IEMG 25,6 s/673 Ko/74,4 % ; mapping 100 % |
-| Validation finale | `npm test` : 130/130 tests TS et audits annexes ; `npm run build` : succès, worker TypeScript et 12 pages Next inclus |
+| Validation du lot 2026-08-13 | lint, typecheck, 147/147 tests TS, 3/3 tests d’audit, migration smoke, 2/2 tests d’assets et build des 12 routes Next passent |
 
 Les durées provider dépendent du réseau et de l’état des caches. Elles justifient
 les décisions prises mais ne constituent pas un SLA.
@@ -190,9 +190,35 @@ dans l’historique et ne repose pas sur un simple classement documentaire.
 2. Les payloads ACWI/IEMG restent proches de 670 Ko et la sélection de quatre
    ETF atteint environ 2,06 Mo ; la compatibilité v1 interdit une compaction
    silencieuse, donc une future réduction exigerait une nouvelle version d’API.
+3. La base locale contient encore 995 mappings hérités sans provenance et
+   7 références orphelines. L’audit strict doit rester rouge jusqu’à migration
+   ou résolution explicite de ces lignes ; une couverture pondérale de 100 %
+   ne suffit pas à les déclarer auditables.
 
 La croissance ETF est désormais reconstruite par earnings yields pondérés ; les
 tests couvrent P/E positifs, P/E non positifs et couverture partielle.
+
+## Évolutions produit depuis le plan Metrics
+
+Le lot du 2026-08-13 étend le produit sans modifier les invariants historiques
+de source et de couverture :
+
+- l’espace Holdings devient une analyse mono-ETF par défaut ; la comparaison
+  reste optionnelle et les grandes tables passent par une expansion progressive ;
+- un contre-factuel ACWI mesure la distorsion de pondération sur l’univers
+  commun, avec score, couverture et titres absents explicitement séparés ;
+- Portfolio accepte positions longues/courtes et cash ou emprunt multidevise,
+  puis expose au choix l’exposition actions brute normalisée ou les poids NAV
+  signés incluant cash et financement implicite des ETF à levier ;
+- les ETF personnalisés conservent une recette manuellement surchargeable, mais
+  recalculent les poids disponibles depuis le dernier snapshot de leur univers
+  source ; les ETF personnalisés et Portfolio sont rechargeables, modifiables et
+  supprimables via un cycle de vie transactionnel réservé aux objets locaux ;
+- Metrics Overview ajoute P/E TTM, EV/EBITDA, P/FCF, marge opérationnelle, ROIC,
+  croissances TTM et capitalisation médiane pondérée, avec provenance temporelle
+  par métrique et axes robustes réversibles sur le graphique constituants ;
+- la migration `0011` persiste les positions cash par portefeuille avec cascade
+  limitée au portefeuille concerné.
 
 ## Validation au dernier audit
 
@@ -210,10 +236,18 @@ node --test --experimental-test-isolation=none \
 git diff --check
 ```
 
-Le réaudit exécute 130/130 tests TypeScript par la commande standard. Les tests
-mapping, migration et assets standalone passent dans le même enchaînement.
-`npm run build` compile l’application optimisée, termine le contrôle TypeScript
-et génère les 12 pages Next.
+Le réaudit du 2026-08-13 exécute 147/147 tests TypeScript par la commande
+standard. Les 3 tests de contrat d’audit, le migration smoke et les 2 tests
+d’assets standalone passent dans le même enchaînement. `npm run build` compile
+l’application optimisée, termine le contrôle TypeScript et génère les 12 routes
+Next.
+
+L’audit de données `db:audit-mappings -- --strict`, réexécuté après sauvegarde
+et `db:setup`, reste volontairement rouge sur la base locale : 995 mappings
+hérités sont résolus sans provenance et 7 références sont orphelines. Les
+identités Screener/Estimates ne présentent aucun mismatch et la couverture
+pondérale arrondie est de 100 % sur les ETF audités. Ce passif de données est
+documenté comme risque ouvert ; il n’est pas masqué par la suite de fixtures.
 
 Le smoke HTTP couvre Catalog, Holdings, Compare, Portfolio, recherche et
 Metrics : toutes les réponses nominales valent `200`, et la requête Metrics

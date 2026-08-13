@@ -3,13 +3,14 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { EtfShareClass } from "@/domain/etf";
-import type { PortfolioItem } from "@/domain/portfolio";
+import type { PortfolioCashPosition, PortfolioItem } from "@/domain/portfolio";
 import { securityQuoteAlias } from "@/domain/security-equivalence";
 
 import { getDb } from "../client";
 import {
   benchmarks,
   etfs,
+  portfolioCashPositions,
   portfolioItems,
   portfolios,
   securities,
@@ -23,6 +24,7 @@ export interface StoredPortfolio {
   baseCurrency: string;
   updatedAt: string;
   items: PortfolioItem[];
+  cashPositions: PortfolioCashPosition[];
 }
 
 function loadPortfolio(id: string): StoredPortfolio | undefined {
@@ -59,6 +61,15 @@ function loadPortfolio(id: string): StoredPortfolio | undefined {
     .leftJoin(securities, eq(portfolioItems.securityId, securities.id))
     .where(eq(portfolioItems.portfolioId, id))
     .orderBy(asc(portfolioItems.createdAt))
+    .all();
+  const cashRows = db
+    .select({
+      currency: portfolioCashPositions.currency,
+      amount: portfolioCashPositions.amount,
+    })
+    .from(portfolioCashPositions)
+    .where(eq(portfolioCashPositions.portfolioId, id))
+    .orderBy(asc(portfolioCashPositions.currency))
     .all();
 
   return {
@@ -101,6 +112,10 @@ function loadPortfolio(id: string): StoredPortfolio | undefined {
         priceCurrency: row.itemPriceCurrency ?? undefined,
       };
     }),
+    cashPositions: cashRows.map((row) => ({
+      currency: row.currency as PortfolioCashPosition["currency"],
+      amount: row.amount,
+    })),
   };
 }
 
@@ -133,7 +148,7 @@ export function anchorPortfolioQuantities(
   const db = getDb();
   db.transaction((transaction) => {
     for (const item of items) {
-      if (!item.quantity || item.quantity <= 0) continue;
+      if (!item.quantity || !Number.isFinite(item.quantity)) continue;
       transaction
         .update(portfolioItems)
         .set({
@@ -158,7 +173,10 @@ export function anchorPortfolioQuantities(
   });
 }
 
-export function replaceDefaultPortfolioItems(items: PortfolioItem[]) {
+export function replaceDefaultPortfolio(
+  items: PortfolioItem[],
+  cashPositions: PortfolioCashPosition[],
+) {
   const db = getDb();
 
   db.transaction((transaction) => {
@@ -178,6 +196,10 @@ export function replaceDefaultPortfolioItems(items: PortfolioItem[]) {
     transaction
       .delete(portfolioItems)
       .where(eq(portfolioItems.portfolioId, DEFAULT_PORTFOLIO_ID))
+      .run();
+    transaction
+      .delete(portfolioCashPositions)
+      .where(eq(portfolioCashPositions.portfolioId, DEFAULT_PORTFOLIO_ID))
       .run();
 
     if (items.length > 0) {
@@ -203,6 +225,18 @@ export function replaceDefaultPortfolioItems(items: PortfolioItem[]) {
         )
         .run();
     }
+    if (cashPositions.length > 0) {
+      transaction
+        .insert(portfolioCashPositions)
+        .values(
+          cashPositions.map((position) => ({
+            portfolioId: DEFAULT_PORTFOLIO_ID,
+            currency: position.currency,
+            amount: position.amount,
+          })),
+        )
+        .run();
+    }
   });
 }
 
@@ -210,6 +244,7 @@ interface SavePortfolioAsEtfInput {
   ticker: string;
   name: string;
   description: string;
+  editableDescription?: string;
 }
 
 export function saveDefaultPortfolioAsEtf(
@@ -270,6 +305,21 @@ export function saveDefaultPortfolioAsEtf(
       )
       .run();
 
+    if (source.cashPositions.length > 0) {
+      transaction
+        .insert(portfolioCashPositions)
+        .values(
+          source.cashPositions.map((position) => ({
+            portfolioId,
+            currency: position.currency,
+            amount: position.amount,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        )
+        .run();
+    }
+
     transaction
       .insert(etfs)
       .values({
@@ -295,7 +345,9 @@ export function saveDefaultPortfolioAsEtf(
         metadataJson: {
           compositionModel: "relational-look-through",
           componentCount: source.items.length,
+          cashCurrencies: source.cashPositions.map((position) => position.currency),
           recalculation: "on-read",
+          editableDescription: input.editableDescription ?? "",
         },
         createdAt: now,
         updatedAt: now,

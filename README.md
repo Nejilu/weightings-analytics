@@ -1,7 +1,8 @@
 # IndexLens
 
-IndexLens is a Next.js application for comparing the underlying exposures of
-iShares ETFs: holdings, weighted overlap, active sleeves and sector allocation.
+IndexLens is a Next.js application for analysing ETF holdings, comparing
+underlying exposures, building look-through portfolios and creating reusable
+local ETFs from iShares source universes.
 
 ## Development
 
@@ -195,11 +196,18 @@ browser assets as well as its API routes.
   as stale data when iShares is temporarily unavailable. SQLite is the only
   holdings cache: after expiry, the provider request uses `no-store` so an old
   Next.js revalidation response cannot renew a stale snapshot.
-- Use a pure, reusable processor for weighted overlap and active sleeves.
-- Rank security-level active weights independently for either ETF.
+- Open a single-ETF holdings deep dive by default, with concentration, sector
+  allocation, the complete security table and an optional second-ETF comparison.
+- Measure weighting distortion against ACWI-implied free-float weights on the
+  common security universe. The score is `50 × Σ|actual - counterfactual|` after
+  renormalising both sides to 100%; coverage and missing securities remain visible.
+- Use pure, reusable processors for holdings analysis, weighted overlap and
+  active sleeves. Large security tables initially render 50 rows while retaining
+  an accessible control for the complete result set.
 - Build and persist a mixed ETF/direct-stock portfolio, using ACWI holdings as
-  the searchable stock universe. Positions can be entered as a USD value or a
-  number of shares.
+  the searchable stock universe. Long and short positions can be entered as a
+  USD value or a number of shares; explicit positive cash and negative borrowing
+  can be recorded in 14 currencies and converted to USD.
 - Persist Yahoo Finance market prices and FX conversions for 24 hours, with the
   latest stored quote used as a stale fallback when a refresh fails.
 - Offer accumulating iShares share classes in Portfolio only. Each keeps its own
@@ -208,23 +216,31 @@ browser assets as well as its API routes.
 - Label iShares selector entries by underlying index, distribution policy and a
   final parenthesized ticker, rather than by the issuer product name.
 - Expand every ETF sleeve, merge duplicate direct and indirect exposures, and
-  rank the resulting synthetic portfolio at security level.
-- Save the share-based portfolio definition as a reusable local ETF. Its
-  component weights follow current market values, while its security-level
+  rank the resulting synthetic portfolio at security level. The interface can
+  switch between gross-normalised equity exposure and signed NAV exposure with
+  cash and implicit leveraged-ETF financing included.
+- Save the share-based portfolio and cash definition as a reusable local ETF.
+  Its component weights follow current market values, while its security-level
   holdings are recalculated from the latest persisted source ETF compositions
   whenever it is selected.
 - Select saved portfolio ETFs in the standard holdings and ETF comparison
   workflows under the `Saved portfolios` catalog group.
-- Create a frozen, free-float-weighted ETF from any registered ETF universe
-  (ACWI is selected by default) using country, sector, supported-ETF overlap
-  and manual constituent filters. Saved definitions keep their constituent
-  list and normalized weights unchanged and appear under the `Custom ETFs`
-  catalog group.
+- Create a free-float-weighted ETF from any registered source universe (ACWI is
+  selected by default) using country, sector, supported-ETF overlap and manual
+  inclusion/exclusion rules. The visible final recipe is automatic matches plus
+  manual additions minus exclusions. The selected security list is persisted;
+  available source weights are recalculated and normalised on every read from
+  the latest persisted source snapshot.
+- Reload, edit and delete custom or portfolio ETFs without exposing those
+  lifecycle operations for official catalog ETFs. Deletion transactionally
+  removes the local definition and its private snapshots while preserving
+  shared securities and official data.
 - Use a persistent light or dark interface theme.
 - Resolve constituent listings to TradingView symbols using the iShares exchange,
   imported ticker disambiguation rules and country fallbacks for legacy snapshots.
-- Fetch fundamental and risk fields through grouped TradingView Screener requests,
-  and retrieve EPS consensus histories through grouped TradingView quote sessions.
+- Fetch valuation, earnings, quality, size, income and risk fields through
+  grouped TradingView Screener requests, and retrieve EPS consensus histories
+  through grouped TradingView quote sessions.
 - Build an estimates-only earnings series from the consensus attached to the four
   latest reported quarters and the current consensus for the next four quarters.
   Reported EPS and reconstructed adjusted EPS are never used in P/E or growth.
@@ -234,18 +250,20 @@ browser assets as well as its API routes.
 - Distinguish incomplete provider coverage (`partial`) from genuinely stale
   fallback data (`stale`), so normal Screener/Estimates gaps remain cacheable
   without hiding their metric-by-metric coverage warnings.
-- Calculate each security's P/E from its local-currency price divided by a rolling
-  four-quarter consensus EPS sum. ETF P/E uses a holding-weighted harmonic mean;
-  P/B and P/S use the same harmonic method when their denominator is positive;
-  yield, ROE, debt/equity and beta use covered-weight arithmetic means and disclose
-  coverage.
+- Calculate each security's P/E from its local-currency price divided by rolling
+  consensus EPS. ETF P/E, P/E TTM, P/B, P/S, EV/EBITDA and P/FCF use
+  holding-weighted harmonic means on positive ratios. Operating margin, ROIC,
+  revenue growth, diluted EPS growth, yield, ROE, debt/equity and beta use
+  covered-weight arithmetic means; market capitalisation uses a weighted median.
+  Every aggregate discloses coverage and its source capture window.
 - Expose versioned endpoints: `/api/v1/catalog`,
-  `/api/v1/holdings/:ticker` and
+  `/api/v1/holdings/:ticker`, `/api/v1/holdings/:ticker/analysis` and
   `/api/v1/compare?left=IVV&right=ACWI`, plus `/api/v1/portfolio` and
   `/api/v1/securities/search?q=AAPL`. Market quotes are exposed through
   `/api/v1/prices/quote`, and portfolio ETFs are created through
-  `/api/v1/portfolio/save-as-etf`. Frozen ACWI ETFs are created through
-  `/api/v1/etf-creator`.
+  `/api/v1/portfolio/save-as-etf`. Custom ETFs are created through
+  `/api/v1/etf-creator`; `/api/v1/local-etfs/:etfId` loads, updates or deletes
+  editable local definitions.
 - Expose holding-weighted constituent metrics through
   `/api/v1/metrics/overview?etfs=ivv-us,acwi-us`.
 - Probe live historical and forward estimate coverage, including non-USD primary

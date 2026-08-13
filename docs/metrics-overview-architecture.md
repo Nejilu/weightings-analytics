@@ -61,9 +61,10 @@ exchange, émetteur, alternatives, métadonnées et poids.
 
 ## Données Screener
 
-Le Screener TradingView reçoit des symboles `EXCHANGE:TICKER` en lots. Les six
-familles source utilisées sont notamment P/B, P/S, rendement, ROE,
-dette/equity et bêta.
+Le Screener TradingView reçoit des symboles `EXCHANGE:TICKER` en lots. Les
+familles source couvrent notamment P/E TTM, P/B, P/S, EV/EBITDA, P/FCF,
+marge opérationnelle, ROIC, croissance du chiffre d’affaires et de l’EPS dilué,
+capitalisation, rendement, ROE, dette/equity et bêta.
 
 Un champ absent d’une réponse réussie :
 
@@ -105,8 +106,12 @@ partiel/indisponible et Estimates partiel/indisponible. `stale` a priorité sur
 
 ## Agrégations actuelles
 
-- P/E, P/B et P/S : moyenne harmonique pondérée sur les ratios positifs.
-- Rendement, ROE, dette/equity et bêta : moyenne arithmétique pondérée.
+- P/E consensus, P/E TTM, P/B, P/S, EV/EBITDA et P/FCF : moyenne harmonique
+  pondérée sur les ratios positifs.
+- Marge opérationnelle, ROIC, croissance du chiffre d’affaires, croissance de
+  l’EPS dilué, rendement, ROE, dette/equity et bêta : moyenne arithmétique
+  pondérée sur le poids couvert.
+- Capitalisation : médiane pondérée par le poids des holdings couverts.
 - Croissance EPS estimée : croissance des earnings yields agrégés sur les
   composants ayant des P/E historique et forward positifs.
 
@@ -117,7 +122,10 @@ La formule exécutée est :
 ```
 
 Les composants sans l’un des deux P/E positifs réduisent la couverture de cet
-agrégat ; ils ne sont pas transformés en croissance nulle.
+agrégat ; ils ne sont pas transformés en croissance nulle. Chaque métrique ETF
+porte également la fenêtre `oldest`/`latest` des observations qui contribuent à
+sa valeur. Le DTO expose séparément les fenêtres globales fondamentaux et
+consensus, afin de ne pas confondre l’heure du calcul avec l’âge des sources.
 
 ## Bubble chart et DTO
 
@@ -135,8 +143,11 @@ complets. Les compteurs transparents (`eligibleHoldingCount`,
 ajoutés sans supprimer `eligibleCount` ni `excludedOutlierCount`.
 
 Sont comptés séparément : séries/métriques manquantes, P/E forward non positif
-et titres au-delà du top-500. Les axes incluent tous les points finis retenus ;
-aucun clipping arbitraire d’outlier n’est appliqué.
+et titres au-delà du top-500. Le graphique charge d’abord les plus grandes
+positions, mais permet d’afficher tout l’univers disponible. Par défaut, ses
+axes robustes utilisent les quantiles 5–95 % bornés par les fences IQR ; les
+points hors cadre sont listés et restent dans les données. L’utilisateur peut
+basculer vers l’étendue complète.
 
 La compaction précédente par `estimatePeriods`/`estimates` a été retirée du
 contrat `/api/v1` : elle réduisait le payload mais supprimait des champs déjà
@@ -176,6 +187,9 @@ seule instance applicative. Un cache distribué est hors périmètre.
 - `0009` retire les anciennes définitions métriques ;
 - `0010` ajoute le cache négatif persistant.
 
+Les nouvelles définitions Screener et leurs méthodes d’agrégation sont seedées
+idempotemment ; elles ne nécessitent pas une table supplémentaire.
+
 Les lectures chaudes des métriques numériques et des séries EPS utilisent du
 SQL paramétré direct, avec reconstruction et validation en TypeScript. Les
 autres accès restent sous Drizzle. Cette exception est limitée aux deux chemins
@@ -192,7 +206,6 @@ entre mapping, Screener et Estimates, les doublons d’identité et les référe
 orphelines. Les volumes exacts restent propres à la base auditée ; la couverture
 par métrique est affichée séparément dans le panel.
 
-La validation finale du 2026-08-03 passe avec `npm test` et `npm run build`, y
-compris les processus enfants `tsx`, le worker TypeScript et la génération des
-12 pages Next. Le précédent `spawn EPERM` était donc une restriction de la
-sandbox, pas une défaillance du projet.
+La date de validation courante et les résultats de la suite complète sont
+consignés dans le [bilan d’ingénierie](engineering-review.md). Un éventuel
+`spawn EPERM` doit être confirmé hors sandbox avant d’être attribué au projet.
