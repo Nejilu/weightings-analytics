@@ -309,6 +309,34 @@ export const ETF_CATALOG: CatalogGroup[] = [
     ],
   },
   {
+    id: "msci-em-asia",
+    name: "MSCI Emerging Markets Asia",
+    provider: "MSCI",
+    region: "Emerging markets · Asia",
+    description:
+      "Large- and mid-cap equities across Asian emerging markets.",
+    variants: [
+      {
+        id: "csemas-ucits",
+        ticker: "CSEMAS",
+        name: "iShares MSCI EM Asia UCITS ETF",
+        benchmarkId: "msci-em-asia",
+        isin: "IE00B5L8K969",
+        wrapper: "UCITS",
+        domicile: "Ireland",
+        exchange: "SIX Swiss Exchange",
+        tradingCurrency: "USD",
+        distributionPolicy: "Accumulating",
+        ter: 0.2,
+        productUrl:
+          "https://www.ishares.com/uk/individual/en/products/253723/ishares-msci-em-asia-ucits-etf",
+        holdingsUrl:
+          "https://www.ishares.com/ch/individual/en/products/253723/ishares-msci-em-asia-ucits-etf/1495092304805.ajax?fileType=csv&fileName=CSEMAS_holdings&dataType=fund",
+        priceSymbol: "CSEMAS.SW",
+      },
+    ],
+  },
+  {
     id: "solactive-iss-esg-us-tech-100",
     name: "Solactive ISS ESG US Tech 100",
     provider: "Solactive",

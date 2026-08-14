@@ -24,6 +24,7 @@ const BLACKROCK_PRODUCT_DATA_CONFIG = {
 } as const;
 const MINIMUM_EXPECTED_HOLDINGS: Record<string, number> = {
   "acwi-us": 2_000,
+  "csemas-ucits": 500,
 };
 
 export function isPlausibleIsharesHoldingsCount(

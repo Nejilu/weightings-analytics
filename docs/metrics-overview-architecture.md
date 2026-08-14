@@ -38,7 +38,12 @@ Responsabilités :
   expose ISIN, SEDOL et CUSIP. Le CSV régional reste la source suivante.
 - Chaque candidat est contrôlé avec le seuil de plausibilité propre à l’ETF ;
   un payload trop court passe réellement au candidat suivant au lieu d’être
-  retéléchargé une seconde fois.
+  retéléchargé une seconde fois. ACWI exige au moins 2 000 lignes et le nouvel
+  univers natif CSEMAS au moins 500 ; les petits ETF conservent le plancher
+  générique de cinq lignes.
+- CSEMAS (`csemas-ucits`) représente directement le MSCI Emerging Markets Asia :
+  sa cotation SIX en USD garde son propre flux BlackRock/iShares et son propre
+  snapshot, sans réutiliser les holdings d’un autre ETF.
 - Le snapshot SQLite est l’unique cache de holdings. Après expiration de son
   TTL, BlackRock/iShares est appelé avec `no-store` afin qu’une réponse périmée
   du cache de revalidation Next.js ne puisse pas renouveler `fetchedAt`.
@@ -147,7 +152,8 @@ et titres au-delà du top-500. Le graphique charge d’abord les plus grandes
 positions, mais permet d’afficher tout l’univers disponible. Par défaut, ses
 axes robustes utilisent les quantiles 5–95 % bornés par les fences IQR ; les
 points hors cadre sont listés et restent dans les données. L’utilisateur peut
-basculer vers l’étendue complète.
+basculer vers l’étendue complète. Une marge SVG de 24 px réserve les libellés
+sans comprimer excessivement la zone centrale.
 
 La compaction précédente par `estimatePeriods`/`estimates` a été retirée du
 contrat `/api/v1` : elle réduisait le payload mais supprimait des champs déjà

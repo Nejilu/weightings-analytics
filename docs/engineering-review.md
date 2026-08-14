@@ -1,6 +1,6 @@
 # Bilan consolidé des revues d’ingénierie
 
-**État observé :** 2026-08-13
+**État observé :** 2026-08-14
 **Objet :** conserver les décisions utiles de la boucle d’optimisation sans
 maintenir un journal chronologique redondant.
 
@@ -13,7 +13,7 @@ les contrats courants restent décrits par l’[architecture Metrics Overview](m
 La branche est matériellement meilleure en fiabilité, couverture mondiale,
 temps de redémarrage et transparence. La livraison est structurée en lots
 logiques committés. La commande standard et le build Next passent dans
-l’environnement autorisant les processus enfants : 130 tests TypeScript, les
+l’environnement autorisant les processus enfants : 148 tests TypeScript, les
 audits annexes et la génération des 12 pages Next sont validés. Le précédent
 `spawn EPERM` était donc environnemental. Le contrat HTTP v1 et son ETag sont
 couverts sur la représentation sérialisée complète.
@@ -97,8 +97,8 @@ abstraction bornée avec persistance SQLite, pas comme deux caches indépendants
 
 | Sujet | Résultat observé |
 | --- | --- |
-| Audit mapping strict local du 2026-08-13 | 3 270 résolus, 1 unresolved, 0 mismatch d’identité ; échec strict dû à 995 mappings hérités sans provenance et 7 références orphelines |
-| Couverture mapping locale | ACWI, CHIP, IEMG, IQQ, IVV, NDXWLD, PANX, QLD, QTOP, SP20, TQQQ et URTH à 100 % du poids arrondi ; la complétude pondérale ne remplace pas la provenance |
+| Audit mapping strict local du 2026-08-14 | 3 271 résolus, 1 unresolved, 0 mismatch d’identité ; échec strict dû à 995 mappings hérités sans provenance et 7 références orphelines |
+| Couverture mapping locale | ACWI, CHIP, IEMG, IQQ, IVV, NDXWLD, PANX, QLD, QTOP, SP20, TQQQ et URTH à 100 % du poids arrondi ; CSEMAS à 544/548 titres et 95,26 % du poids ; la complétude pondérale ne remplace pas la provenance |
 | Cache négatif inter-processus | IEMG d’environ 5,9 s à environ 309 ms, 0 symbole redemandé |
 | Capture de `databasePath()` | `derive-and-write` environ 126,7 → 49–54 ms |
 | Mapping plan | environ 138–149 → 40–48 ms |
@@ -107,6 +107,7 @@ abstraction bornée avec persistance SQLite, pas comme deux caches indépendants
 | Validation HTTP | réponses 200 puis 304 avec ETag stable sur les univers contrôlés |
 | Baseline séquentielle | IVV 1,1 s/654 Ko/32,3 %, ACWI 3,8 s/672 Ko/36,4 %, CHIP 35 ms/71 Ko/116,6 %, IEMG 25,6 s/673 Ko/74,4 % ; mapping 100 % |
 | Validation du lot 2026-08-13 | lint, typecheck, 147/147 tests TS, 3/3 tests d’audit, migration smoke, 2/2 tests d’assets et build des 12 routes Next passent |
+| Validation CSEMAS du 2026-08-14 | flux officiel de 559 lignes parsées (557 à poids positif), seed SQLite, lint, typecheck, 148/148 tests TS et build des 12 routes Next passent |
 
 Les durées provider dépendent du réseau et de l’état des caches. Elles justifient
 les décisions prises mais ne constituent pas un SLA.
@@ -214,6 +215,9 @@ de source et de couverture :
   recalculent les poids disponibles depuis le dernier snapshot de leur univers
   source ; les ETF personnalisés et Portfolio sont rechargeables, modifiables et
   supprimables via un cycle de vie transactionnel réservé aux objets locaux ;
+- le catalogue ajoute CSEMAS comme univers MSCI Emerging Markets Asia natif,
+  avec sa cotation SIX/USD, son snapshot autonome et un plancher de 500 lignes
+  pour refuser un export officiel tronqué ;
 - Metrics Overview ajoute P/E TTM, EV/EBITDA, P/FCF, marge opérationnelle, ROIC,
   croissances TTM et capitalisation médiane pondérée, avec provenance temporelle
   par métrique et axes robustes réversibles sur le graphique constituants ;
@@ -236,7 +240,7 @@ node --test --experimental-test-isolation=none \
 git diff --check
 ```
 
-Le réaudit du 2026-08-13 exécute 147/147 tests TypeScript par la commande
+Le réaudit du 2026-08-14 exécute 148/148 tests TypeScript par la commande
 standard. Les 3 tests de contrat d’audit, le migration smoke et les 2 tests
 d’assets standalone passent dans le même enchaînement. `npm run build` compile
 l’application optimisée, termine le contrôle TypeScript et génère les 12 routes
@@ -245,15 +249,21 @@ Next.
 L’audit de données `db:audit-mappings -- --strict`, réexécuté après sauvegarde
 et `db:setup`, reste volontairement rouge sur la base locale : 995 mappings
 hérités sont résolus sans provenance et 7 références sont orphelines. Les
-identités Screener/Estimates ne présentent aucun mismatch et la couverture
-pondérale arrondie est de 100 % sur les ETF audités. Ce passif de données est
-documenté comme risque ouvert ; il n’est pas masqué par la suite de fixtures.
+identités Screener/Estimates ne présentent aucun mismatch. La couverture
+pondérale arrondie reste de 100 % sur les univers précédemment audités, tandis
+que CSEMAS expose explicitement 544/548 mappings et 95,26 % du poids. Ce passif
+de données est documenté comme risque ouvert ; il n’est pas masqué par la suite
+de fixtures.
 
 Le smoke HTTP couvre Catalog, Holdings, Compare, Portfolio, recherche et
 Metrics : toutes les réponses nominales valent `200`, et la requête Metrics
 conditionnelle vaut `304`. Les sélections ou payloads invalides de Compare,
 Holdings, Metrics, prix, Portfolio et ETF Creator conservent leurs contrats
 `400`/`404`.
+
+Le smoke de production du 2026-08-14 confirme aussi `/api/health`, la présence
+de CSEMAS dans `/api/v1/catalog` et 559 holdings datés du 2026-08-13 sur
+`/api/v1/holdings/CSEMAS`.
 
 Le contrôle navigateur de la webapp confirme Compare (IVV/ACWI), ETF Creator,
 Portfolio et l’ensemble du panel Metrics, notamment les trajectoires P/E, la

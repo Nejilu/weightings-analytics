@@ -186,6 +186,9 @@ browser assets as well as its API routes.
 - Ingest official iShares holdings payloads on the server, preferring BlackRock
   product data because it exposes ISIN, SEDOL and CUSIP, with the regional CSV
   retained as a resilient fallback.
+- Treat the accumulating iShares MSCI EM Asia UCITS ETF (`CSEMAS`, SIX/USD) as
+  its own native source universe. It downloads and persists its own holdings
+  instead of aliasing another ETF snapshot.
 - Persist normalized securities and holdings snapshots in local SQLite.
 - Resolve every source row onto one canonical security identity. ISIN is
   preferred, then SEDOL, CUSIP and finally a conservative name+ticker fallback.
@@ -250,6 +253,9 @@ browser assets as well as its API routes.
 - Distinguish incomplete provider coverage (`partial`) from genuinely stale
   fallback data (`stale`), so normal Screener/Estimates gaps remain cacheable
   without hiding their metric-by-metric coverage warnings.
+- Reject implausibly short holdings payloads with universe-specific floors for
+  large sources (2,000 rows for ACWI and 500 for CSEMAS), while retaining the
+  generic five-row minimum for smaller ETFs.
 - Calculate each security's P/E from its local-currency price divided by rolling
   consensus EPS. ETF P/E, P/E TTM, P/B, P/S, EV/EBITDA and P/FCF use
   holding-weighted harmonic means on positive ratios. Operating margin, ROIC,

@@ -42,7 +42,7 @@ interface MetricsOverviewProps {
 
 const FUND_COLORS = ["#6f57d2", "#e77e61", "#36a88a", "#ad8540"];
 const DEFAULT_COMPONENT_POINT_LIMIT = 70;
-const BUBBLE_AXIS_PADDING = 48;
+const BUBBLE_AXIS_PADDING = 24;
 const METRIC_GROUPS: Array<{
   id: string;
   title: string;

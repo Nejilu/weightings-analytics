@@ -235,9 +235,11 @@ test("rejects HTML responses before they reach the CSV parser", () => {
   );
 });
 
-test("rejects a truncated ACWI universe without imposing its scale on other ETFs", () => {
+test("rejects truncated large iShares universes without imposing their scale on small ETFs", () => {
   assert.equal(isPlausibleIsharesHoldingsCount("acwi-us", 1_652), false);
   assert.equal(isPlausibleIsharesHoldingsCount("acwi-us", 2_236), true);
+  assert.equal(isPlausibleIsharesHoldingsCount("csemas-ucits", 499), false);
+  assert.equal(isPlausibleIsharesHoldingsCount("csemas-ucits", 559), true);
   assert.equal(isPlausibleIsharesHoldingsCount("small-etf", 50), true);
   assert.throws(
     () =>
