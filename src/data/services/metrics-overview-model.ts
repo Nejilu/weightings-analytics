@@ -53,11 +53,27 @@ export function buildComponentValuation(
     const peForwardEstimate4q = securityMetrics?.values.pe_estimate_window_4;
     const epsGrowthEstimate4q = securityMetrics?.values.eps_growth_estimate_forward_4q;
     const series = securityMetrics?.estimateSeries;
+    const qMinus3EpsEstimate = series?.points[0]?.estimate;
+    const nextQuarterEpsEstimate = series?.points[4]?.estimate;
+    const peQMinus3Annualized =
+      typeof qMinus3EpsEstimate === "number" && qMinus3EpsEstimate !== 0 && series
+        ? series.price / (qMinus3EpsEstimate * 4)
+        : undefined;
+    const peNextQuarterAnnualized =
+      typeof nextQuarterEpsEstimate === "number" && nextQuarterEpsEstimate !== 0 && series
+        ? series.price / (nextQuarterEpsEstimate * 4)
+        : undefined;
+    const epsGrowthNextQuarterVsQMinus3 =
+      typeof peQMinus3Annualized === "number" && typeof peNextQuarterAnnualized === "number"
+        ? (peQMinus3Annualized / peNextQuarterAnnualized - 1) * 100
+        : undefined;
     if (
       !securityMetrics || !series ||
-      !Number.isFinite(peHistoricalEstimate4q) ||
-      !Number.isFinite(peForwardEstimate4q) ||
-      !Number.isFinite(epsGrowthEstimate4q)
+      !Number.isFinite(epsGrowthNextQuarterVsQMinus3) ||
+      !Number.isFinite(peQMinus3Annualized) ||
+      !Number.isFinite(peNextQuarterAnnualized) ||
+      !Number.isFinite(qMinus3EpsEstimate) ||
+      !Number.isFinite(nextQuarterEpsEstimate)
     ) {
       return [];
     }
@@ -75,29 +91,41 @@ export function buildComponentValuation(
       country: holding.country,
       providerSymbol: securityMetrics.providerSymbol,
       weight: holding.weight,
-      peHistoricalEstimate4q: peHistoricalEstimate4q as number,
-      peForwardEstimate4q: peForwardEstimate4q as number,
-      epsGrowthEstimate4q: epsGrowthEstimate4q as number,
+      peHistoricalEstimate4q: Number.isFinite(peHistoricalEstimate4q)
+        ? peHistoricalEstimate4q as number
+        : null,
+      peForwardEstimate4q: Number.isFinite(peForwardEstimate4q)
+        ? peForwardEstimate4q as number
+        : null,
+      epsGrowthEstimate4q: Number.isFinite(epsGrowthEstimate4q)
+        ? epsGrowthEstimate4q as number
+        : null,
       historicalEstimateSum,
       forwardEstimateSum,
       price: series.price,
       currency: series.currency,
       estimatePoints: series.points,
+      epsGrowthNextQuarterVsQMinus3: epsGrowthNextQuarterVsQMinus3 as number,
+      peQMinus3Annualized: peQMinus3Annualized as number,
+      qMinus3EpsEstimate: qMinus3EpsEstimate as number,
+      peNextQuarterAnnualized: peNextQuarterAnnualized as number,
+      nextQuarterEpsEstimate: nextQuarterEpsEstimate as number,
     }];
   });
-  const validPoints = eligiblePoints.filter((point) => point.peForwardEstimate4q > 0);
+  const validPoints = eligiblePoints.filter((point) =>
+    point.peQMinus3Annualized > 0 && point.peNextQuarterAnnualized > 0);
   const points = validPoints
     .sort((left, right) => right.weight - left.weight)
     .slice(0, COMPONENT_POINT_LIMIT);
   const representedWeight = points.reduce((sum, point) => sum + point.weight, 0);
   const minGrowth = points.length
-    ? Math.min(-10, Math.floor(Math.min(...points.map((point) => point.epsGrowthEstimate4q)) / 10) * 10)
+    ? Math.min(-10, Math.floor(Math.min(...points.map((point) => point.epsGrowthNextQuarterVsQMinus3)) / 10) * 10)
     : -10;
   const maxGrowth = points.length
-    ? Math.max(30, Math.ceil(Math.max(...points.map((point) => point.epsGrowthEstimate4q)) / 10) * 10)
+    ? Math.max(30, Math.ceil(Math.max(...points.map((point) => point.epsGrowthNextQuarterVsQMinus3)) / 10) * 10)
     : 30;
   const maxPe = points.length
-    ? Math.max(30, Math.ceil(Math.max(...points.map((point) => point.peForwardEstimate4q)) / 10) * 10)
+    ? Math.max(30, Math.ceil(Math.max(...points.map((point) => point.peNextQuarterAnnualized)) / 10) * 10)
     : 30;
   return {
     points,

@@ -92,6 +92,11 @@ const result: MetricsOverviewResult = {
         forwardEstimateSum: 6.25,
         price: 100,
         currency: "USD",
+        epsGrowthNextQuarterVsQMinus3: 25,
+        peQMinus3Annualized: 20,
+        qMinus3EpsEstimate: 1.25,
+        peNextQuarterAnnualized: 16,
+        nextQuarterEpsEstimate: 1.5625,
         estimatePoints: Array.from({ length: 8 }, (_, index) => ({
           fiscalPeriod: `202${index < 4 ? 5 : 6}-Q${(index % 4) + 1}`,
           estimate: index < 4 ? 1.25 : 1.5625,

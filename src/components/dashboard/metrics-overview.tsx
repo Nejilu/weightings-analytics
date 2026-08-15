@@ -22,7 +22,6 @@ import {
 import type { CatalogGroup } from "@/domain/etf";
 import type {
   ComponentValuationPoint,
-  ConsensusAggregate,
   ConsensusHorizon,
   EtfMetricsOverview,
   MetricDefinitionView,
@@ -32,7 +31,6 @@ import type {
   MetricsOverviewWarning,
   WeightedMetric,
 } from "@/domain/metrics";
-import { consensusQuarters, deriveConsensusWindow } from "@/domain/processors/derive-estimate-metrics";
 import { EtfSearch } from "./etf-search";
 
 interface MetricsOverviewProps {
@@ -41,6 +39,7 @@ interface MetricsOverviewProps {
 }
 
 const FUND_COLORS = ["#6f57d2", "#e77e61", "#36a88a", "#ad8540"];
+const ETF_MARKER_COLORS = ["#8975da", "#eb967e", "#62bda5", "#c09d62"];
 const DEFAULT_COMPONENT_POINT_LIMIT = 70;
 const BUBBLE_AXIS_PADDING = 24;
 const METRIC_GROUPS: Array<{
@@ -270,83 +269,75 @@ function consensusOption(horizon: ConsensusHorizon) {
 function displayedMetricFor(
   etf: EtfMetricsOverview,
   key: MetricDefinitionView["key"],
-  horizon: ConsensusHorizon,
-): WeightedMetric | ConsensusAggregate | undefined {
-  const consensus = etf.consensusWindows[horizon];
-  if (key === "pe_estimate_window_0") return consensus.valuationPath[4 - consensus.quarters];
-  if (key === "pe_estimate_window_4") return consensus.valuationPath[4];
-  if (key === "eps_growth_estimate_forward_4q") return consensus.growth;
+): WeightedMetric | undefined {
   return metricFor(etf.metrics, key);
 }
 
 function displayedDefinitionShortName(
   definition: MetricDefinitionView,
-  horizon: ConsensusHorizon,
 ): string {
-  if (definition.key === "pe_estimate_window_0") return "P/E · historical consensus";
-  if (definition.key === "pe_estimate_window_4") return "P/E · forward consensus";
-  if (definition.key === "eps_growth_estimate_forward_4q") {
-    return `Expected EPS growth · ${consensusOption(horizon).label}`;
-  }
   return definition.shortName;
 }
 
 interface DisplayComponentValuationPoint extends ComponentValuationPoint {
-  peHistorical: number;
-  peForward: number;
+  kind: "constituent";
   epsGrowth: number;
-  historicalAnnualizedEps: number;
-  forwardAnnualizedEps: number;
+  peNextQuarter: number;
+  plotSize: number;
 }
 
-function displayComponentPoint(
-  point: ComponentValuationPoint,
-  horizon: ConsensusHorizon,
-): DisplayComponentValuationPoint | null {
-  const derived = deriveConsensusWindow({
-    providerSymbol: point.providerSymbol,
-    currency: point.currency,
-    price: point.price,
-    points: point.estimatePoints,
-  }, consensusQuarters(horizon));
-  if (!derived) return null;
-  const peHistorical = derived.pePath[4 - derived.quarters];
-  const peForward = derived.pePath[4];
-  if (
-    derived.growth === null ||
-    typeof peHistorical !== "number" || typeof peForward !== "number"
-  ) return null;
-  return {
-    ...point,
-    peHistorical,
-    peForward,
-    epsGrowth: derived.growth,
-    historicalAnnualizedEps: derived.historicalAnnualizedEps,
-    forwardAnnualizedEps: derived.forwardAnnualizedEps,
-  };
+interface DisplayEtfValuationPoint {
+  kind: "etf";
+  ticker: string;
+  name: string;
+  epsGrowth: number;
+  peQMinus3: number;
+  peNextQuarter: number;
+  plotSize: number;
+  fill: string;
+  qMinus3CoverageWeight: number;
+  qMinus3CoveredHoldings: number;
+  peCoverageWeight: number;
+  peCoveredHoldings: number;
+  totalHoldings: number;
 }
 
 function ComponentTooltip({
   active,
   payload,
-  horizon,
-}: TooltipContentProps & { horizon: ConsensusHorizon }) {
-  const point = payload?.[0]?.payload as DisplayComponentValuationPoint | undefined;
+}: TooltipContentProps) {
+  const point = payload?.[0]?.payload as
+    | DisplayComponentValuationPoint
+    | DisplayEtfValuationPoint
+    | undefined;
   if (!active || !point) return null;
-  const option = consensusOption(horizon);
+  if (point.kind === "etf") {
+    return (
+      <div className="metrics-bubble-tooltip">
+        <strong>{point.ticker} · ETF aggregate</strong>
+        <span>{point.name}</span>
+        <dl>
+          <div><dt>Estimated EPS growth · Q-3 to next Q</dt><dd>{formatNumber(point.epsGrowth)}%</dd></div>
+          <div><dt>P/E · Q-3 EPS ×4</dt><dd>{formatNumber(point.peQMinus3)}×</dd></div>
+          <div><dt>P/E · next-quarter EPS ×4</dt><dd>{formatNumber(point.peNextQuarter)}×</dd></div>
+          <div><dt>Q-3 P/E coverage</dt><dd>{point.qMinus3CoverageWeight.toFixed(1)}% · {point.qMinus3CoveredHoldings}/{point.totalHoldings}</dd></div>
+          <div><dt>Next-Q P/E coverage</dt><dd>{point.peCoverageWeight.toFixed(1)}% · {point.peCoveredHoldings}/{point.totalHoldings}</dd></div>
+        </dl>
+      </div>
+    );
+  }
   return (
     <div className="metrics-bubble-tooltip">
       <strong>{point.ticker} · {point.name}</strong>
       <span>{point.sector} · {point.country} · {point.weight.toFixed(2)}% weight</span>
       <dl>
-        <div><dt>Estimated EPS growth · {option.label}</dt><dd>{formatNumber(point.epsGrowth)}%</dd></div>
-        <div><dt>P/E · {option.forwardLabel}</dt><dd>{formatNumber(point.peForward)}×</dd></div>
-        <div><dt>P/E · {option.historicalLabel}</dt><dd>{formatNumber(point.peHistorical)}×</dd></div>
-        <div><dt>Historical annualized EPS</dt><dd>{formatNumber(point.historicalAnnualizedEps, 2)} {point.currency}</dd></div>
-        <div><dt>Forward annualized EPS</dt><dd>{formatNumber(point.forwardAnnualizedEps, 2)} {point.currency}</dd></div>
+        <div><dt>Estimated EPS growth · Q-3 to next Q</dt><dd>{formatNumber(point.epsGrowth)}%</dd></div>
+        <div><dt>P/E · Q-3 EPS ×4</dt><dd>{formatNumber(point.peQMinus3Annualized)}×</dd></div>
+        <div><dt>P/E · next-quarter EPS ×4</dt><dd>{formatNumber(point.peNextQuarter)}×</dd></div>
+        <div><dt>Q-3 EPS consensus</dt><dd>{formatNumber(point.qMinus3EpsEstimate, 2)} {point.currency}</dd></div>
+        <div><dt>Next-quarter EPS consensus</dt><dd>{formatNumber(point.nextQuarterEpsEstimate, 2)} {point.currency}</dd></div>
         <div><dt>Current price anchor</dt><dd>{formatNumber(point.price, 2)} {point.currency}</dd></div>
       </dl>
-      <small>{point.estimatePoints.map((item) => `${item.fiscalPeriod}: ${formatNumber(item.estimate, 2)}${item.isHistorical ? " (historical estimate)" : " (current consensus)"}`).join(" · ")}</small>
     </div>
   );
 }
@@ -417,77 +408,59 @@ function ValuationPathChart({
   );
 }
 
-function EtfGrowthValuationChart({
-  result,
-  horizon,
-}: { result: MetricsOverviewResult; horizon: ConsensusHorizon }) {
-  const option = consensusOption(horizon);
-  const data = result.etfs.flatMap((etf, index) => {
-    const consensus = etf.consensusWindows[horizon];
-    const growth = consensus.growth.value;
-    const pe = consensus.valuationPath[4]?.value;
-    return growth !== null && growth !== undefined && pe !== null && pe !== undefined
-      ? [{ ticker: etf.ticker, growth, pe, size: 1, fill: FUND_COLORS[index] }]
-      : [];
-  });
-  const medianGrowth = data.length ? [...data].sort((a, b) => a.growth - b.growth)[Math.floor(data.length / 2)].growth : 0;
-  const medianPe = data.length ? [...data].sort((a, b) => a.pe - b.pe)[Math.floor(data.length / 2)].pe : 0;
-  return (
-    <section className="metrics-feature-card panel">
-      <div className="metrics-feature-heading">
-        <div><span className="eyebrow">ETF map</span><h2>Growth versus valuation</h2></div>
-        <p>{option.forwardLabel} growth on x; P/E on the same annualized estimate window on y.</p>
-      </div>
-      <div className="metrics-feature-chart metrics-feature-chart--square" aria-label="ETF growth versus valuation scatter plot">
-        <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 28, right: 35, bottom: 18, left: 2 }}>
-            <CartesianGrid stroke="var(--line)" strokeDasharray="2 5" />
-            <XAxis type="number" dataKey="growth" name="EPS growth" unit="%" axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 8 }} label={{ value: `${option.forwardLabel} vs ${option.historicalLabel}`, position: "bottom", offset: 2, fill: "var(--faint)", fontSize: 8 }} />
-            <YAxis type="number" dataKey="pe" name="Consensus P/E" unit="×" axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 8 }} width={40} />
-            <ZAxis type="number" dataKey="size" range={[180, 180]} />
-            {data.length > 1 ? <ReferenceLine x={medianGrowth} stroke="var(--faint)" strokeDasharray="3 4" /> : null}
-            {data.length > 1 ? <ReferenceLine y={medianPe} stroke="var(--faint)" strokeDasharray="3 4" /> : null}
-            <Tooltip cursor={{ strokeDasharray: "3 4" }} formatter={(value, name) => [`${formatNumber(typeof value === "number" ? value : null)}${name === "EPS growth" ? "%" : "×"}`, name]} />
-            <Scatter data={data}>
-              {data.map((point) => <Cell key={point.ticker} fill={point.fill} />)}
-              <LabelList dataKey="ticker" position="top" fill="var(--ink)" fontSize={9} fontWeight={700} />
-            </Scatter>
-          </ScatterChart>
-        </ResponsiveContainer>
-      </div>
-    </section>
-  );
-}
-
 function ComponentBubbleChart({
   result,
-  horizon,
-}: { result: MetricsOverviewResult; horizon: ConsensusHorizon }) {
+}: { result: MetricsOverviewResult }) {
   const [selectedEtfId, setSelectedEtfId] = useState("");
   const [showFullExtent, setShowFullExtent] = useState(false);
   const [showAllCompanies, setShowAllCompanies] = useState(false);
   const selected = result.etfs.find((etf) => etf.etfId === selectedEtfId) ?? result.etfs[0];
   const view = selected.componentValuation;
-  const option = consensusOption(horizon);
-  const allPoints = useMemo(() => view.points.flatMap((point) => {
-    const displayed = displayComponentPoint(point, horizon);
-    return displayed ? [displayed] : [];
-  }).sort((left, right) => right.weight - left.weight), [horizon, view.points]);
+  const allPoints = useMemo(() => view.points.map((point): DisplayComponentValuationPoint => ({
+    ...point,
+    kind: "constituent",
+    epsGrowth: point.epsGrowthNextQuarterVsQMinus3,
+    peNextQuarter: point.peNextQuarterAnnualized,
+    plotSize: point.weight,
+  })).sort((left, right) => right.weight - left.weight), [view.points]);
   const points = showAllCompanies
     ? allPoints
     : allPoints.slice(0, DEFAULT_COMPONENT_POINT_LIMIT);
+  const etfPoints = result.etfs.flatMap((etf, index): DisplayEtfValuationPoint[] => {
+    const peQMinus3 = etf.consensusWindows["1q"].valuationPath[0];
+    const pe = etf.consensusWindows["1q"].valuationPath[4];
+    return peQMinus3?.value !== null && peQMinus3?.value !== undefined && peQMinus3.value > 0 &&
+      pe?.value !== null && pe?.value !== undefined && pe.value > 0
+      ? [{
+          kind: "etf",
+          ticker: etf.ticker,
+          name: etf.name,
+          epsGrowth: (peQMinus3.value / pe.value - 1) * 100,
+          peQMinus3: peQMinus3.value,
+          peNextQuarter: pe.value,
+          plotSize: 1,
+          fill: ETF_MARKER_COLORS[index],
+          qMinus3CoverageWeight: peQMinus3.coverageWeight,
+          qMinus3CoveredHoldings: peQMinus3.coveredHoldings,
+          peCoverageWeight: pe.coverageWeight,
+          peCoveredHoldings: pe.coveredHoldings,
+          totalHoldings: etf.holdingsCount,
+        }]
+      : [];
+  });
+  const axisPoints = [...points, ...etfPoints];
   const originalPointWeight = view.points.reduce((sum, point) => sum + point.weight, 0);
   const totalEligibleWeight = view.representedWeight > 0
     ? originalPointWeight / (view.representedWeight / 100)
     : 0;
-  const fullMinGrowth = points.length
-    ? Math.min(-10, Math.floor(Math.min(...points.map((point) => point.epsGrowth)) / 10) * 10)
+  const fullMinGrowth = axisPoints.length
+    ? Math.min(-10, Math.floor(Math.min(...axisPoints.map((point) => point.epsGrowth)) / 10) * 10)
     : -10;
-  const fullMaxGrowth = points.length
-    ? Math.max(30, Math.ceil(Math.max(...points.map((point) => point.epsGrowth)) / 10) * 10)
+  const fullMaxGrowth = axisPoints.length
+    ? Math.max(30, Math.ceil(Math.max(...axisPoints.map((point) => point.epsGrowth)) / 10) * 10)
     : 30;
-  const fullMaxPe = points.length
-    ? Math.max(30, Math.ceil(Math.max(...points.map((point) => point.peForward)) / 10) * 10)
+  const fullMaxPe = axisPoints.length
+    ? Math.max(30, Math.ceil(Math.max(...axisPoints.map((point) => point.peNextQuarter)) / 10) * 10)
     : 30;
   const robustGrowthBounds = robustCentralBounds(
     points.map((point) => point.epsGrowth),
@@ -495,24 +468,31 @@ function ComponentBubbleChart({
     30,
     10,
   );
-  const robustMinGrowth = robustGrowthBounds.min;
-  const robustMaxGrowth = robustGrowthBounds.max;
-  const robustMaxPe = robustUpperBound(
-    points.map((point) => point.peForward),
+  const robustMinGrowth = etfPoints.length
+    ? Math.min(robustGrowthBounds.min, Math.floor(Math.min(...etfPoints.map((point) => point.epsGrowth)) / 10) * 10)
+    : robustGrowthBounds.min;
+  const robustMaxGrowth = etfPoints.length
+    ? Math.max(robustGrowthBounds.max, Math.ceil(Math.max(...etfPoints.map((point) => point.epsGrowth)) / 10) * 10)
+    : robustGrowthBounds.max;
+  const centralMaxPe = robustUpperBound(
+    points.map((point) => point.peNextQuarter),
     30,
     10,
   );
+  const robustMaxPe = etfPoints.length
+    ? Math.max(centralMaxPe, Math.ceil(Math.max(...etfPoints.map((point) => point.peNextQuarter)) / 10) * 10)
+    : centralMaxPe;
   const minGrowth = showFullExtent ? fullMinGrowth : robustMinGrowth;
   const maxGrowth = showFullExtent ? fullMaxGrowth : robustMaxGrowth;
   const maxPe = showFullExtent ? fullMaxPe : robustMaxPe;
   const outsideRobustFrame = points.filter((point) =>
-    point.epsGrowth < robustMinGrowth || point.epsGrowth > robustMaxGrowth || point.peForward > robustMaxPe);
+    point.epsGrowth < robustMinGrowth || point.epsGrowth > robustMaxGrowth || point.peNextQuarter > robustMaxPe);
   const plottedPoints = showFullExtent
     ? points
     : points.filter((point) =>
         point.epsGrowth >= robustMinGrowth &&
         point.epsGrowth <= robustMaxGrowth &&
-        point.peForward <= robustMaxPe);
+        point.peNextQuarter <= robustMaxPe);
   const plottedPointWeight = plottedPoints.reduce((sum, point) => sum + point.weight, 0);
   const representedWeight = totalEligibleWeight > 0
     ? (plottedPointWeight / totalEligibleWeight) * 100
@@ -520,7 +500,7 @@ function ComponentBubbleChart({
   return (
     <section className="metrics-feature-card metrics-feature-card--bubble panel">
       <div className="metrics-feature-heading metrics-feature-heading--stacked">
-        <div><span className="eyebrow">Constituent map</span><h2>{selected.ticker}: earnings growth versus P/E</h2></div>
+        <div><span className="eyebrow">ETF + constituent map</span><h2>{selected.ticker}: estimated EPS growth versus next-quarter P/E</h2></div>
         <div className="metrics-bubble-controls">
           <div className="metrics-fund-tabs" role="tablist" aria-label="ETF shown in constituent chart">
             {result.etfs.map((etf, index) => (
@@ -557,12 +537,14 @@ function ComponentBubbleChart({
       </div>
       <div className="metrics-bubble-summary">
         <span><b>{plottedPoints.length}/{points.length}</b> selected companies plotted</span>
+        <span><b>{etfPoints.length}/{result.etfs.length}</b> ETF aggregates plotted</span>
         <span><b>{representedWeight.toFixed(1)}%</b> ETF weight plotted</span>
         <span><b>{showAllCompanies ? "Full universe" : `Top ${DEFAULT_COMPONENT_POINT_LIMIT}`}</b> {showAllCompanies ? "shown" : "by ETF weight"}</span>
-        {view.eligibleHoldingCount - allPoints.length > 0 ? <span><b>{view.eligibleHoldingCount - allPoints.length}</b> missing complete consensus/P/E</span> : null}
+        {view.missingMetricCount > 0 ? <span><b>{view.missingMetricCount}</b> missing Q-3 or next-quarter EPS</span> : null}
         {view.truncatedCount > 0 ? <span><b>{view.truncatedCount}</b> beyond top-500 by weight</span> : null}
         <span><b>{showFullExtent ? "Full" : "Robust IQR"} axes</b> {outsideRobustFrame.length} extreme points {showFullExtent ? "included" : "listed below"}</span>
-        <span>Bubble size scales with holding weight</span>
+        <span>Constituent bubbles scale with holding weight</span>
+        <span><b>Squares</b> selected ETF aggregates</span>
       </div>
       <div className="metrics-bubble-chart" aria-label={`${selected.ticker} constituent growth versus valuation bubble chart`}>
         <ResponsiveContainer width="100%" height="100%">
@@ -571,19 +553,19 @@ function ComponentBubbleChart({
             <XAxis
               type="number"
               dataKey="epsGrowth"
-              name="Expected EPS growth"
+              name="Estimated EPS growth"
               unit="%"
               domain={[minGrowth, maxGrowth]}
               padding={{ left: BUBBLE_AXIS_PADDING, right: BUBBLE_AXIS_PADDING }}
               axisLine={false}
               tickLine={false}
               tick={{ fill: "var(--muted)", fontSize: 8 }}
-              label={{ value: `${option.forwardLabel} vs ${option.historicalLabel}`, position: "bottom", offset: 8, fill: "var(--faint)", fontSize: 8 }}
+              label={{ value: "Next-quarter EPS vs Q-3 EPS, both annualized ×4", position: "bottom", offset: 8, fill: "var(--faint)", fontSize: 8 }}
             />
             <YAxis
               type="number"
-              dataKey="peForward"
-              name="Estimate-only P/E"
+              dataKey="peNextQuarter"
+              name="Next-quarter annualized P/E"
               unit="×"
               domain={[0, maxPe]}
               padding={{ top: BUBBLE_AXIS_PADDING, bottom: BUBBLE_AXIS_PADDING }}
@@ -592,10 +574,15 @@ function ComponentBubbleChart({
               tick={{ fill: "var(--muted)", fontSize: 8 }}
               width={42}
             />
-            <ZAxis type="number" dataKey="weight" name="ETF weight" unit="%" range={[18, 900]} />
+            <ZAxis zAxisId="constituents" type="number" dataKey="plotSize" name="ETF weight" unit="%" range={[18, 900]} />
+            <ZAxis zAxisId="etfs" type="number" dataKey="plotSize" range={[80, 80]} />
             <ReferenceLine x={0} stroke="var(--faint)" strokeDasharray="3 4" />
-            <Tooltip content={(props) => <ComponentTooltip {...props} horizon={horizon} />} cursor={{ strokeDasharray: "3 4" }} />
-            <Scatter data={plottedPoints} fill={FUND_COLORS[result.etfs.indexOf(selected)]} fillOpacity={0.7} stroke="var(--surface)" strokeWidth={0.8} />
+            <Tooltip content={(props) => <ComponentTooltip {...props} />} cursor={{ strokeDasharray: "3 4" }} />
+            <Scatter zAxisId="constituents" data={plottedPoints} fill={FUND_COLORS[result.etfs.indexOf(selected)]} fillOpacity={0.7} stroke="var(--surface)" strokeWidth={0.8} isAnimationActive={false} />
+            <Scatter zAxisId="etfs" data={etfPoints} shape="square" fillOpacity={1} stroke="var(--surface)" strokeWidth={1.5} isAnimationActive={false}>
+              {etfPoints.map((point) => <Cell key={point.ticker} fill={point.fill} />)}
+              <LabelList dataKey="ticker" position="top" fill="var(--ink)" fontSize={10} fontWeight={800} />
+            </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
       </div>
@@ -605,13 +592,13 @@ function ComponentBubbleChart({
           <span>{outsideRobustFrame
             .sort((left, right) => right.weight - left.weight)
             .slice(0, 12)
-            .map((point) => `${point.ticker} (${point.weight.toFixed(2)}%, ${point.epsGrowth.toFixed(1)}% growth, ${point.peForward.toFixed(1)}×)`)
+            .map((point) => `${point.ticker} (${point.weight.toFixed(2)}%, ${point.epsGrowth.toFixed(1)}% growth, ${point.peNextQuarter.toFixed(1)}×)`)
             .join(" · ")}{outsideRobustFrame.length > 12 ? " · …" : ""}</span>
         </details>
       ) : null}
       <p className="metrics-chart-note">{showAllCompanies
         ? `All ${allPoints.length} available companies are shown.`
-        : `The ${points.length} largest available companies by ETF weight are selected; ${Math.max(0, allPoints.length - points.length)} remain available through the full-universe toggle.`} Visible axes: {minGrowth}% to {maxGrowth}% growth and 0× to {maxPe}× P/E. {showFullExtent ? "Full extent includes every selected point; robust axes can be restored." : "Robust axes use the central 90% of selected values bounded by IQR fences, so isolated extremes never set the scale. Points outside the frame are listed instead of being partially clipped; full extent remains available."} Axis padding keeps the largest bubbles clear of every chart edge. Negative or zero annualized EPS has no finite P/E and is excluded. Up to 500 valid constituents are retained by descending ETF weight.</p>
+        : `The ${points.length} largest available companies by ETF weight are selected; ${Math.max(0, allPoints.length - points.length)} remain available through the full-universe toggle.`} ETF squares use the same axes and remain visible in robust mode. ETF growth directly transforms the two corresponding roll-down endpoints: P/E Q-3 ÷ P/E next Q − 1; each endpoint keeps its own displayed coverage. Visible axes: {minGrowth}% to {maxGrowth}% growth and 0× to {maxPe}× P/E. {showFullExtent ? "Full extent includes every selected point; robust axes can be restored." : "Robust axes use the central 90% of selected constituent values bounded by IQR fences, so isolated extremes never set the scale. Points outside the frame are listed instead of being partially clipped; full extent remains available."} Both P/E endpoints use current price and a single quarterly EPS consensus annualized ×4. Non-positive EPS at either endpoint is excluded. Up to 500 valid constituents are retained by descending ETF weight.</p>
     </section>
   );
 }
@@ -619,11 +606,9 @@ function ComponentBubbleChart({
 function MetricGroupCard({
   group,
   result,
-  horizon,
 }: {
   group: (typeof METRIC_GROUPS)[number];
   result: MetricsOverviewResult;
-  horizon: ConsensusHorizon;
 }) {
   const definitions = group.keys.flatMap((key) => {
     const definition = result.definitions.find((item) => item.key === key);
@@ -662,15 +647,14 @@ function MetricGroupCard({
               const referenceMetric = displayedMetricFor(
                 result.etfs[0],
                 definition.key,
-                horizon,
               );
               return (
                 <tr key={definition.key}>
                   <td title={definition.description} tabIndex={0}>
-                    <strong>{displayedDefinitionShortName(definition, horizon)}</strong>
+                    <strong>{displayedDefinitionShortName(definition)}</strong>
                   </td>
                   {result.etfs.map((etf, index) => {
-                    const metric = displayedMetricFor(etf, definition.key, horizon);
+                    const metric = displayedMetricFor(etf, definition.key);
                     const details = [
                       definition.description,
                       `${metric?.coveredHoldings ?? 0}/${metric?.totalHoldings ?? 0} holdings`,
@@ -715,8 +699,8 @@ function ConsensusHorizonControl({
     <section className="metrics-consensus-control panel">
       <div>
         <span className="eyebrow">Consensus EPS calculation</span>
-        <strong>Rolling estimate horizon</strong>
-        <small>Switch every EPS growth and estimate-only P/E view without reloading provider data.</small>
+        <strong>P/E roll-down horizon</strong>
+        <small>This selector changes only the roll-down chart below.</small>
       </div>
       <div className="metrics-consensus-toggle" role="group" aria-label="Consensus EPS calculation horizon">
         {CONSENSUS_OPTIONS.map((option) => (
@@ -853,11 +837,8 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
 
           <ConsensusHorizonControl value={consensusHorizon} onChange={setConsensusHorizon} />
 
-          <section className="metrics-feature-grid">
-            <ValuationPathChart result={result} horizon={consensusHorizon} />
-            <EtfGrowthValuationChart result={result} horizon={consensusHorizon} />
-          </section>
-          <ComponentBubbleChart result={result} horizon={consensusHorizon} />
+          <ValuationPathChart result={result} horizon={consensusHorizon} />
+          <ComponentBubbleChart result={result} />
 
           <section className="metrics-groups-panel panel">
             <div className="panel-heading">
@@ -873,7 +854,6 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
                       key={group.id}
                       group={group}
                       result={result}
-                      horizon={consensusHorizon}
                     />
                   ))}
                 </div>

@@ -262,6 +262,10 @@ browser assets as well as its API routes.
   revenue growth, diluted EPS growth, yield, ROE, debt/equity and beta use
   covered-weight arithmetic means; market capitalisation uses a weighted median.
   Every aggregate discloses coverage and its source capture window.
+- Keep the constituent map fixed on annualised Q-3 versus next-quarter EPS:
+  x-axis growth is `P/E Q-3 / P/E next quarter - 1`, while the y-axis is the
+  next-quarter P/E. Compared ETFs use small fixed squares; only the roll-down
+  chart responds to the 4Q/2Q/1Q selector.
 - Expose versioned endpoints: `/api/v1/catalog`,
   `/api/v1/holdings/:ticker`, `/api/v1/holdings/:ticker/analysis` and
   `/api/v1/compare?left=IVV&right=ACWI`, plus `/api/v1/portfolio` and

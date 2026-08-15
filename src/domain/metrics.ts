@@ -348,15 +348,21 @@ export interface ComponentValuationPoint {
   country: string;
   providerSymbol: string;
   weight: number;
-  peHistoricalEstimate4q: number;
-  peForwardEstimate4q: number;
-  epsGrowthEstimate4q: number;
+  peHistoricalEstimate4q: number | null;
+  peForwardEstimate4q: number | null;
+  epsGrowthEstimate4q: number | null;
   /** Stable v1 detail fields retained for existing API consumers. */
   historicalEstimateSum: number;
   forwardEstimateSum: number;
   price: number;
   currency: string;
   estimatePoints: EstimateSeriesPoint[];
+  /** Fixed bubble-map measures, intentionally independent from roll-down horizon. */
+  epsGrowthNextQuarterVsQMinus3: number;
+  peQMinus3Annualized: number;
+  qMinus3EpsEstimate: number;
+  peNextQuarterAnnualized: number;
+  nextQuarterEpsEstimate: number;
 }
 
 export interface ComponentValuationView {

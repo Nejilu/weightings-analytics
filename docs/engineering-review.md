@@ -50,8 +50,10 @@ abstraction bornée avec persistance SQLite, pas comme deux caches indépendants
 - Rendement, ROE, dette/equity et bêta restent arithmétiques pondérés.
 - Les couvertures et valeurs manquantes sont visibles ; aucun résultat partiel
   n’est présenté comme complet.
-- Les axes du bubble chart sont dynamiques. Seuls les points sans série complète,
-  sans P/E forward positif ou au-delà du top-500 pondéré sont exclus et comptés.
+- Le bubble chart utilise des axes robustes indépendants du sélecteur 4Q/2Q/1Q.
+  Seuls les points sans série Q-3/Next Q complète, sans P/E positif à l’une des
+  deux extrémités ou au-delà du top-500 pondéré sont exclus et comptés. Les ETF
+  comparés sont superposés sous forme de petits carrés fixes et teintés.
 
 ### Provider, mapping et cache
 

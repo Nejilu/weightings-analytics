@@ -57,6 +57,9 @@ test("retains the published v1 component fields while exposing transparent count
   assert.equal(view.points[0]?.historicalEstimateSum, 8);
   assert.equal(view.points[0]?.forwardEstimateSum, 12);
   assert.deepEqual(view.points[0]?.estimatePoints, series.points);
+  assert.equal(view.points[0]?.epsGrowthNextQuarterVsQMinus3, 50);
+  assert.equal(view.points[0]?.peQMinus3Annualized, 100 / 8);
+  assert.equal(view.points[0]?.peNextQuarterAnnualized, 100 / 12);
 });
 
 test("keeps finite extreme component growth visible with dynamic axes", () => {
@@ -68,7 +71,12 @@ test("keeps finite extreme component growth visible with dynamic axes", () => {
       pe_estimate_window_4: 1,
       eps_growth_estimate_forward_4q: 9_900,
     },
-    estimateSeries: { ...series, providerSymbol: "NASDAQ:EXTREME" },
+    estimateSeries: {
+      ...series,
+      providerSymbol: "NASDAQ:EXTREME",
+      points: series.points.map((point, index) =>
+        index === 0 ? { ...point, estimate: 0.03 } : point),
+    },
   };
   const view = buildComponentValuation(
     [holding("EXTREME", 100)],
@@ -79,4 +87,24 @@ test("keeps finite extreme component growth visible with dynamic axes", () => {
   assert.equal(view.excludedOutlierCount, 0);
   assert.equal(view.points[0]?.ticker, "EXTREME");
   assert.equal(view.axisLimits.maxGrowth, 9_900);
+});
+
+test("does not require legacy 4Q valuation fields for the fixed bubble measures", () => {
+  const fixedMeasuresOnly: SecurityMetricValues = {
+    securityId: "FIXED",
+    providerSymbol: "NASDAQ:FIXED",
+    values: {},
+    estimateSeries: { ...series, providerSymbol: "NASDAQ:FIXED" },
+  };
+  const view = buildComponentValuation(
+    [holding("FIXED", 100)],
+    new Map([["FIXED", fixedMeasuresOnly]]),
+  );
+
+  assert.equal(view.displayedCount, 1);
+  assert.equal(view.points[0]?.peHistoricalEstimate4q, null);
+  assert.equal(view.points[0]?.epsGrowthEstimate4q, null);
+  assert.equal(view.points[0]?.epsGrowthNextQuarterVsQMinus3, 50);
+  assert.equal(view.points[0]?.peQMinus3Annualized, 100 / 8);
+  assert.equal(view.points[0]?.peNextQuarterAnnualized, 100 / 12);
 });

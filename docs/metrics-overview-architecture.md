@@ -119,6 +119,10 @@ partiel/indisponible et Estimates partiel/indisponible. `stale` a priorité sur
 - Capitalisation : médiane pondérée par le poids des holdings couverts.
 - Croissance EPS estimée : croissance des earnings yields agrégés sur les
   composants ayant des P/E historique et forward positifs.
+- Croissance EPS Q-3 vers prochain trimestre : transformation directe des deux
+  P/E ETF du roll-down 1Q, soit
+  `(P/E ETF Q-3 / P/E ETF prochain trimestre) - 1`. La couverture propre à
+  chaque extrémité reste affichée.
 
 La formule exécutée est :
 
@@ -134,21 +138,32 @@ consensus, afin de ne pas confondre l’heure du calcul avec l’âge des source
 
 ## Bubble chart et DTO
 
-Le graphique constituants conserve :
+Le graphique unique ETF + constituants utilise deux mesures fixes, indépendantes
+du sélecteur de roll-down :
 
 - poids original du holding ;
-- P/E historique et forward issus de la même série 4+4 ;
-- croissance individuelle ;
+- croissance EPS implicite entre le P/E annualisé Q-3 et celui du prochain trimestre ;
+- P/E calculé sur le consensus EPS du prochain trimestre annualisé ×4 ;
 - prix, devise et huit estimations compactes.
+
+Les ETF sélectionnés sont superposés sous forme de petits carrés de taille fixe
+sur les mêmes axes. Chaque carré reprend une teinte légèrement éclaircie de la
+couleur dédiée à son ETF, sans réutiliser l’échelle de taille des constituants.
+Leur croissance transforme directement les deux P/E ETF du roll-down 1Q,
+et leur P/E vertical est la moyenne harmonique pondérée du P/E prochain trimestre.
+Le sélecteur 4Q/2Q/1Q ne modifie
+que le graphique de roll-down ; la carte à bulles et les tableaux restent fixes.
 
 Le DTO courant conserve les champs de la réponse v1 publiée : identité
 `securityId`/`providerSymbol`, sommes historique/forward et `estimatePoints`
-complets. Les compteurs transparents (`eligibleHoldingCount`,
+complets. Les anciens champs de valorisation 4Q restent présents mais peuvent
+être `null` : ils ne conditionnent plus l’éligibilité de la nouvelle carte.
+Les compteurs transparents (`eligibleHoldingCount`,
 `missingMetricCount`, `excludedNonPositivePeCount` et `truncatedCount`) sont
 ajoutés sans supprimer `eligibleCount` ni `excludedOutlierCount`.
 
-Sont comptés séparément : séries/métriques manquantes, P/E forward non positif
-et titres au-delà du top-500. Le graphique charge d’abord les plus grandes
+Sont comptés séparément : séries/métriques manquantes, P/E Q-3 ou prochain
+trimestre non positif et titres au-delà du top-500. Le graphique charge d’abord les plus grandes
 positions, mais permet d’afficher tout l’univers disponible. Par défaut, ses
 axes robustes utilisent les quantiles 5–95 % bornés par les fences IQR ; les
 points hors cadre sont listés et restent dans les données. L’utilisateur peut
