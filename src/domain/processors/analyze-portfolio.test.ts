@@ -3,7 +3,10 @@ import test from "node:test";
 
 import type { HoldingsSnapshot } from "../etf";
 import type { PortfolioItem, PortfolioSecurity } from "../portfolio";
-import { analyzePortfolio } from "./analyze-portfolio";
+import {
+  analyzePortfolio,
+  analyzePortfolioForDisplay,
+} from "./analyze-portfolio";
 import { valuePortfolioPositions } from "./value-portfolio";
 
 const apple: PortfolioSecurity = {
@@ -282,7 +285,7 @@ test("recalculates component weights when prices diverge while shares stay fixed
   assert.equal(diverged.totalMarketValueUsd, 2_500);
 });
 
-test("merges Alphabet share classes in portfolio look-through weights", () => {
+test("keeps canonical Alphabet share classes in portfolio data", () => {
   const alphabetSnapshot = {
     ...snapshot,
     holdings: [
@@ -304,6 +307,56 @@ test("merges Alphabet share classes in portfolio look-through weights", () => {
   } as HoldingsSnapshot;
 
   const result = analyzePortfolio({
+    items: [
+      {
+        id: "fund",
+        kind: "etf",
+        referenceId: "acwi-us",
+        ticker: "ACWI",
+        name: "iShares MSCI ACWI ETF",
+        allocationWeight: 100,
+      },
+    ],
+    etfSnapshots: new Map([["acwi-us", alphabetSnapshot]]),
+    directSecurities: new Map(),
+  });
+
+  assert.equal(result.positions.length, 2);
+  assert.deepEqual(
+    result.positions.map(({ securityId, ticker, weight }) => ({
+      securityId,
+      ticker,
+      weight,
+    })),
+    [
+      { securityId: "alphabet-a", ticker: "GOOGL", weight: 55 },
+      { securityId: "alphabet-c", ticker: "GOOG", weight: 45 },
+    ],
+  );
+});
+
+test("merges Alphabet share classes only for portfolio display", () => {
+  const alphabetSnapshot = {
+    ...snapshot,
+    holdings: [
+      {
+        ...apple,
+        securityId: "alphabet-a",
+        ticker: "GOOGL",
+        name: "ALPHABET INC CLASS A",
+        weight: 55,
+      },
+      {
+        ...microsoft,
+        securityId: "alphabet-c",
+        ticker: "GOOG",
+        name: "ALPHABET INC CLASS C",
+        weight: 45,
+      },
+    ],
+  } as HoldingsSnapshot;
+
+  const result = analyzePortfolioForDisplay({
     items: [
       {
         id: "fund",

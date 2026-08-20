@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const leftReference = url.searchParams.get("left")?.trim() ?? "";
     const rightReference = url.searchParams.get("right")?.trim() ?? "";
+    const includeCash = url.searchParams.get("includeCash") === "true";
 
     let validSelection = false;
     try {
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
     });
 
     return Response.json(
-      { data: compareHoldings(left, right) },
+      { data: compareHoldings(left, right, { includeCash }) },
       {
         headers: {
           "Cache-Control":

@@ -10,6 +10,14 @@ import { normalizeHoldingWeights } from "./normalize-holding-weights";
 
 const EPSILON = 0.000001;
 
+type PortfolioPositionIdentity = Pick<
+  PortfolioSecurity,
+  "securityId" | "ticker" | "name"
+>;
+type PortfolioPositionIdentityResolver = (
+  security: PortfolioSecurity,
+) => PortfolioPositionIdentity;
+
 function roundWeight(value: number): number {
   return Math.round(value * 10_000_000_000) / 10_000_000_000;
 }
@@ -19,10 +27,11 @@ function addPosition(
   security: PortfolioSecurity,
   weight: number,
   contribution: PortfolioContribution,
+  resolveIdentity: PortfolioPositionIdentityResolver,
 ) {
   if (!Number.isFinite(weight) || Math.abs(weight) <= EPSILON) return;
 
-  const identity = economicSecurityIdentity(security);
+  const identity = resolveIdentity(security);
   const existing = positions.get(identity.securityId);
   if (existing) {
     existing.weight += weight;
@@ -45,13 +54,15 @@ function addPosition(
   });
 }
 
-export function analyzePortfolio({
+function analyzePortfolioWithIdentity({
   items,
   etfSnapshots,
   directSecurities,
   cashWeight,
   calculatedAt = new Date().toISOString(),
-}: PortfolioAnalysisInput): PortfolioAnalysis {
+}: PortfolioAnalysisInput,
+  resolveIdentity: PortfolioPositionIdentityResolver,
+): PortfolioAnalysis {
   const allocationWeight = items.reduce(
     (sum, item) => sum + item.allocationWeight,
     0,
@@ -70,12 +81,18 @@ export function analyzePortfolio({
       if (!security) {
         throw new Error(`Security ${item.ticker} is no longer available.`);
       }
-      addPosition(positions, security, item.allocationWeight, {
-        itemId: item.id,
-        ticker: item.ticker,
-        kind: item.kind,
-        weight: item.allocationWeight,
-      });
+      addPosition(
+        positions,
+        security,
+        item.allocationWeight,
+        {
+          itemId: item.id,
+          ticker: item.ticker,
+          kind: item.kind,
+          weight: item.allocationWeight,
+        },
+        resolveIdentity,
+      );
       continue;
     }
 
@@ -116,6 +133,7 @@ export function analyzePortfolio({
           kind: item.kind,
           weight,
         },
+        resolveIdentity,
       );
     }
   }
@@ -181,4 +199,16 @@ export function analyzePortfolio({
       constituentCoverage: snapshot.constituentCoverage,
     })),
   };
+}
+
+export function analyzePortfolio(
+  input: PortfolioAnalysisInput,
+): PortfolioAnalysis {
+  return analyzePortfolioWithIdentity(input, (security) => security);
+}
+
+export function analyzePortfolioForDisplay(
+  input: PortfolioAnalysisInput,
+): PortfolioAnalysis {
+  return analyzePortfolioWithIdentity(input, economicSecurityIdentity);
 }

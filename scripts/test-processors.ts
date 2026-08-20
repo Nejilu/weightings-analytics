@@ -5,6 +5,7 @@ import "../src/domain/processors/analyze-portfolio.test";
 import "../src/domain/processors/analyze-holdings.test";
 import "../src/domain/processors/compare-holdings.test";
 import "../src/domain/processors/derive-market-value-holdings.test";
+import "../src/domain/processors/merge-cash-position.test";
 import "../src/domain/security-equivalence.test";
 import "../src/domain/security-identity.test";
 import "../src/domain/etf-creator.test";

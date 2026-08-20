@@ -1,7 +1,9 @@
 import type { Holding } from "@/domain/etf";
 import {
+  normalizeSecurityIdentityPart,
   planSecurityIdentityMerges,
   preferredSecurityId,
+  securityCanonicalNameIdentity,
   securityListingIdentity,
   securityTickerCountryIdentity,
   type SecurityIdentityDescriptor,
@@ -299,6 +301,7 @@ export function canonicalizeHoldingsWithPersistedIdentities(
   const byId = new Map(rows.map((row) => [row.id, row]));
   const byListing = new Map<string, StoredSecurityRow[]>();
   const byTickerCountry = new Map<string, StoredSecurityRow[]>();
+  const byCanonicalName = new Map<string, StoredSecurityRow[]>();
   for (const row of rows) {
     const descriptor = identityDescriptor(row);
     const listingKey = securityListingIdentity(descriptor);
@@ -313,6 +316,17 @@ export function canonicalizeHoldingsWithPersistedIdentities(
       group.push(row);
       byTickerCountry.set(tickerCountryKey, group);
     }
+    const hasDurableIdentity = Boolean(
+      normalizeSecurityIdentityPart(descriptor.isin) ||
+      normalizeSecurityIdentityPart(descriptor.sedol) ||
+      normalizeSecurityIdentityPart(descriptor.cusip),
+    );
+    const canonicalNameKey = securityCanonicalNameIdentity(descriptor.name);
+    if (hasDurableIdentity && canonicalNameKey) {
+      const group = byCanonicalName.get(canonicalNameKey) ?? [];
+      group.push(row);
+      byCanonicalName.set(canonicalNameKey, group);
+    }
   }
 
   const merged = new Map<string, Holding>();
@@ -324,11 +338,24 @@ export function canonicalizeHoldingsWithPersistedIdentities(
     const tickerCountryCandidates = tickerCountryKey
       ? byTickerCountry.get(tickerCountryKey) ?? []
       : [];
+    const canResolveByName =
+      holding.securityId.startsWith("NAME:") &&
+      !normalizeSecurityIdentityPart(holding.ticker) &&
+      !normalizeSecurityIdentityPart(holding.isin) &&
+      !normalizeSecurityIdentityPart(holding.sedol) &&
+      !normalizeSecurityIdentityPart(holding.cusip);
+    const canonicalNameKey = securityCanonicalNameIdentity(holding.name);
+    const canonicalNameCandidates = canResolveByName && canonicalNameKey
+      ? byCanonicalName.get(canonicalNameKey) ?? []
+      : [];
     const stored = byId.get(preferredId) ??
       byId.get(holding.securityId) ??
       (listingCandidates.length === 1 ? listingCandidates[0] : undefined) ??
       (tickerCountryCandidates.length === 1
         ? tickerCountryCandidates[0]
+        : undefined) ??
+      (canonicalNameCandidates.length === 1
+        ? canonicalNameCandidates[0]
         : undefined);
     const identifiers = storedIdentifiers(stored?.identifiersJson ?? null);
     const canonical: Holding = {

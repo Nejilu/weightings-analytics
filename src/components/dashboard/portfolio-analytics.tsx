@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail } from "@/domain/local-etf";
+import { mergeCashPosition } from "@/domain/processors/merge-cash-position";
 import {
   SUPPORTED_CASH_CURRENCIES,
   type PortfolioCashPosition,
@@ -502,11 +503,7 @@ export function PortfolioAnalytics({
       setError("Enter a non-zero cash amount. Use a negative amount for borrowing.");
       return;
     }
-    if (cashPositions.some((position) => position.currency === cashCurrency)) {
-      setError(`${cashCurrency} cash already exists. Edit the existing line instead.`);
-      return;
-    }
-    setCashPositions((current) => [...current, { currency: cashCurrency, amount }]);
+    setCashPositions((current) => mergeCashPosition(current, cashCurrency, amount));
     setError(null);
   };
 

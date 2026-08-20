@@ -20,6 +20,34 @@ export function normalizeSecurityIdentityPart(value: string | undefined): string
     .toLocaleUpperCase("en-US");
 }
 
+const CORPORATE_NAME_DESIGNATORS = new Set([
+  "CORP",
+  "CORPORATION",
+  "INC",
+  "INCORPORATED",
+  "LIMITED",
+  "LTD",
+  "NV",
+  "PLC",
+]);
+
+/**
+ * Normalizes provider-specific company labels without erasing economically
+ * meaningful qualifiers such as CLASS A, CLASS C, ADR, or preferred series.
+ * A caller must still require one unique durable identity before merging.
+ */
+export function securityCanonicalNameIdentity(name: string): string {
+  return name
+    .normalize("NFKD")
+    .toLocaleUpperCase("en-US")
+    .replace(/&/g, " AND ")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part && !CORPORATE_NAME_DESIGNATORS.has(part))
+    .join("");
+}
+
 export function fallbackSecurityId(name: string, ticker: string): string {
   const normalizedName = normalizeSecurityIdentityPart(name);
   const normalizedTicker = normalizeSecurityIdentityPart(ticker);
@@ -63,6 +91,15 @@ export function securityTickerCountryIdentity(
 
 function isLegacyFallback(securityId: string): boolean {
   return securityId.startsWith("NAME:");
+}
+
+function isTickerlessLegacyFallback(
+  security: SecurityIdentityDescriptor,
+): boolean {
+  return (
+    isLegacyFallback(security.securityId) &&
+    !normalizeSecurityIdentityPart(security.ticker)
+  );
 }
 
 function preferredLegacyFallback(
@@ -225,6 +262,46 @@ export function planSecurityIdentityMerges(
       if (
         security.securityId !== targetId &&
         isLegacyFallback(security.securityId)
+      ) {
+        merges.set(security.securityId, {
+          sourceId: security.securityId,
+          targetId,
+        });
+      }
+    }
+  }
+
+  // Some official BlackRock mutual-fund exports expose only a company name
+  // and weight. Resolve those tickerless fallback rows against the rest of
+  // the database only when a suffix-normalized name leads to exactly one
+  // durable identity. Share-class markers remain in the key, and ambiguous
+  // names are deliberately left unresolved.
+  const canonicalNameGroups = new Map<
+    string,
+    SecurityIdentityDescriptor[]
+  >();
+  for (const security of securities) {
+    const key = securityCanonicalNameIdentity(security.name);
+    if (!key) continue;
+    const group = canonicalNameGroups.get(key) ?? [];
+    group.push(security);
+    canonicalNameGroups.set(key, group);
+  }
+
+  for (const group of canonicalNameGroups.values()) {
+    if (group.length < 2) continue;
+    const strongTargets = new Set(
+      group
+        .map((security) => canonicalStrongId.get(security.securityId))
+        .filter((securityId): securityId is string => Boolean(securityId)),
+    );
+    if (strongTargets.size !== 1) continue;
+    const targetId = [...strongTargets][0];
+
+    for (const security of group) {
+      if (
+        security.securityId !== targetId &&
+        isTickerlessLegacyFallback(security)
       ) {
         merges.set(security.securityId, {
           sourceId: security.securityId,

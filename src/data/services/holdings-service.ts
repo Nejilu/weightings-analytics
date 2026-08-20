@@ -127,13 +127,30 @@ async function buildPortfolioEtfSnapshot(
       .filter((item) => item.kind === "security")
       .map((item) => item.referenceId),
   );
-  const analysis = analyzePortfolio({
+  // Provider mappings and metrics depend on durable security IDs. Economic
+  // grouping belongs to the portfolio display model, never this snapshot.
+  const canonicalAnalysis = analyzePortfolio({
     items: valuedPortfolio.items,
     etfSnapshots: new Map(
       snapshots.map((snapshot) => [snapshot.etf.id, snapshot]),
     ),
     directSecurities,
     cashWeight: cashValueUsd / valuedPortfolio.totalMarketValueUsd * 100,
+  });
+  const explicitCashHoldings = cashPositions.flatMap((position) => {
+    const valueUsd = position.valueUsd ?? 0;
+    if (valueUsd <= 0) return [];
+    return [{
+      securityId: `CASH:${position.currency}`,
+      ticker: position.currency,
+      name: `${position.currency} CASH`,
+      sector: "Cash & equivalents",
+      assetClass: "Cash",
+      country: "Not applicable",
+      currency: position.currency,
+      marketValue: valueUsd,
+      weight: valueUsd / valuedPortfolio.totalMarketValueUsd * 100,
+    }];
   });
   const sourceStatus =
     snapshots.some((snapshot) => snapshot.sourceStatus === "stale")
@@ -154,15 +171,18 @@ async function buildPortfolioEtfSnapshot(
     sourceStatus,
     sourceUrl: etf.holdingsUrl,
     cacheTtlHours: cacheTtlSeconds() / 3600,
-    holdings: analysis.positions.map((position) => ({
-      securityId: position.securityId,
-      ticker: position.ticker,
-      name: position.name,
-      sector: position.sector,
-      assetClass: position.assetClass,
-      country: position.country,
-      weight: position.weight,
-    })),
+    holdings: [
+      ...canonicalAnalysis.positions.map((position) => ({
+        securityId: position.securityId,
+        ticker: position.ticker,
+        name: position.name,
+        sector: position.sector,
+        assetClass: position.assetClass,
+        country: position.country,
+        weight: position.weight,
+      })),
+      ...explicitCashHoldings,
+    ],
   };
 }
 

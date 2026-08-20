@@ -1,4 +1,5 @@
 import type { Holding, HoldingsSnapshot } from "@/domain/etf";
+import { isCashHolding } from "@/domain/cash-holdings";
 import type {
   DistortionCoverageStatus,
   HoldingsAnalysisPosition,
@@ -40,6 +41,14 @@ export function analyzeHoldings(
   const targetHoldings = normalizedHoldings(targetSnapshot);
   const acwiHoldings = normalizedHoldings(acwiSnapshot).filter(isEquity);
   const targetEquities = targetHoldings.filter(isEquity);
+  const cashHoldings = targetHoldings.filter(isCashHolding);
+  const investedHoldings = targetHoldings.filter(
+    (holding) => !isCashHolding(holding),
+  );
+  const investedWeight = investedHoldings.reduce(
+    (sum, holding) => sum + holding.weight,
+    0,
+  );
   const acwiBySecurity = new Map(
     acwiHoldings.map((holding) => [holding.securityId, holding]),
   );
@@ -69,6 +78,7 @@ export function analyzeHoldings(
   const positions: HoldingsAnalysisPosition[] = targetHoldings
     .map((holding) => {
       const equity = isEquity(holding);
+      const cash = isCashHolding(holding);
       const reference = acwiBySecurity.get(holding.securityId);
       if (!equity || !reference || !canCalculate) {
         return {
@@ -78,7 +88,12 @@ export function analyzeHoldings(
           sector: holding.sector,
           assetClass: holding.assetClass,
           country: holding.country,
+          isCash: cash,
           publishedWeight: round(holding.weight),
+          normalizedWeightExCash:
+            !cash && investedWeight > 0
+              ? round((holding.weight / investedWeight) * 100)
+              : null,
           actualWeight: null,
           counterfactualWeight: null,
           weightDelta: null,
@@ -98,7 +113,12 @@ export function analyzeHoldings(
         sector: holding.sector,
         assetClass: holding.assetClass,
         country: holding.country,
+        isCash: cash,
         publishedWeight: round(holding.weight),
+        normalizedWeightExCash:
+          investedWeight > 0
+            ? round((holding.weight / investedWeight) * 100)
+            : null,
         actualWeight: round(actualWeight),
         counterfactualWeight: round(counterfactualWeight),
         weightDelta: round(weightDelta),
@@ -141,6 +161,10 @@ export function analyzeHoldings(
     calculatedAt: new Date().toISOString(),
     holdingsCount: targetHoldings.length,
     equityHoldingsCount: targetEquities.length,
+    cashHoldingsCount: cashHoldings.length,
+    cashWeight: round(
+      cashHoldings.reduce((sum, holding) => sum + holding.weight, 0),
+    ),
     top10Concentration: round(
       [...targetHoldings]
         .sort((left, right) => right.weight - left.weight)

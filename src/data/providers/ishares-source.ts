@@ -24,6 +24,7 @@ const BLACKROCK_PRODUCT_DATA_CONFIG = {
 } as const;
 const MINIMUM_EXPECTED_HOLDINGS: Record<string, number> = {
   "acwi-us": 2_000,
+  "bgsix-us": 50,
   "csemas-ucits": 500,
 };
 
@@ -124,9 +125,15 @@ export function assertCsvPayload(contentType: string, raw: string): void {
 
 function assertCsvContainsRows(raw: string): number {
   const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
-  const headerIndex = lines.findIndex((line) =>
-    /^\s*"?ticker"?\s*,\s*"?name"?/i.test(line),
-  );
+  const headerIndex = lines.findIndex((line) => {
+    const columns = line.split(",").map((column) =>
+      column.trim().replace(/^"|"$/g, "").toLowerCase(),
+    );
+    return (
+      columns.includes("name") &&
+      columns.some((column) => column === "weight" || column === "weight (%)")
+    );
+  });
   if (headerIndex < 0) {
     throw new Error("Unable to locate the iShares holdings CSV headers.");
   }

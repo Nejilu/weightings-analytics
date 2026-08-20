@@ -25,7 +25,7 @@ import {
   type PortfolioItem,
   type PortfolioRecord,
 } from "@/domain/portfolio";
-import { analyzePortfolio } from "@/domain/processors/analyze-portfolio";
+import { analyzePortfolioForDisplay } from "@/domain/processors/analyze-portfolio";
 import { securityQuoteAlias } from "@/domain/security-equivalence";
 import { mapWithConcurrency } from "@/domain/async-utils";
 
@@ -236,7 +236,7 @@ async function buildAnalysis(
     .map((item) => item.referenceId);
   const directSecurities = findSecuritiesByIds(securityIds);
 
-  return analyzePortfolio({
+  return analyzePortfolioForDisplay({
     items,
     etfSnapshots: new Map(
       snapshots.map((snapshot) => [snapshot.etf.id, snapshot]),

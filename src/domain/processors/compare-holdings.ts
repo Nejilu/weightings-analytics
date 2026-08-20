@@ -6,6 +6,7 @@ import type {
   SectorComparison,
   SleevePosition,
 } from "@/domain/etf";
+import { isCashHolding } from "@/domain/cash-holdings";
 import { mergeEquivalentHoldings } from "@/domain/security-equivalence";
 
 import { normalizeHoldingWeights } from "./normalize-holding-weights";
@@ -119,16 +120,21 @@ function buildImplicitSleeve(
 export function compareHoldings(
   leftSnapshot: HoldingsSnapshot,
   rightSnapshot: HoldingsSnapshot,
+  options: { includeCash?: boolean } = {},
 ): ComparisonResult {
+  const holdingsForComparison = (holdings: Holding[]) =>
+    options.includeCash
+      ? holdings
+      : holdings.filter((holding) => !isCashHolding(holding));
   const leftHoldings = mergeEquivalentHoldings(
     normalizeHoldingWeights(
-      leftSnapshot.holdings,
+      holdingsForComparison(leftSnapshot.holdings),
       leftSnapshot.etf.exposureMultiplier ?? 1,
     ),
   );
   const rightHoldings = mergeEquivalentHoldings(
     normalizeHoldingWeights(
-      rightSnapshot.holdings,
+      holdingsForComparison(rightSnapshot.holdings),
       rightSnapshot.etf.exposureMultiplier ?? 1,
     ),
   );

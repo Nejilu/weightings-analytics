@@ -240,6 +240,8 @@ test("rejects truncated large iShares universes without imposing their scale on 
   assert.equal(isPlausibleIsharesHoldingsCount("acwi-us", 2_236), true);
   assert.equal(isPlausibleIsharesHoldingsCount("csemas-ucits", 499), false);
   assert.equal(isPlausibleIsharesHoldingsCount("csemas-ucits", 559), true);
+  assert.equal(isPlausibleIsharesHoldingsCount("bgsix-us", 10), false);
+  assert.equal(isPlausibleIsharesHoldingsCount("bgsix-us", 69), true);
   assert.equal(isPlausibleIsharesHoldingsCount("small-etf", 50), true);
   assert.throws(
     () =>
@@ -249,4 +251,34 @@ test("rejects truncated large iShares universes without imposing their scale on 
       ),
     /appears incomplete/,
   );
+});
+
+test("accepts the name-first BlackRock mutual-fund CSV format", async () => {
+  const originalFetch = globalThis.fetch;
+  const holdingsUrl =
+    "https://www.blackrock.com/us/individual/products/227450/fund/holdings.ajax?fileType=csv";
+  const etf = {
+    id: "bgsix-us",
+    ticker: "BGSIX",
+    productUrl:
+      "https://www.blackrock.com/us/individual/products/227450/technology-opportunities-fund",
+    holdingsUrl,
+  } as Parameters<typeof fetchIsharesHoldingsFile>[0];
+  const csv = [
+    'Fund Holdings as of,"Jun 30, 2026"',
+    "Name,Market Value,Weight (%),Shares",
+    ...Array.from({ length: 50 }, (_, index) =>
+      `Company ${index},${1_000 - index},${(2 - index / 100).toFixed(2)},100`,
+    ),
+  ].join("\n");
+
+  globalThis.fetch = (async () =>
+    new Response(csv, { headers: { "content-type": "text/csv" } })) as typeof fetch;
+
+  try {
+    const result = await fetchIsharesHoldingsFile(etf);
+    assert.equal(result.sourceUrl, holdingsUrl);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
