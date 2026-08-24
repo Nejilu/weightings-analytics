@@ -42,6 +42,7 @@ export async function PATCH(
   context: { params: Promise<{ etfId: string }> },
 ) {
   try {
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
     const { etfId } = await context.params;
     const payload = (await request.json()) as {
       kind?: "custom" | "portfolio";
@@ -120,7 +121,7 @@ export async function PATCH(
           description: payload.description,
           items: payload.items,
           cashPositions: payload.cashPositions,
-        }),
+        }, { forceRefresh }),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -130,13 +131,14 @@ export async function PATCH(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ etfId: string }> },
 ) {
   try {
     const { etfId } = await context.params;
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
     return Response.json(
-      { data: await getLocalEtfDetail(etfId) },
+      { data: await getLocalEtfDetail(etfId, { forceRefresh }) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

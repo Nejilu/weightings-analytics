@@ -2,6 +2,7 @@ import type { Holding } from "./etf";
 
 type SecurityDescriptor = Pick<Holding, "securityId" | "ticker" | "name">;
 type QuoteDescriptor = Pick<Holding, "ticker" | "name">;
+type ListingQuoteDescriptor = QuoteDescriptor & Pick<Holding, "country">;
 
 interface EconomicSecurityGroup {
   key: string;
@@ -97,6 +98,42 @@ export function securityQuoteAlias(
       instrumentType: "GDR",
       underlyingTicker: security.ticker,
     };
+  }
+  return undefined;
+}
+
+export function securityListingQuoteSymbol(
+  security: ListingQuoteDescriptor,
+  preferredTicker = security.ticker,
+): string | undefined {
+  const ticker = normalized(preferredTicker);
+  if (!ticker || ticker === "—") return undefined;
+  if (ticker === "HY9H") return "HY9H.F";
+  if (ticker === "SMSN") return "SMSN.IL";
+  if (ticker.includes(".")) return ticker;
+
+  const country = normalized(security.country);
+  if (
+    /^[A-Z][A-Z0-9.-]{0,9}$/.test(ticker) &&
+    (country.includes("UNITED STATES") ||
+      ["ASML", "GOOG", "GOOGL", "TSM", "SSNLF"].includes(ticker))
+  ) {
+    return ticker;
+  }
+  if (/^\d{6}$/.test(ticker) && country.includes("KOREA")) {
+    return `${ticker}.KS`;
+  }
+  if (/^\d{4,6}$/.test(ticker) && country.includes("TAIWAN")) {
+    return `${ticker}.TW`;
+  }
+  if (/^\d{4}$/.test(ticker) && country.includes("JAPAN")) {
+    return `${ticker}.T`;
+  }
+  if (/^\d{1,5}$/.test(ticker) && country.includes("HONG KONG")) {
+    return `${ticker.padStart(4, "0")}.HK`;
+  }
+  if (/^\d{6}$/.test(ticker) && country.includes("CHINA")) {
+    return `${ticker}.${ticker.startsWith("6") ? "SS" : "SZ"}`;
   }
   return undefined;
 }

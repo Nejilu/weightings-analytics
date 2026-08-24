@@ -36,9 +36,12 @@ import {
 } from "./holdings-service";
 import {
   getMarketPrices,
+  type MarketRefreshOptions,
   valueCashPositions,
   valuePortfolioItems,
 } from "./market-price-service";
+
+export type PortfolioRefreshOptions = MarketRefreshOptions;
 
 export interface PortfolioItemDraft {
   id: string;
@@ -147,6 +150,7 @@ function validateCashDrafts(drafts: PortfolioCashDraft[]): PortfolioCashPosition
 async function resolveDrafts(
   drafts: PortfolioItemDraft[],
   cashValueUsd: number,
+  options: PortfolioRefreshOptions,
 ): Promise<PortfolioItem[]> {
   const securityIds = drafts
     .filter((draft) => draft.kind === "security")
@@ -190,6 +194,7 @@ async function resolveDrafts(
         kind: item.kind,
         referenceId: item.referenceId,
       })),
+      options,
     );
   } catch (error) {
     throw new PortfolioUnavailableError(error);
@@ -215,7 +220,7 @@ async function resolveDrafts(
     };
   });
   try {
-    return (await valuePortfolioItems(withQuantities, cashValueUsd)).items;
+    return (await valuePortfolioItems(withQuantities, cashValueUsd, options)).items;
   } catch (error) {
     throw new PortfolioUnavailableError(error);
   }
@@ -224,12 +229,13 @@ async function resolveDrafts(
 async function buildAnalysis(
   items: PortfolioItem[],
   cashWeight: number,
+  options: PortfolioRefreshOptions,
 ): Promise<PortfolioAnalysis | null> {
   const etfItems = items.filter((item) => item.kind === "etf");
   const snapshots = await mapWithConcurrency(
     etfItems,
     holdingsRefreshConcurrency(),
-    (item) => getHoldingsSnapshot(item.referenceId),
+    (item) => getHoldingsSnapshot(item.referenceId, options),
   );
   const securityIds = items
     .filter((item) => item.kind === "security")
@@ -246,13 +252,16 @@ async function buildAnalysis(
   });
 }
 
-async function valueStoredPortfolio(stored: StoredPortfolio) {
-  const cashPositions = await valueCashPositions(stored.cashPositions);
+async function valueStoredPortfolio(
+  stored: StoredPortfolio,
+  options: PortfolioRefreshOptions,
+) {
+  const cashPositions = await valueCashPositions(stored.cashPositions, options);
   const cashValueUsd = cashPositions.reduce(
     (sum, position) => sum + (position.valueUsd ?? 0),
     0,
   );
-  const valued = await valuePortfolioItems(stored.items, cashValueUsd);
+  const valued = await valuePortfolioItems(stored.items, cashValueUsd, options);
   const weightedCash = cashPositions.map((position) => ({
     ...position,
     weight: valued.totalMarketValueUsd > 0
@@ -264,10 +273,11 @@ async function valueStoredPortfolio(stored: StoredPortfolio) {
 
 async function recordWithAnalysis(
   stored: StoredPortfolio,
+  options: PortfolioRefreshOptions,
 ): Promise<PortfolioRecord> {
   let valued;
   try {
-    valued = await valueStoredPortfolio(stored);
+    valued = await valueStoredPortfolio(stored, options);
     if (stored.items.some((item) => !item.quantity)) {
       anchorPortfolioQuantities(stored.id, valued.items);
     }
@@ -289,7 +299,7 @@ async function recordWithAnalysis(
       0,
     );
     const analysis = valued.items.length > 0 || valued.cashPositions.length > 0
-      ? await buildAnalysis(valued.items, explicitCashWeight)
+      ? await buildAnalysis(valued.items, explicitCashWeight, options)
       : null;
     return {
       ...stored,
@@ -319,23 +329,28 @@ async function recordWithAnalysis(
   }
 }
 
-export async function getPortfolio(): Promise<PortfolioRecord> {
+export async function getPortfolio(
+  options: PortfolioRefreshOptions = {},
+): Promise<PortfolioRecord> {
   try {
     ensureLocalDatabase();
-    return await recordWithAnalysis(loadDefaultPortfolio());
+    return await recordWithAnalysis(loadDefaultPortfolio(), options);
   } catch (error) {
     throw new PortfolioUnavailableError(error);
   }
 }
 
-export async function getPortfolioById(id: string): Promise<PortfolioRecord> {
+export async function getPortfolioById(
+  id: string,
+  options: PortfolioRefreshOptions = {},
+): Promise<PortfolioRecord> {
   try {
     ensureLocalDatabase();
     const stored = loadPortfolioById(id);
     if (!stored) {
       throw new PortfolioRequestError("The saved portfolio no longer exists.");
     }
-    return await recordWithAnalysis(stored);
+    return await recordWithAnalysis(stored, options);
   } catch (error) {
     if (error instanceof PortfolioRequestError) throw error;
     throw new PortfolioUnavailableError(error);
@@ -345,19 +360,20 @@ export async function getPortfolioById(id: string): Promise<PortfolioRecord> {
 export async function savePortfolio(
   drafts: PortfolioItemDraft[],
   cashDrafts: PortfolioCashDraft[] = [],
+  options: PortfolioRefreshOptions = {},
 ): Promise<PortfolioRecord> {
   try {
     ensureLocalDatabase();
     validateDrafts(drafts);
     const cashPositions = validateCashDrafts(cashDrafts);
-    const valuedCash = await valueCashPositions(cashPositions);
+    const valuedCash = await valueCashPositions(cashPositions, options);
     const cashValueUsd = valuedCash.reduce(
       (sum, position) => sum + (position.valueUsd ?? 0),
       0,
     );
     let items: PortfolioItem[];
     try {
-      items = await resolveDrafts(drafts, cashValueUsd);
+      items = await resolveDrafts(drafts, cashValueUsd, options);
     } catch (error) {
       if (error instanceof PortfolioUnavailableError && /positive market value/i.test(error.message)) {
         throw new PortfolioRequestError(
@@ -370,7 +386,7 @@ export async function savePortfolio(
       throw new PortfolioRequestError("Net portfolio value must be positive.");
     }
     replaceDefaultPortfolio(items, cashPositions);
-    return await recordWithAnalysis(loadDefaultPortfolio());
+    return await recordWithAnalysis(loadDefaultPortfolio(), options);
   } catch (error) {
     if (error instanceof PortfolioRequestError) throw error;
     throw new PortfolioUnavailableError(error);
@@ -443,6 +459,7 @@ function portfolioEtfDescription(
 export async function updatePortfolioEtf(
   etfId: string,
   draft: UpdatePortfolioEtfDraft,
+  options: PortfolioRefreshOptions = {},
 ): Promise<EtfShareClass> {
   try {
     ensureLocalDatabase();
@@ -453,12 +470,12 @@ export async function updatePortfolioEtf(
     const identity = validatePortfolioEtfIdentity(draft, etfId);
     validateDrafts(draft.items);
     const cashPositions = validateCashDrafts(draft.cashPositions);
-    const valuedCash = await valueCashPositions(cashPositions);
+    const valuedCash = await valueCashPositions(cashPositions, options);
     const cashValueUsd = valuedCash.reduce(
       (sum, position) => sum + (position.valueUsd ?? 0),
       0,
     );
-    const items = await resolveDrafts(draft.items, cashValueUsd);
+    const items = await resolveDrafts(draft.items, cashValueUsd, options);
     if (items.length === 0 && cashValueUsd <= 0) {
       throw new PortfolioRequestError("Net portfolio value must be positive.");
     }
@@ -504,7 +521,7 @@ export async function savePortfolioAsEtf(
       validatePortfolioEtfIdentity(draft);
 
     const stored = loadDefaultPortfolio();
-    const valuedPortfolio = await valueStoredPortfolio(stored);
+    const valuedPortfolio = await valueStoredPortfolio(stored, {});
     const portfolio = { ...stored, ...valuedPortfolio };
     if (stored.items.some((item) => !item.quantity)) {
       anchorPortfolioQuantities(stored.id, portfolio.items);

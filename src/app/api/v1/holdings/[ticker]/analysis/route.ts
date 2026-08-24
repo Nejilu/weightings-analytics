@@ -9,7 +9,7 @@ import { analyzeHoldings } from "@/domain/processors/analyze-holdings";
 const ACWI_REFERENCE = "acwi-us";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
   const { ticker } = await context.params;
@@ -22,11 +22,13 @@ export async function GET(
       );
     }
 
-    const target = await getHoldingsSnapshot(ticker);
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
+    const options = { forceRefresh };
+    const target = await getHoldingsSnapshot(ticker, options);
     const acwi =
       target.etf.id === ACWI_REFERENCE
         ? target
-        : await getHoldingsSnapshot(ACWI_REFERENCE);
+        : await getHoldingsSnapshot(ACWI_REFERENCE, options);
     const data = analyzeHoldings(target, acwi);
 
     return Response.json(
@@ -34,7 +36,7 @@ export async function GET(
       {
         headers: {
           "Cache-Control":
-            target.sourceStatus === "stale" || acwi.sourceStatus === "stale"
+            forceRefresh || target.sourceStatus === "stale" || acwi.sourceStatus === "stale"
               ? "no-store"
               : "public, max-age=300, s-maxage=86400, stale-while-revalidate=3600",
         },

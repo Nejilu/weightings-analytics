@@ -157,6 +157,47 @@ try {
   executeMigration("0010_persist_provider_negative_cache.sql");
   executeMigration("0011_melodic_cerise.sql");
 
+  sqlite.exec(`
+    INSERT INTO etfs (
+      id, ticker, isin, name, issuer, benchmark_id, wrapper, domicile,
+      exchange, trading_currency, distribution_policy
+    ) VALUES
+      ('acwi-us', 'ACWI', 'TEST-ACWI', 'ACWI', 'Test', 'legacy',
+       'US_1940_ACT', 'United States', 'NASDAQ', 'USD', 'Distributing'),
+      ('panx-ucits', 'PANX', 'TEST-PANX', 'PANX', 'Test', 'legacy',
+       'SYNTHETIC', 'France', 'Euronext Paris', 'EUR', 'Accumulating');
+    INSERT INTO securities (id, isin, primary_ticker, name) VALUES
+      ('FR0010340141', 'FR0010340141', 'ADP', 'AEROPORTS DE PARIS SA'),
+      ('US0530151036', 'US0530151036', 'ADP', 'AUTOMATIC DATA PROCESSING INC'),
+      ('US5949181045', 'US5949181045', 'MSFT', 'MICROSOFT CORP');
+    INSERT INTO holding_snapshots (
+      id, etf_id, as_of, fetched_at, source_url, source_status,
+      total_weight, row_count
+    ) VALUES
+      ('acwi-snapshot', 'acwi-us', '2026-08-19', '2026-08-20T20:00:00Z',
+       'test', 'live', 100, 1),
+      ('panx-snapshot', 'panx-ucits', '2026-08-19', '2026-08-20T21:00:00Z',
+       'test', 'live', 100, 2);
+    INSERT INTO holdings (
+      snapshot_id, security_id, weight, market_value, source_ticker
+    ) VALUES
+      ('acwi-snapshot', 'US0530151036', 0.1, 40, 'ADP'),
+      ('panx-snapshot', 'FR0010340141', 1.6393442623, 1, 'ADP'),
+      ('panx-snapshot', 'US5949181045', 98.3606557377, 60, 'MSFT');
+  `);
+  executeMigration("0012_correct_panx_adp_identity.sql");
+
+  const correctedPanx = sqlite.prepare(`
+    SELECT security_id AS securityId, market_value AS marketValue, weight
+    FROM holdings
+    WHERE snapshot_id = 'panx-snapshot'
+    ORDER BY security_id
+  `).all();
+  assert.deepEqual(correctedPanx, [
+    { securityId: "US0530151036", marketValue: 40, weight: 40 },
+    { securityId: "US5949181045", marketValue: 60, weight: 60 },
+  ]);
+
   const upgradedEtf = sqlite
     .prepare(
       `SELECT product_url AS productUrl, holdings_url AS holdingsUrl,

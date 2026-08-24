@@ -17,6 +17,7 @@ import {
 
 import { PortfolioAnalytics } from "@/components/dashboard/portfolio-analytics";
 import { EtfCreator } from "@/components/dashboard/etf-creator";
+import { ManualRefreshButton } from "@/components/dashboard/manual-refresh-button";
 import type {
   CatalogGroup,
   ComparisonResult,
@@ -29,6 +30,10 @@ import type {
   HoldingsAnalysisPosition,
   HoldingsAnalysisResult,
 } from "@/domain/holdings-analysis";
+import {
+  countryToContinent,
+  geographicCountryLabel,
+} from "@/domain/geography";
 import { EtfSearch } from "./etf-search";
 
 const MetricsOverview = dynamic(
@@ -45,6 +50,7 @@ interface ComparisonWorkbenchProps {
 
 type SelectionSide = "left" | "right";
 type HoldingsWeightView = "securities" | "with-cash";
+type GeographyGrouping = "country" | "continent";
 
 const INITIAL_VISIBLE_POSITIONS = 50;
 
@@ -126,8 +132,9 @@ function comparisonApiUrl(
   leftEtfId: string,
   rightEtfId: string,
   weightView: HoldingsWeightView,
+  forceRefresh = false,
 ) {
-  return `/api/v1/compare?left=${encodeURIComponent(leftEtfId)}&right=${encodeURIComponent(rightEtfId)}&includeCash=${weightView === "with-cash"}`;
+  return `/api/v1/compare?left=${encodeURIComponent(leftEtfId)}&right=${encodeURIComponent(rightEtfId)}&includeCash=${weightView === "with-cash"}${forceRefresh ? "&refresh=true" : ""}`;
 }
 
 function ThemeToggle({ mobile = false }: { mobile?: boolean }) {
@@ -860,6 +867,84 @@ function HoldingsSectorPanel({
   );
 }
 
+function HoldingsGeographyPanel({
+  analysis,
+  weightView,
+}: {
+  analysis: HoldingsAnalysisResult;
+  weightView: HoldingsWeightView;
+}) {
+  const [grouping, setGrouping] = useState<GeographyGrouping>("country");
+  const allocations = useMemo(() => {
+    const weights = new Map<string, number>();
+    for (const position of analysis.positions) {
+      if (weightView === "securities" && position.isCash) continue;
+      const geography = position.isCash
+        ? "Cash & equivalents"
+        : grouping === "country"
+          ? geographicCountryLabel(position.country)
+          : countryToContinent(position.country);
+      weights.set(
+        geography,
+        (weights.get(geography) ?? 0) +
+          holdingsPositionWeight(position, weightView),
+      );
+    }
+    return [...weights.entries()]
+      .map(([geography, weight]) => ({ geography, weight }))
+      .sort((left, right) => right.weight - left.weight)
+      .slice(0, grouping === "country" ? 9 : undefined);
+  }, [analysis.positions, grouping, weightView]);
+  const largestWeight = Math.max(
+    ...allocations.map((allocation) => allocation.weight),
+    1,
+  );
+
+  return (
+    <article className="panel holdings-geography-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Allocation</span>
+          <h2>Geographic structure</h2>
+        </div>
+        <div className="segmented-control" role="group" aria-label="Group geography by">
+          <button
+            type="button"
+            className={grouping === "country" ? "is-active" : ""}
+            aria-pressed={grouping === "country"}
+            onClick={() => setGrouping("country")}
+          >
+            Countries
+          </button>
+          <button
+            type="button"
+            className={grouping === "continent" ? "is-active" : ""}
+            aria-pressed={grouping === "continent"}
+            onClick={() => setGrouping("continent")}
+          >
+            Continents
+          </button>
+        </div>
+      </div>
+      <div className="holdings-sector-list holdings-geography-list">
+        {allocations.map((allocation) => (
+          <div key={allocation.geography}>
+            <span>{allocation.geography}</span>
+            <div aria-hidden="true">
+              <i
+                style={{
+                  width: `${(allocation.weight / largestWeight) * 100}%`,
+                }}
+              />
+            </div>
+            <strong>{formatPercent(allocation.weight, 1)}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function DistortionPositionsTable({
   analysis,
 }: {
@@ -1258,7 +1343,7 @@ export function ComparisonWorkbench({
     setAvailableCatalog(payload.data);
   };
 
-  const loadHoldingsAnalysis = async () => {
+  const loadHoldingsAnalysis = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     setUnavailable([]);
@@ -1267,18 +1352,23 @@ export function ComparisonWorkbench({
     setComparison(null);
     try {
       const analysisRequest = fetch(
-        `/api/v1/holdings/${encodeURIComponent(leftEtfId)}/analysis`,
+        `/api/v1/holdings/${encodeURIComponent(leftEtfId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
         { cache: "no-cache" },
       );
       const comparisonRequest = comparisonMode && holdingsView === "holdings"
         ? fetch(
-            comparisonApiUrl(leftEtfId, rightEtfId, holdingsWeightView),
+            comparisonApiUrl(
+              leftEtfId,
+              rightEtfId,
+              holdingsWeightView,
+              forceRefresh,
+            ),
             { cache: "no-cache" },
           )
         : null;
       const rightAnalysisRequest = comparisonRequest
         ? fetch(
-            `/api/v1/holdings/${encodeURIComponent(rightEtfId)}/analysis`,
+            `/api/v1/holdings/${encodeURIComponent(rightEtfId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
             { cache: "no-cache" },
           )
         : null;
@@ -1539,12 +1629,18 @@ export function ComparisonWorkbench({
                     one ETF. Add a peer only when a side-by-side comparison is useful.
                   </p>
                 </div>
-                <div className="metrics-provider-mark">
-                  <span>DATA</span>
-                  <div>
-                    <strong>Official holdings</strong>
-                    <small>Fund and index providers · daily cache</small>
+                <div className="panel-refresh-actions">
+                  <div className="metrics-provider-mark">
+                    <span>DATA</span>
+                    <div>
+                      <strong>Official holdings</strong>
+                      <small>Fund and index providers · daily cache</small>
+                    </div>
                   </div>
+                  <ManualRefreshButton
+                    loading={loading}
+                    onRefresh={() => void loadHoldingsAnalysis(true)}
+                  />
                 </div>
               </section>
 
@@ -1607,7 +1703,7 @@ export function ComparisonWorkbench({
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={loadHoldingsAnalysis}
+                    onClick={() => void loadHoldingsAnalysis()}
                     disabled={loading}
                   >
                     {loading ? <span className="spinner" /> : <span>Analyze holdings</span>}
@@ -1794,6 +1890,11 @@ export function ComparisonWorkbench({
                           <section className="analysis-grid holdings-analysis-grid">
                             <HoldingsTopPositionsPanel analysis={analysis} weightView={holdingsWeightView} />
                             <HoldingsSectorPanel analysis={analysis} weightView={holdingsWeightView} />
+                            <HoldingsGeographyPanel
+                              key={analysis.etf.id}
+                              analysis={analysis}
+                              weightView={holdingsWeightView}
+                            />
                           </section>
                           <HoldingsOverviewTable analysis={analysis} weightView={holdingsWeightView} />
                         </>

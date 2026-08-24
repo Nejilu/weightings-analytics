@@ -54,6 +54,16 @@ test("fixed-component synthetic ETFs exclude unavailable source constituents and
       );
     }
   }
+
+  const panx = getEtfById("panx-ucits");
+  assert.ok(panx);
+  assert.equal(panx.derivedHoldings?.model, "component-market-value");
+  if (panx.derivedHoldings?.model === "component-market-value") {
+    assert.equal(
+      panx.derivedHoldings.componentSecurityIds?.ADP,
+      "US0530151036",
+    );
+  }
 });
 
 test("supports CSEMAS as a native iShares UCITS fund with its own holdings and quote", () => {

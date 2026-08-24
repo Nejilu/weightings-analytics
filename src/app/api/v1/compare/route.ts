@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const leftReference = url.searchParams.get("left")?.trim() ?? "";
     const rightReference = url.searchParams.get("right")?.trim() ?? "";
     const includeCash = url.searchParams.get("includeCash") === "true";
+    const forceRefresh = url.searchParams.get("refresh") === "true";
 
     let validSelection = false;
     try {
@@ -37,8 +38,8 @@ export async function GET(request: Request) {
     }
 
     const snapshots = await Promise.allSettled([
-      getHoldingsSnapshot(leftReference),
-      getHoldingsSnapshot(rightReference),
+      getHoldingsSnapshot(leftReference, { forceRefresh }),
+      getHoldingsSnapshot(rightReference, { forceRefresh }),
     ]);
 
     const rejected = snapshots.filter(
@@ -81,6 +82,7 @@ export async function GET(request: Request) {
       {
         headers: {
           "Cache-Control":
+            forceRefresh ||
             left.sourceStatus === "stale" ||
             right.sourceStatus === "stale"
               ? "no-store"

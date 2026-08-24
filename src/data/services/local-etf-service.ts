@@ -23,6 +23,7 @@ import {
   getPortfolioById,
   PortfolioRequestError,
   PortfolioUnavailableError,
+  type PortfolioRefreshOptions,
   type PortfolioCashDraft,
   type PortfolioItemDraft,
   updatePortfolioEtf,
@@ -102,7 +103,10 @@ function legacyEditableDescription(
   return match?.index && match.index > 0 ? value.slice(0, match.index).trim() : "";
 }
 
-export async function getLocalEtfDetail(id: string): Promise<LocalEtfDetail> {
+export async function getLocalEtfDetail(
+  id: string,
+  options: PortfolioRefreshOptions = {},
+): Promise<LocalEtfDetail> {
   ensureLocalDatabase();
   const etf = requireEditableLocalEtf(id);
   const record = findLocalEtfDefinitionRecord(id);
@@ -118,7 +122,7 @@ export async function getLocalEtfDetail(id: string): Promise<LocalEtfDetail> {
     return {
       kind: "portfolio",
       etf,
-      portfolio: await getPortfolioById(etf.portfolioId),
+      portfolio: await getPortfolioById(etf.portfolioId, options),
       editableDescription,
     };
   }
@@ -263,11 +267,12 @@ export async function updateCustomLocalEtf(
 export async function updatePortfolioLocalEtf(
   id: string,
   draft: UpdatePortfolioLocalEtfDraft,
+  options: PortfolioRefreshOptions = {},
 ): Promise<EtfShareClass> {
   try {
     const existing = requireEditableLocalEtf(id);
     if (existing.fundType !== "portfolio") throw new LocalEtfNotFoundError();
-    return await updatePortfolioEtf(id, draft);
+    return await updatePortfolioEtf(id, draft, options);
   } catch (error) {
     if (error instanceof LocalEtfNotFoundError) throw error;
     if (error instanceof PortfolioRequestError) {

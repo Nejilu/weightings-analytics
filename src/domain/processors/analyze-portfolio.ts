@@ -17,6 +17,12 @@ type PortfolioPositionIdentity = Pick<
 type PortfolioPositionIdentityResolver = (
   security: PortfolioSecurity,
 ) => PortfolioPositionIdentity;
+interface QuoteCandidate {
+  securityId: string;
+  ticker: string;
+  weight: number;
+}
+type QuoteCandidatesByPosition = Map<string, Map<string, QuoteCandidate>>;
 
 function roundWeight(value: number): number {
   return Math.round(value * 10_000_000_000) / 10_000_000_000;
@@ -24,14 +30,30 @@ function roundWeight(value: number): number {
 
 function addPosition(
   positions: Map<string, PortfolioLookThroughPosition>,
+  quoteCandidates: QuoteCandidatesByPosition,
   security: PortfolioSecurity,
   weight: number,
   contribution: PortfolioContribution,
   resolveIdentity: PortfolioPositionIdentityResolver,
+  quoteTicker = security.ticker,
 ) {
   if (!Number.isFinite(weight) || Math.abs(weight) <= EPSILON) return;
 
   const identity = resolveIdentity(security);
+  const candidates = quoteCandidates.get(identity.securityId) ?? new Map();
+  const candidateKey = `${security.securityId}:${quoteTicker.toLocaleUpperCase("en-US")}`;
+  const candidate = candidates.get(candidateKey);
+  if (candidate) {
+    candidate.weight += Math.abs(weight);
+  } else {
+    candidates.set(candidateKey, {
+      securityId: security.securityId,
+      ticker: quoteTicker,
+      weight: Math.abs(weight),
+    });
+  }
+  quoteCandidates.set(identity.securityId, candidates);
+
   const existing = positions.get(identity.securityId);
   if (existing) {
     existing.weight += weight;
@@ -69,6 +91,7 @@ function analyzePortfolioWithIdentity({
   );
 
   const positions = new Map<string, PortfolioLookThroughPosition>();
+  const quoteCandidates: QuoteCandidatesByPosition = new Map();
   let financingWeight = 0;
 
   for (const item of items) {
@@ -83,6 +106,7 @@ function analyzePortfolioWithIdentity({
       }
       addPosition(
         positions,
+        quoteCandidates,
         security,
         item.allocationWeight,
         {
@@ -92,6 +116,7 @@ function analyzePortfolioWithIdentity({
           weight: item.allocationWeight,
         },
         resolveIdentity,
+        item.ticker,
       );
       continue;
     }
@@ -118,6 +143,7 @@ function analyzePortfolioWithIdentity({
       const weight = item.allocationWeight * (holding.weight / 100);
       addPosition(
         positions,
+        quoteCandidates,
         {
           securityId: holding.securityId,
           ticker: holding.ticker,
@@ -141,16 +167,27 @@ function analyzePortfolioWithIdentity({
   const rawRankedPositions = [...positions.values()]
     .filter((position) => Math.abs(position.weight) > EPSILON)
     .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight));
-  const rankedPositions = rawRankedPositions.map((position) => ({
-    ...position,
-    weight: roundWeight(position.weight),
-    contributions: position.contributions
-      .map((contribution) => ({
-        ...contribution,
-        weight: roundWeight(contribution.weight),
-      }))
-      .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight)),
-  }));
+  const rankedPositions = rawRankedPositions.map((position) => {
+    const quoteCandidate = [...(quoteCandidates.get(position.securityId)?.values() ?? [])]
+      .sort(
+        (left, right) =>
+          right.weight - left.weight ||
+          left.ticker.localeCompare(right.ticker) ||
+          left.securityId.localeCompare(right.securityId),
+      )[0];
+    return {
+      ...position,
+      quoteSecurityId: quoteCandidate?.securityId,
+      quoteTicker: quoteCandidate?.ticker,
+      weight: roundWeight(position.weight),
+      contributions: position.contributions
+        .map((contribution) => ({
+          ...contribution,
+          weight: roundWeight(contribution.weight),
+        }))
+        .sort((left, right) => Math.abs(right.weight) - Math.abs(left.weight)),
+    };
+  });
 
   const sectors = new Map<string, number>();
   for (const position of rawRankedPositions) {

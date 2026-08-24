@@ -46,6 +46,10 @@ const inFlightRefreshes = new Map<
   Promise<HoldingsSnapshot>
 >();
 
+export interface RefreshOptions {
+  forceRefresh?: boolean;
+}
+
 function cacheTtlSeconds() {
   const configured = Number(process.env.HOLDINGS_CACHE_TTL_SECONDS);
   return Number.isFinite(configured) && configured > 0
@@ -86,6 +90,7 @@ export class HoldingsUnavailableError extends Error {
 
 async function buildPortfolioEtfSnapshot(
   etf: NonNullable<ReturnType<typeof findEtfByReference>>,
+  options: RefreshOptions,
 ): Promise<HoldingsSnapshot> {
   if (!etf.portfolioId) {
     throw new Error(`Portfolio definition for ${etf.ticker} is missing.`);
@@ -94,7 +99,7 @@ async function buildPortfolioEtfSnapshot(
   if (!portfolio || portfolio.items.length === 0) {
     throw new Error(`Portfolio definition for ${etf.ticker} is empty.`);
   }
-  const cashPositions = await valueCashPositions(portfolio.cashPositions);
+  const cashPositions = await valueCashPositions(portfolio.cashPositions, options);
   const cashValueUsd = cashPositions.reduce(
     (sum, position) => sum + (position.valueUsd ?? 0),
     0,
@@ -102,6 +107,7 @@ async function buildPortfolioEtfSnapshot(
   const valuedPortfolio = await valuePortfolioItems(
     portfolio.items,
     cashValueUsd,
+    options,
   );
   if (portfolio.items.some((item) => !item.quantity)) {
     anchorPortfolioQuantities(portfolio.id, valuedPortfolio.items);
@@ -120,7 +126,7 @@ async function buildPortfolioEtfSnapshot(
   const snapshots = await mapWithConcurrency(
     etfItems,
     holdingsRefreshConcurrency(),
-    (item) => getHoldingsSnapshot(item.referenceId),
+    (item) => getHoldingsSnapshot(item.referenceId, options),
   );
   const directSecurities = findSecuritiesByIds(
     valuedPortfolio.items
@@ -188,6 +194,7 @@ async function buildPortfolioEtfSnapshot(
 
 async function buildDynamicCustomEtfSnapshot(
   etf: NonNullable<ReturnType<typeof findEtfByReference>>,
+  options: RefreshOptions,
 ): Promise<HoldingsSnapshot> {
   const definition = findDynamicCustomEtfDefinition(etf.id);
   if (!definition) {
@@ -201,7 +208,7 @@ async function buildDynamicCustomEtfSnapshot(
   const latest = findLatestSnapshot(etf.id);
   let source: HoldingsSnapshot;
   try {
-    source = await getHoldingsSnapshot(definition.sourceEtfId);
+    source = await getHoldingsSnapshot(definition.sourceEtfId, options);
   } catch (error) {
     if (latest) return loadSnapshot(etf, latest, "stale", ttlHours);
     throw new HoldingsUnavailableError(etf.ticker, etf.id, error);
@@ -261,6 +268,7 @@ async function buildDynamicCustomEtfSnapshot(
 
 async function buildDerivedEtfSnapshot(
   etf: NonNullable<ReturnType<typeof findEtfByReference>>,
+  options: RefreshOptions,
 ): Promise<HoldingsSnapshot> {
   const definition = etf.derivedHoldings;
   if (!definition) {
@@ -274,7 +282,7 @@ async function buildDerivedEtfSnapshot(
   const latest = findLatestSnapshot(etf.id);
   let source: HoldingsSnapshot;
   try {
-    source = await getHoldingsSnapshot(definition.sourceEtfId);
+    source = await getHoldingsSnapshot(definition.sourceEtfId, options);
   } catch (error) {
     if (latest) {
       const snapshot = loadSnapshot(etf, latest, "stale", ttlHours);
@@ -309,7 +317,10 @@ async function buildDerivedEtfSnapshot(
     const derived = deriveMarketValueHoldings(
       source.holdings,
       definition.componentTickers,
-      { missingComponentPolicy: definition.missingComponentPolicy },
+      {
+        missingComponentPolicy: definition.missingComponentPolicy,
+        componentSecurityIds: definition.componentSecurityIds,
+      },
     );
     if (derived.missingTickers.length > 0) {
       constituentCoverage = {
@@ -358,13 +369,14 @@ async function buildDerivedEtfSnapshot(
 
 async function buildSharedHoldingsSnapshot(
   etf: NonNullable<ReturnType<typeof findEtfByReference>>,
+  options: RefreshOptions,
 ): Promise<HoldingsSnapshot> {
   const sourceEtfId = etf.holdingsSourceEtfId;
   if (!sourceEtfId || sourceEtfId === etf.id) {
     throw new Error(`Invalid shared holdings source for ${etf.ticker}.`);
   }
 
-  const source = await getHoldingsSnapshot(sourceEtfId);
+  const source = await getHoldingsSnapshot(sourceEtfId, options);
   return {
     ...source,
     etf,
@@ -373,18 +385,19 @@ async function buildSharedHoldingsSnapshot(
 
 async function refreshHoldings(
   etf: NonNullable<ReturnType<typeof findEtfByReference>>,
+  options: RefreshOptions,
 ): Promise<HoldingsSnapshot> {
   if (etf.fundType === "portfolio") {
-    return buildPortfolioEtfSnapshot(etf);
+    return buildPortfolioEtfSnapshot(etf, options);
   }
   if (etf.fundType === "custom") {
-    return buildDynamicCustomEtfSnapshot(etf);
+    return buildDynamicCustomEtfSnapshot(etf, options);
   }
   if (etf.holdingsSourceEtfId) {
-    return buildSharedHoldingsSnapshot(etf);
+    return buildSharedHoldingsSnapshot(etf, options);
   }
   if (etf.derivedHoldings) {
-    return buildDerivedEtfSnapshot(etf);
+    return buildDerivedEtfSnapshot(etf, options);
   }
 
   const ttlSeconds = cacheTtlSeconds();
@@ -398,6 +411,7 @@ async function refreshHoldings(
   );
 
   if (
+    !options.forceRefresh &&
     latest &&
     latestIsPlausible &&
     latestUsesCurrentNormalization &&
@@ -436,6 +450,7 @@ async function refreshHoldings(
 
 export async function getHoldingsSnapshot(
   reference: string,
+  options: RefreshOptions = {},
 ): Promise<HoldingsSnapshot> {
   const normalizedReference = reference.trim();
   let etf: NonNullable<ReturnType<typeof findEtfByReference>>;
@@ -451,11 +466,11 @@ export async function getHoldingsSnapshot(
       error,
     );
   }
-  const cacheKey = `${databasePath()}::${etf.id}`;
+  const cacheKey = `${databasePath()}::${etf.id}::${options.forceRefresh ? "force" : "cached"}`;
   const existing = inFlightRefreshes.get(cacheKey);
   if (existing) return existing;
 
-  const refresh = refreshHoldings(etf)
+  const refresh = refreshHoldings(etf, options)
     .catch((error) => {
       if (error instanceof HoldingsUnavailableError) throw error;
       throw new HoldingsUnavailableError(

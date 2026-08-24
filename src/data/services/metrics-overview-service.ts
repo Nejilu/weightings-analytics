@@ -71,6 +71,10 @@ const resultCache = new Map<string, {
   expiresAt: number;
 }>();
 
+export interface MetricsRefreshOptions {
+  forceRefresh?: boolean;
+}
+
 function cacheTtlSeconds(): number {
   const configured = Number(process.env.TRADINGVIEW_METRICS_TTL_SECONDS);
   return Number.isFinite(configured) && configured > 0
@@ -175,7 +179,10 @@ async function providerOrUnavailable<T>(
   }
 }
 
-async function buildOverview(references: string[]): Promise<MetricsOverviewResult> {
+async function buildOverview(
+  references: string[],
+  options: MetricsRefreshOptions,
+): Promise<MetricsOverviewResult> {
   try {
     ensureLocalDatabase();
     ensureMetricDefinitions();
@@ -195,7 +202,9 @@ async function buildOverview(references: string[]): Promise<MetricsOverviewResul
     );
   }
   const snapshots = await providerOrUnavailable(
-    () => Promise.all(references.map(getHoldingsSnapshot)),
+    () => Promise.all(
+      references.map((reference) => getHoldingsSnapshot(reference, options)),
+    ),
     (error) => error instanceof HoldingsUnavailableError,
   );
   const holdingsAreStale = snapshots.some((snapshot) => snapshot.sourceStatus === "stale");
@@ -204,6 +213,7 @@ async function buildOverview(references: string[]): Promise<MetricsOverviewResul
   const holdings = uniqueEquityHoldings(snapshots);
   const securityIds = holdings.map((holding) => holding.securityId);
   const ttlSeconds = cacheTtlSeconds();
+  const refreshTtlSeconds = options.forceRefresh ? 0 : ttlSeconds;
   const missingEstimateTtlMs = missingEstimateSeriesTtlMs();
   const missingSourceMetricTtl = missingSourceMetricTtlMs();
   let providerSymbols = loadProviderSymbols(securityIds);
@@ -212,7 +222,7 @@ async function buildOverview(references: string[]): Promise<MetricsOverviewResul
     holdings,
     providerSymbols,
     cachedMetrics,
-    ttlSeconds,
+    ttlSeconds: refreshTtlSeconds,
   });
   if (screenerPlan.hasUnresolvedCandidates) sourceWarnings.add("mapping-unresolved");
   const screenerResult = await providerOrUnavailable(
@@ -238,7 +248,7 @@ async function buildOverview(references: string[]): Promise<MetricsOverviewResul
       holdings,
       providerSymbols,
       securityIds,
-      ttlSeconds,
+      ttlSeconds: refreshTtlSeconds,
       missingEstimateTtlMs,
     }),
     (error) => error instanceof EstimatesRefreshUnavailableError,
@@ -352,7 +362,10 @@ export class MetricsOverviewRequestError extends Error {
   }
 }
 
-export function getMetricsOverview(references: string[]): Promise<MetricsOverviewResult> {
+export function getMetricsOverview(
+  references: string[],
+  options: MetricsRefreshOptions = {},
+): Promise<MetricsOverviewResult> {
   if (references.length > MAX_INPUT_REFERENCES) {
     return Promise.reject(new MetricsOverviewRequestError(INVALID_SELECTION_MESSAGE));
   }
@@ -367,23 +380,26 @@ export function getMetricsOverview(references: string[]): Promise<MetricsOvervie
     return Promise.reject(new MetricsOverviewRequestError(INVALID_SELECTION_MESSAGE));
   }
   const key = `${databasePath()}::${normalized.slice().sort().join("|")}`;
-  const cached = resultCache.get(key);
-  if (cached) {
-    if (cached.expiresAt > Date.now()) {
+  if (!options.forceRefresh) {
+    const cached = resultCache.get(key);
+    if (cached) {
+      if (cached.expiresAt > Date.now()) {
+        resultCache.delete(key);
+        resultCache.set(key, cached);
+        return Promise.resolve(resultForOrder(cached.result, normalized));
+      }
       resultCache.delete(key);
-      resultCache.set(key, cached);
-      return Promise.resolve(resultForOrder(cached.result, normalized));
     }
-    resultCache.delete(key);
   }
-  const existing = inFlightRequests.get(key);
+  const requestKey = `${key}::${options.forceRefresh ? "force" : "cached"}`;
+  const existing = inFlightRequests.get(requestKey);
   if (existing) return existing.then((result) => resultForOrder(result, normalized));
-  const request = buildOverview(normalized)
+  const request = buildOverview(normalized, options)
     .then((result) => {
       cacheResult(key, result);
       return result;
     })
-    .finally(() => inFlightRequests.delete(key));
-  inFlightRequests.set(key, request);
+    .finally(() => inFlightRequests.delete(requestKey));
+  inFlightRequests.set(requestKey, request);
   return request;
 }

@@ -436,6 +436,9 @@ export const ETF_CATALOG: CatalogGroup[] = [
             "WDC",
             "WDAY",
           ],
+          componentSecurityIds: {
+            ADP: "US0530151036",
+          },
         },
       },
     ],

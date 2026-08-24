@@ -4,6 +4,7 @@ import test from "node:test";
 import type { Holding } from "./etf";
 import {
   mergeEquivalentHoldings,
+  securityListingQuoteSymbol,
   securityQuoteAlias,
 } from "./security-equivalence";
 
@@ -48,6 +49,30 @@ test("maps Asian primary listings to explicit Yahoo depositary symbols", () => {
       instrumentType: "GDR",
       underlyingTicker: "000660",
     },
+  );
+});
+
+test("builds explicit Yahoo symbols for dominant local Asian listings", () => {
+  assert.equal(
+    securityListingQuoteSymbol(
+      { ticker: "005930", name: "SAMSUNG ELECTRONICS LTD", country: "Korea (South)" },
+      "005930",
+    ),
+    "005930.KS",
+  );
+  assert.equal(
+    securityListingQuoteSymbol(
+      { ticker: "2330", name: "TAIWAN SEMICONDUCTOR", country: "Taiwan" },
+      "2330",
+    ),
+    "2330.TW",
+  );
+  assert.equal(
+    securityListingQuoteSymbol(
+      { ticker: "GOOGL", name: "ALPHABET INC", country: "United States" },
+      "GOOGL",
+    ),
+    "GOOGL",
   );
 });
 

@@ -6,7 +6,7 @@ import { ensureLocalDatabase } from "@/db/bootstrap";
 import { findEtfByReference } from "@/db/repositories/catalog-repository";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
   const { ticker } = await context.params;
@@ -35,13 +35,14 @@ export async function GET(
   }
 
   try {
-    const snapshot = await getHoldingsSnapshot(ticker);
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
+    const snapshot = await getHoldingsSnapshot(ticker, { forceRefresh });
     return Response.json(
       { data: snapshot },
       {
         headers: {
           "Cache-Control":
-            snapshot.sourceStatus === "stale"
+            forceRefresh || snapshot.sourceStatus === "stale"
               ? "no-store"
               : "public, max-age=300, s-maxage=86400, stale-while-revalidate=3600",
         },

@@ -6,13 +6,21 @@ import {
 import { metricsOverviewHttpResponse } from "./etag";
 
 export async function GET(request: Request) {
-  const references = new URL(request.url).searchParams
+  const url = new URL(request.url);
+  const forceRefresh = url.searchParams.get("refresh") === "true";
+  const references = url.searchParams
     .get("etfs")
     ?.split(",")
     .map((reference) => reference.trim())
     .filter(Boolean) ?? [];
   try {
-    const result = await getMetricsOverview(references);
+    const result = await getMetricsOverview(references, { forceRefresh });
+    if (forceRefresh) {
+      return Response.json(
+        { data: result },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     return metricsOverviewHttpResponse(
       result,
       request.headers.get("if-none-match"),

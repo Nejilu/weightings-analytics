@@ -8,6 +8,7 @@ import "../src/domain/processors/derive-market-value-holdings.test";
 import "../src/domain/processors/merge-cash-position.test";
 import "../src/domain/security-equivalence.test";
 import "../src/domain/security-identity.test";
+import "../src/domain/geography.test";
 import "../src/domain/etf-creator.test";
 import "../src/data/providers/tradingview-symbols.test";
 import "../src/data/providers/tradingview-screener.test";

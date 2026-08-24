@@ -4,9 +4,13 @@ import test from "node:test";
 import type { Holding } from "../etf";
 import { deriveMarketValueHoldings } from "./derive-market-value-holdings";
 
-function holding(ticker: string, marketValue?: number): Holding {
+function holding(
+  ticker: string,
+  marketValue?: number,
+  securityId = `security:${ticker}`,
+): Holding {
   return {
-    securityId: `security:${ticker}`,
+    securityId,
     ticker,
     name: ticker,
     sector: "Technology",
@@ -75,5 +79,43 @@ test("reports unavailable constituents while renormalizing the remaining univers
   assert.equal(
     result.holdings.reduce((total, item) => total + item.weight, 0),
     100,
+  );
+});
+
+test("rejects ambiguous source tickers instead of selecting by row order", () => {
+  assert.throws(
+    () =>
+      deriveMarketValueHoldings(
+        [
+          holding("ADP", 1, "FR0010340141"),
+          holding("ADP", 40, "US0530151036"),
+        ],
+        ["ADP"],
+        { missingComponentPolicy: "exclude-and-renormalize" },
+      ),
+    /Ambiguous derived component tickers: ADP.*componentSecurityIds/,
+  );
+});
+
+test("uses a durable security identity to resolve an ambiguous source ticker", () => {
+  const result = deriveMarketValueHoldings(
+    [
+      holding("ADP", 1, "FR0010340141"),
+      holding("ADP", 40, "US0530151036"),
+      holding("MSFT", 60, "US5949181045"),
+    ],
+    ["ADP", "MSFT"],
+    {
+      componentSecurityIds: { adp: "US0530151036" },
+      missingComponentPolicy: "exclude-and-renormalize",
+    },
+  );
+
+  assert.deepEqual(
+    result.holdings.map(({ securityId, weight }) => [securityId, weight]),
+    [
+      ["US5949181045", 60],
+      ["US0530151036", 40],
+    ],
   );
 });

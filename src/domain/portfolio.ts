@@ -117,6 +117,8 @@ export interface PortfolioContribution {
 export interface PortfolioLookThroughPosition extends PortfolioSecurity {
   weight: number;
   contributions: PortfolioContribution[];
+  quoteSecurityId?: string;
+  quoteTicker?: string;
 }
 
 export interface PortfolioSectorExposure {

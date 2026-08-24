@@ -8,6 +8,7 @@ interface DerivedMarketValueHoldings {
 
 interface DeriveMarketValueHoldingsOptions {
   missingComponentPolicy?: "exclude-and-renormalize";
+  componentSecurityIds?: Record<string, string>;
 }
 
 export function deriveMarketValueHoldings(
@@ -15,11 +16,20 @@ export function deriveMarketValueHoldings(
   componentTickers: string[],
   options: DeriveMarketValueHoldingsOptions = {},
 ): DerivedMarketValueHoldings {
-  const sourceByTicker = new Map(
-    sourceHoldings.map((holding) => [holding.ticker.toUpperCase(), holding]),
-  );
+  const sourceByTicker = new Map<string, Holding[]>();
+  for (const holding of sourceHoldings) {
+    const ticker = holding.ticker.trim().toUpperCase();
+    const candidates = sourceByTicker.get(ticker) ?? [];
+    candidates.push(holding);
+    sourceByTicker.set(ticker, candidates);
+  }
   const normalizedTickers = componentTickers.map((ticker) =>
     ticker.trim().toUpperCase(),
+  );
+  const componentSecurityIds = new Map(
+    Object.entries(options.componentSecurityIds ?? {}).map(
+      ([ticker, securityId]) => [ticker.trim().toUpperCase(), securityId],
+    ),
   );
   const duplicateTickers = normalizedTickers.filter(
     (ticker, index) => normalizedTickers.indexOf(ticker) !== index,
@@ -30,9 +40,42 @@ export function deriveMarketValueHoldings(
     );
   }
 
-  const missingTickers = normalizedTickers.filter(
-    (ticker) => !sourceByTicker.has(ticker),
-  );
+  const selectedByTicker = new Map<string, Holding>();
+  const missingTickers: string[] = [];
+  const ambiguousTickers: string[] = [];
+  for (const ticker of normalizedTickers) {
+    const candidates = sourceByTicker.get(ticker) ?? [];
+    const configuredSecurityId = componentSecurityIds.get(ticker);
+    if (configuredSecurityId) {
+      const configured = candidates.find(
+        (holding) => holding.securityId === configuredSecurityId,
+      );
+      if (!configured) {
+        throw new Error(
+          `Configured derived component identity ${ticker}=${configuredSecurityId} is unavailable in the source ETF.`,
+        );
+      }
+      selectedByTicker.set(ticker, configured);
+      continue;
+    }
+    if (candidates.length === 0) {
+      missingTickers.push(ticker);
+      continue;
+    }
+    if (candidates.length > 1) {
+      ambiguousTickers.push(
+        `${ticker} (${candidates.map((holding) =>
+          `${holding.name} [${holding.securityId}]`).join("; ")})`,
+      );
+      continue;
+    }
+    selectedByTicker.set(ticker, candidates[0]);
+  }
+  if (ambiguousTickers.length > 0) {
+    throw new Error(
+      `Ambiguous derived component tickers: ${ambiguousTickers.join(", ")}. Configure componentSecurityIds with durable identities.`,
+    );
+  }
   if (
     missingTickers.length > 0 &&
     options.missingComponentPolicy !== "exclude-and-renormalize"
@@ -43,7 +86,7 @@ export function deriveMarketValueHoldings(
   }
 
   const selected = normalizedTickers.flatMap((ticker) => {
-    const holding = sourceByTicker.get(ticker);
+    const holding = selectedByTicker.get(ticker);
     return holding ? [holding] : [];
   });
   const invalidMarketValues = selected
