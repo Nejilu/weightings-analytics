@@ -25,6 +25,7 @@ export function startStandalone() {
     cwd: projectRoot,
     env: {
       ...process.env,
+      HOSTNAME: "0.0.0.0",
       DRIZZLE_MIGRATIONS_PATH: process.env.DRIZZLE_MIGRATIONS_PATH ??
         resolve(projectRoot, "drizzle"),
     },

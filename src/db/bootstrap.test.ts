@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { ensureLocalDatabase } from "./bootstrap";
@@ -56,12 +56,10 @@ test("reinitializes migrations and catalog when DATABASE_PATH changes", () => {
 });
 
 test("anchors direct standalone runtime paths to the project root", () => {
+  const projectRoot = resolve("weightings-analytics");
   assert.equal(
-    applicationRoot("C:\\work\\weightings-analytics\\.next\\standalone"),
-    "C:\\work\\weightings-analytics",
+    applicationRoot(join(projectRoot, ".next", "standalone")),
+    projectRoot,
   );
-  assert.equal(
-    applicationRoot("C:\\work\\weightings-analytics"),
-    "C:\\work\\weightings-analytics",
-  );
+  assert.equal(applicationRoot(projectRoot), projectRoot);
 });
