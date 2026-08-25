@@ -81,7 +81,7 @@ async function scanBatch(symbols: string[], fetcher: typeof fetch): Promise<Trad
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      "User-Agent": "IndexLens/0.1 metrics research",
+      "User-Agent": "WeightingsAnalytics/0.1 metrics research",
     },
     body: JSON.stringify({
       symbols: { tickers: symbols, query: { types: [] } },

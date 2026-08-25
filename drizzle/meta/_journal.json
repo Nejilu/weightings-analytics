@@ -92,6 +92,13 @@
       "when": 1787184000000,
       "tag": "0012_correct_panx_adp_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787661442846,
+      "tag": "0013_rebrand_weightings_analytics",
+      "breakpoints": true
     }
   ]
 }

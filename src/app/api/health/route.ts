@@ -9,7 +9,7 @@ export function GET() {
     return Response.json(
       {
         status: "unhealthy",
-        service: "index-lens",
+        service: "weightings-analytics",
         database: { status: "unavailable" },
       },
       { status: 503, headers: { "Cache-Control": "no-store" } },
@@ -19,7 +19,7 @@ export function GET() {
   return Response.json(
     {
       status: "healthy",
-      service: "index-lens",
+      service: "weightings-analytics",
       version: "0.1.0",
       database: {
         status: "ready",

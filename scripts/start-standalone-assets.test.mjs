@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { prepareStandaloneAssets } from "./start-standalone-assets.mjs";
 
 test("copies static and public assets into the standalone layout", () => {
-  const root = mkdtempSync(join(tmpdir(), "index-lens-standalone-assets-"));
+  const root = mkdtempSync(join(tmpdir(), "weightings-analytics-standalone-assets-"));
   try {
     mkdirSync(join(root, ".next", "static"), { recursive: true });
     mkdirSync(join(root, "public"), { recursive: true });
@@ -39,7 +39,7 @@ test("copies static and public assets into the standalone layout", () => {
 });
 
 test("reports missing build assets without creating a false standalone layout", () => {
-  const root = mkdtempSync(join(tmpdir(), "index-lens-standalone-assets-empty-"));
+  const root = mkdtempSync(join(tmpdir(), "weightings-analytics-standalone-assets-empty-"));
   try {
     assert.deepEqual(prepareStandaloneAssets(root), {
       staticCopied: false,

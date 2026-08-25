@@ -7,6 +7,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_PATH ?? ".data/index-lens.sqlite",
+    url: process.env.DATABASE_PATH ?? ".data/weightings-analytics.sqlite",
   },
 });

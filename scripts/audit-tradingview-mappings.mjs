@@ -17,7 +17,7 @@ const SOURCE_METRIC_DEFINITION_IDS = [
 const ESTIMATE_SERIES_DEFINITION_ID = "security:eps_estimate_series:v1";
 
 function configuredDatabasePath(value = process.env.DATABASE_PATH) {
-  const configured = value?.trim() || ".data/index-lens.sqlite";
+  const configured = value?.trim() || ".data/weightings-analytics.sqlite";
   return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
 }
 

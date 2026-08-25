@@ -252,7 +252,7 @@ export async function fetchIsharesHoldingsFile(
             Accept: url.includes(BLACKROCK_PRODUCT_DATA_PATH)
               ? "application/json,*/*;q=0.8"
               : CSV_ACCEPT_HEADER,
-            "User-Agent": "IndexLens/0.1 holdings-research",
+            "User-Agent": "WeightingsAnalytics/0.1 holdings-research",
           },
           // SQLite is the single 24-hour holdings cache. Reusing Next's
           // revalidation cache here can return a stale response once and then

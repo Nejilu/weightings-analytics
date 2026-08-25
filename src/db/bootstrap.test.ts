@@ -15,8 +15,8 @@ import { etfs } from "./schema";
 
 test("reinitializes migrations and catalog when DATABASE_PATH changes", () => {
   const originalPath = process.env.DATABASE_PATH;
-  const firstDirectory = mkdtempSync(join(tmpdir(), "index-lens-bootstrap-a-"));
-  const secondDirectory = mkdtempSync(join(tmpdir(), "index-lens-bootstrap-b-"));
+  const firstDirectory = mkdtempSync(join(tmpdir(), "weightings-analytics-bootstrap-a-"));
+  const secondDirectory = mkdtempSync(join(tmpdir(), "weightings-analytics-bootstrap-b-"));
   try {
     process.env.DATABASE_PATH = join(firstDirectory, "first.sqlite");
     ensureLocalDatabase();
@@ -57,11 +57,11 @@ test("reinitializes migrations and catalog when DATABASE_PATH changes", () => {
 
 test("anchors direct standalone runtime paths to the project root", () => {
   assert.equal(
-    applicationRoot("C:\\work\\index-lens\\.next\\standalone"),
-    "C:\\work\\index-lens",
+    applicationRoot("C:\\work\\weightings-analytics\\.next\\standalone"),
+    "C:\\work\\weightings-analytics",
   );
   assert.equal(
-    applicationRoot("C:\\work\\index-lens"),
-    "C:\\work\\index-lens",
+    applicationRoot("C:\\work\\weightings-analytics"),
+    "C:\\work\\weightings-analytics",
   );
 });

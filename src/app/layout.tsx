@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const metadataBase = new URL(
     host ? `${protocol}://${host}` : "http://localhost:3000",
   );
-  const title = "IndexLens — ETF & Portfolio Look-Through Analytics";
+  const title = "Weightings Analytics — Holdings & Portfolio Look-Through";
   const description =
     "Explore ETF holdings, free-float weight distortion, optional peer comparisons, and security-level portfolios.";
 
@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
           url: "/og.png",
           width: 1732,
           height: 908,
-          alt: "IndexLens ETF holdings and portfolio analytics",
+          alt: "Weightings Analytics holdings and portfolio analytics",
         },
       ],
     },
@@ -51,7 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           id="theme-init"
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var saved=localStorage.getItem("indexlens-theme");var theme=saved==="light"||saved==="dark"?saved:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme}catch(e){}})();`,
+            __html: `(function(){try{var saved=localStorage.getItem("weightings-analytics-theme");var theme=saved==="light"||saved==="dark"?saved:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme}catch(e){}})();`,
           }}
         />
       </head>

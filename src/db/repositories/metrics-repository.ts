@@ -36,7 +36,7 @@ export interface ProviderNegativeCacheEntry {
 }
 
 const globalMetricsState = globalThis as typeof globalThis & {
-  __indexLensMetricDefinitionsReady?: Set<string>;
+  __weightingsAnalyticsMetricDefinitionsReady?: Set<string>;
 };
 const METRIC_DEFINITIONS_CACHE_VERSION = JSON.stringify({
   definitions: METRIC_DEFINITIONS,
@@ -217,14 +217,14 @@ export function ensureMetricDefinitions(): void {
   const path = databasePath();
   const db = getDb();
   const readyKey = `${path}:${METRIC_DEFINITIONS_CACHE_VERSION}`;
-  if (globalMetricsState.__indexLensMetricDefinitionsReady?.has(readyKey)) {
+  if (globalMetricsState.__weightingsAnalyticsMetricDefinitionsReady?.has(readyKey)) {
     const present = db
       .select({ id: metricDefinitions.id })
       .from(metricDefinitions)
       .where(inArray(metricDefinitions.id, EXPECTED_METRIC_DEFINITION_IDS))
       .all();
     if (present.length === EXPECTED_METRIC_DEFINITION_IDS.length) return;
-    globalMetricsState.__indexLensMetricDefinitionsReady.delete(readyKey);
+    globalMetricsState.__weightingsAnalyticsMetricDefinitionsReady.delete(readyKey);
   }
 
   db.transaction((transaction) => {
@@ -288,7 +288,7 @@ export function ensureMetricDefinitions(): void {
       })
       .run();
   });
-  (globalMetricsState.__indexLensMetricDefinitionsReady ??= new Set()).add(readyKey);
+  (globalMetricsState.__weightingsAnalyticsMetricDefinitionsReady ??= new Set()).add(readyKey);
 }
 
 export function loadLatestEstimateSeries(securityIds: string[]): Map<string, CachedEstimateSeries> {

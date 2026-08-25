@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-const temporaryDirectory = mkdtempSync(join(tmpdir(), "index-lens-metrics-"));
+const temporaryDirectory = mkdtempSync(join(tmpdir(), "weightings-analytics-metrics-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(temporaryDirectory, "metrics.sqlite");
 

@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 
 const migrationDirectory = resolve(process.cwd(), "drizzle");
 const temporaryDirectory = mkdtempSync(
-  join(tmpdir(), "index-lens-migrations-"),
+  join(tmpdir(), "weightings-analytics-migrations-"),
 );
 const databaseFile = join(temporaryDirectory, "upgrade.sqlite");
 const sqlite = new Database(databaseFile);
