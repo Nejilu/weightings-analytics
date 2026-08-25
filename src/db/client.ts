@@ -16,7 +16,7 @@ interface DatabaseState {
 }
 
 const globalDatabase = globalThis as typeof globalThis & {
-  __indexLensDatabase?: DatabaseState;
+  __weightingsAnalyticsDatabase?: DatabaseState;
 };
 
 export function applicationRoot(workingDirectory = process.cwd()): string {
@@ -29,7 +29,7 @@ export function applicationRoot(workingDirectory = process.cwd()): string {
 
 export function databasePath(): string {
   const configured = process.env.DATABASE_PATH?.trim();
-  const value = configured || ".data/index-lens.sqlite";
+  const value = configured || ".data/weightings-analytics.sqlite";
   return isAbsolute(value)
     ? value
     : resolve(/* turbopackIgnore: true */ applicationRoot(), value);
@@ -54,13 +54,13 @@ function createDatabase(): DatabaseState {
 
 export function databaseState(): DatabaseState {
   const path = databasePath();
-  const existing = globalDatabase.__indexLensDatabase;
+  const existing = globalDatabase.__weightingsAnalyticsDatabase;
   if (existing && (existing.path !== path || !existing.sqlite.open)) {
     if (existing.sqlite.open) existing.sqlite.close();
-    delete globalDatabase.__indexLensDatabase;
+    delete globalDatabase.__weightingsAnalyticsDatabase;
   }
-  globalDatabase.__indexLensDatabase ??= createDatabase();
-  return globalDatabase.__indexLensDatabase;
+  globalDatabase.__weightingsAnalyticsDatabase ??= createDatabase();
+  return globalDatabase.__weightingsAnalyticsDatabase;
 }
 
 export function getDb(): BetterSQLite3Database<typeof schema> {
@@ -72,12 +72,12 @@ export function getSqlite(): BetterSqlite3.Database {
 }
 
 export function isDatabaseOpen(): boolean {
-  return Boolean(globalDatabase.__indexLensDatabase?.sqlite.open);
+  return Boolean(globalDatabase.__weightingsAnalyticsDatabase?.sqlite.open);
 }
 
 export function closeDatabase(): void {
-  const state = globalDatabase.__indexLensDatabase;
+  const state = globalDatabase.__weightingsAnalyticsDatabase;
   if (!state) return;
   state.sqlite.close();
-  delete globalDatabase.__indexLensDatabase;
+  delete globalDatabase.__weightingsAnalyticsDatabase;
 }

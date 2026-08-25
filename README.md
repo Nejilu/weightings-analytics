@@ -1,8 +1,8 @@
-# IndexLens
+# Weightings Analytics
 
-IndexLens is a local-first Next.js application for analysing ETF holdings,
-comparing underlying exposures, building look-through portfolios, and creating
-reusable ETFs from iShares source universes.
+Weightings Analytics is a local-first Next.js application for analysing ETF
+holdings, comparing underlying exposures, building look-through portfolios,
+and creating reusable ETFs from iShares source universes.
 
 ## Features
 
@@ -51,7 +51,7 @@ Copy `.env.example` to `.env` only when overriding a default.
 
 | Variable | Default | Valid values / purpose |
 | --- | ---: | --- |
-| `DATABASE_PATH` | `.data/index-lens.sqlite` | Durable SQLite database path |
+| `DATABASE_PATH` | `.data/weightings-analytics.sqlite` | Durable SQLite database path |
 | `DRIZZLE_MIGRATIONS_PATH` | `drizzle` | Migration directory; useful when embedded in another runtime image |
 | `HOLDINGS_CACHE_TTL_SECONDS` | `86400` | Positive holdings snapshot TTL |
 | `HOLDINGS_REFRESH_CONCURRENCY` | `4` | Parallel holdings refreshes, 1–8 |

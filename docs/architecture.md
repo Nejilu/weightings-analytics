@@ -1,7 +1,8 @@
 # Architecture and data contracts
 
-This document contains the durable technical decisions behind IndexLens. It
-describes current behaviour, not implementation history or a work plan.
+This document contains the durable technical decisions behind Weightings
+Analytics. It describes current behaviour, not implementation history or a
+work plan.
 
 ## Request flow
 

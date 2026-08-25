@@ -18,7 +18,7 @@ import {
 
 test("reconciles source fallback IDs into one canonical security across every consumer", () => {
   const originalPath = process.env.DATABASE_PATH;
-  const directory = mkdtempSync(join(tmpdir(), "index-lens-identities-"));
+  const directory = mkdtempSync(join(tmpdir(), "weightings-analytics-identities-"));
   try {
     process.env.DATABASE_PATH = join(directory, "identity.sqlite");
     closeDatabase();
@@ -200,7 +200,7 @@ test("reconciles source fallback IDs into one canonical security across every co
 
 test("reconciles tickerless mutual-fund names regardless of snapshot load order", () => {
   const originalPath = process.env.DATABASE_PATH;
-  const directory = mkdtempSync(join(tmpdir(), "index-lens-name-identities-"));
+  const directory = mkdtempSync(join(tmpdir(), "weightings-analytics-name-identities-"));
   try {
     process.env.DATABASE_PATH = join(directory, "identity.sqlite");
     closeDatabase();

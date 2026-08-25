@@ -15,7 +15,7 @@ import {
 
 test("persists signed positions and multi-currency cash in saved portfolios", () => {
   const originalPath = process.env.DATABASE_PATH;
-  const directory = mkdtempSync(join(tmpdir(), "index-lens-portfolio-cash-"));
+  const directory = mkdtempSync(join(tmpdir(), "weightings-analytics-portfolio-cash-"));
   try {
     process.env.DATABASE_PATH = join(directory, "portfolio.sqlite");
     closeDatabase();

@@ -113,11 +113,12 @@ textarea:focus-visible {
 .brand {
   align-items: center;
   display: flex;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 720;
-  gap: 11px;
+  gap: 8px;
   letter-spacing: -0.4px;
   padding: 0 8px 26px;
+  white-space: nowrap;
 }
 
 .brand-mark {

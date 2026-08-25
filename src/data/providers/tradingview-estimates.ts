@@ -165,7 +165,7 @@ async function fetchBatch(
     const quoteSession = sessionId();
     const socket = new WebSocket(TRADINGVIEW_SOCKET_URL, {
       origin: "https://www.tradingview.com",
-      headers: { "User-Agent": "IndexLens/0.1 estimates research" },
+      headers: { "User-Agent": "WeightingsAnalytics/0.1 estimates research" },
     });
     const valuesBySymbol = new Map<string, RawQuoteValues>();
     const completed = new Set<string>();

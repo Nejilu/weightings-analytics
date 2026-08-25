@@ -18,7 +18,7 @@ mkdirSync(backupDirectory, { recursive: true });
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const destination = join(
   backupDirectory,
-  `index-lens-${timestamp}.sqlite`,
+  `weightings-analytics-${timestamp}.sqlite`,
 );
 
 await getSqlite().backup(destination);

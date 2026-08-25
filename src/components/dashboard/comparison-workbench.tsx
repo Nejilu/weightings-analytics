@@ -143,7 +143,7 @@ function ThemeToggle({ mobile = false }: { mobile?: boolean }) {
     const nextTheme = root.dataset.theme === "dark" ? "light" : "dark";
     root.dataset.theme = nextTheme;
     root.style.colorScheme = nextTheme;
-    localStorage.setItem("indexlens-theme", nextTheme);
+    localStorage.setItem("weightings-analytics-theme", nextTheme);
   };
 
   return (
@@ -1254,7 +1254,7 @@ function DataUnavailableState({
         <p>
           {hasError
             ? "The holdings deep dive remains empty until the required source data is available."
-            : "IndexLens loads official provider and index data, then caches each response for 24 hours."}
+            : "Weightings Analytics loads official provider and index data, then caches each response for 24 hours."}
         </p>
       </div>
       <div className="availability-grid">
@@ -1489,7 +1489,7 @@ export function ComparisonWorkbench({
             <i />
             <i />
           </span>
-          <span>IndexLens</span>
+          <span>Weightings Analytics</span>
         </div>
         <ThemeToggle mobile />
         <nav className="main-nav" aria-label="Primary navigation">
@@ -2060,7 +2060,7 @@ export function ComparisonWorkbench({
           )}
 
           <footer className="disclaimer">
-            <span>IndexLens</span>
+            <span>Weightings Analytics</span>
             Indicative data sourced from fund and index providers. Holdings may
             change without notice. Fundamental metrics are sourced from TradingView.
             This is not investment advice.

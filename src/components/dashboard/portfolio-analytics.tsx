@@ -1448,8 +1448,8 @@ export function PortfolioAnalytics({
               <span className="eyebrow">Reusable local instrument</span>
               <h2>{workflowMode === "edit" ? "Update this portfolio ETF" : "Save this portfolio as an ETF"}</h2>
               <p>
-                IndexLens stores the number of ETF and stock shares, not frozen
-                percentages or a frozen holdings list. Component weights are
+                Weightings Analytics stores the number of ETF and stock shares,
+                not frozen percentages or a frozen holdings list. Component weights are
                 recalculated from market prices, and ETF look-through is rebuilt
                 from the latest persisted source files whenever it is opened or
                 compared.

@@ -15,7 +15,7 @@ import {
 
 test("updates and fully deletes custom and portfolio ETFs", () => {
   const originalPath = process.env.DATABASE_PATH;
-  const directory = mkdtempSync(join(tmpdir(), "index-lens-local-etfs-"));
+  const directory = mkdtempSync(join(tmpdir(), "weightings-analytics-local-etfs-"));
   try {
     process.env.DATABASE_PATH = join(directory, "local-etfs.sqlite");
     closeDatabase();
@@ -24,9 +24,9 @@ test("updates and fully deletes custom and portfolio ETFs", () => {
 
     sqlite.exec(`
       INSERT INTO benchmarks (id, name, provider)
-      VALUES ('test-custom', 'Test custom', 'IndexLens');
+      VALUES ('test-custom', 'Test custom', 'Weightings Analytics');
       INSERT INTO benchmarks (id, name, provider)
-      VALUES ('test-portfolio', 'Test portfolio', 'IndexLens');
+      VALUES ('test-portfolio', 'Test portfolio', 'Weightings Analytics');
       INSERT INTO securities (id, primary_ticker, name)
       VALUES ('LOCAL-SECURITY', 'LOCAL', 'Local security');
       INSERT INTO portfolios (id, name, base_currency)
@@ -37,8 +37,8 @@ test("updates and fully deletes custom and portfolio ETFs", () => {
         holdings_url, fund_type, portfolio_id
       ) VALUES (
         'custom-etf-test', 'CUST', 'LOCAL-CUST', 'Old custom name',
-        'IndexLens', 'test-custom', 'SYNTHETIC', 'Local workspace',
-        'IndexLens', 'USD', 'Look-through', '/custom', 'local://custom',
+        'Weightings Analytics', 'test-custom', 'SYNTHETIC', 'Local workspace',
+        'Weightings Analytics', 'USD', 'Look-through', '/custom', 'local://custom',
         'custom', NULL
       );
       INSERT INTO etfs (
@@ -47,8 +47,8 @@ test("updates and fully deletes custom and portfolio ETFs", () => {
         holdings_url, fund_type, portfolio_id
       ) VALUES (
         'portfolio-etf-test', 'PORT', 'LOCAL-PORT', 'Old portfolio name',
-        'IndexLens', 'test-portfolio', 'SYNTHETIC', 'Local workspace',
-        'IndexLens', 'USD', 'Look-through', '/portfolio', 'local://portfolio',
+        'Weightings Analytics', 'test-portfolio', 'SYNTHETIC', 'Local workspace',
+        'Weightings Analytics', 'USD', 'Look-through', '/portfolio', 'local://portfolio',
         'portfolio', 'saved-portfolio-test'
       );
       INSERT INTO holding_snapshots (
