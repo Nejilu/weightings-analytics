@@ -17,6 +17,11 @@ export interface MarketValueDerivedHoldingsDefinition {
   compositionSourceUrl: string;
   weighting: "source-market-value-normalized";
   componentTickers: string[];
+  /**
+   * Durable security IDs for component tickers that are ambiguous inside the
+   * source ETF (for example ADP in both France and the United States).
+   */
+  componentSecurityIds?: Record<string, string>;
   missingComponentPolicy: "exclude-and-renormalize";
 }
 

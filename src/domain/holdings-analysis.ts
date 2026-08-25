@@ -17,7 +17,9 @@ export interface HoldingsAnalysisPosition {
   sector: string;
   assetClass: string;
   country: string;
+  isCash: boolean;
   publishedWeight: number;
+  normalizedWeightExCash: number | null;
   actualWeight: number | null;
   counterfactualWeight: number | null;
   weightDelta: number | null;
@@ -51,6 +53,8 @@ export interface HoldingsAnalysisResult {
   calculatedAt: string;
   holdingsCount: number;
   equityHoldingsCount: number;
+  cashHoldingsCount: number;
+  cashWeight: number;
   top10Concentration: number;
   topPosition: {
     ticker: string;

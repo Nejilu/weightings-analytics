@@ -51,6 +51,16 @@ function mapDerivedHoldings(
     typeof record.constituentsReviewedAt === "string" &&
     Array.isArray(record.componentTickers) &&
     record.componentTickers.every((ticker) => typeof ticker === "string") &&
+    (record.componentSecurityIds === undefined ||
+      (record.componentSecurityIds !== null &&
+        typeof record.componentSecurityIds === "object" &&
+        !Array.isArray(record.componentSecurityIds) &&
+        Object.entries(record.componentSecurityIds).every(
+          ([ticker, securityId]) =>
+            ticker.trim().length > 0 &&
+            typeof securityId === "string" &&
+            securityId.trim().length > 0,
+        ))) &&
     record.missingComponentPolicy === "exclude-and-renormalize" &&
     record.weighting === "source-market-value-normalized"
   ) {
@@ -194,17 +204,26 @@ export function findSecuritiesByIds(
     .all();
 
   return new Map(
-    rows.map((row) => [
-      row.id,
-      {
-        securityId: row.id,
-        ticker: row.primaryTicker ?? "—",
-        name: row.name,
-        sector: row.sector ?? "Unclassified",
-        assetClass: row.assetClass ?? "Unclassified",
-        country: row.country ?? "Not reported",
-        isin: row.isin ?? undefined,
-      },
-    ]),
+    rows.map((row) => {
+      const identifiers = row.identifiersJson &&
+        typeof row.identifiersJson === "object"
+        ? row.identifiersJson as Record<string, unknown>
+        : {};
+      return [
+        row.id,
+        {
+          securityId: row.id,
+          ticker: row.primaryTicker ?? "—",
+          name: row.name,
+          sector: row.sector ?? "Unclassified",
+          assetClass: row.assetClass ?? "Unclassified",
+          country: row.country ?? "Not reported",
+          isin: row.isin ?? undefined,
+          exchange: typeof identifiers.exchange === "string"
+            ? identifiers.exchange
+            : undefined,
+        },
+      ];
+    }),
   );
 }

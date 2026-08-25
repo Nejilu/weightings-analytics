@@ -32,6 +32,7 @@ import type {
   WeightedMetric,
 } from "@/domain/metrics";
 import { EtfSearch } from "./etf-search";
+import { ManualRefreshButton } from "./manual-refresh-button";
 
 interface MetricsOverviewProps {
   catalog: CatalogGroup[];
@@ -759,7 +760,7 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
     }
   };
 
-  const analyze = async () => {
+  const analyze = async (forceRefresh = false) => {
     const uniqueIds = [...new Set(selectedIds.filter(Boolean))];
     if (uniqueIds.length === 0) return;
     invalidateRequest();
@@ -769,7 +770,7 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
     setError(null);
     setResult(null);
     try {
-      const response = await fetch(`/api/v1/metrics/overview?etfs=${encodeURIComponent(uniqueIds.join(","))}`, {
+      const response = await fetch(`/api/v1/metrics/overview?etfs=${encodeURIComponent(uniqueIds.join(","))}${forceRefresh ? "&refresh=true" : ""}`, {
         cache: "no-cache",
         signal: controller.signal,
       });
@@ -793,7 +794,10 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
     <div className="metrics-overview">
       <section className="metrics-hero panel">
         <div><span className="eyebrow">Constituent fundamentals</span><h1>Metrics overview</h1><p>Compare valuation and earnings expectations from each holding up to the ETF level, with metric-by-metric coverage.</p></div>
-        <div className="metrics-provider-mark"><span>TV</span><div><strong>TradingView Screener + Estimates</strong><small>Batched · daily cache</small></div></div>
+        <div className="panel-refresh-actions">
+          <div className="metrics-provider-mark"><span>TV</span><div><strong>TradingView Screener + Estimates</strong><small>Batched · daily cache</small></div></div>
+          <ManualRefreshButton loading={loading} onRefresh={() => void analyze(true)} />
+        </div>
       </section>
 
       <section className="metrics-builder panel">
@@ -806,7 +810,7 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
           ))}
           {selectedIds.length < 4 ? <button className="metrics-add" type="button" onClick={addSelection}><b>+</b><span>Add ETF</span><small>Up to four funds</small></button> : null}
         </div>
-        <div className="metrics-builder-action"><small>First load may take longer while constituent symbols are resolved.</small><button className="primary-button" type="button" onClick={analyze} disabled={loading}>{loading ? <span className="spinner" /> : <span>Load metrics</span>}</button></div>
+        <div className="metrics-builder-action"><small>First load may take longer while constituent symbols are resolved.</small><button className="primary-button" type="button" onClick={() => void analyze()} disabled={loading}>{loading ? <span className="spinner" /> : <span>Load metrics</span>}</button></div>
       </section>
 
       {error ? <div className="alert alert--error">{error}</div> : null}

@@ -20,6 +20,7 @@ import type {
 import type { LocalEtfDetail } from "@/domain/local-etf";
 
 import { EtfSearch } from "./etf-search";
+import { ManualRefreshButton } from "./manual-refresh-button";
 
 interface EtfCreatorProps {
   catalog: CatalogGroup[];
@@ -33,6 +34,24 @@ function formatPercent(value: number, digits = 2) {
 function formatDate(value: string) {
   const date = value.slice(0, 10).split("-");
   return date.length === 3 ? `${date[2]}/${date[1]}/${date[0]}` : value;
+}
+
+async function fetchHoldingsSnapshot(
+  etfId: string,
+  options: { forceRefresh?: boolean; signal?: AbortSignal } = {},
+): Promise<HoldingsSnapshot> {
+  const response = await fetch(
+    `/api/v1/holdings/${encodeURIComponent(etfId)}${options.forceRefresh ? "?refresh=true" : ""}`,
+    { cache: "no-store", signal: options.signal },
+  );
+  const payload = (await response.json()) as {
+    data?: HoldingsSnapshot;
+    error?: string;
+  };
+  if (!response.ok || !payload.data) {
+    throw new Error(payload.error ?? "The selected ETF universe is unavailable.");
+  }
+  return payload.data;
 }
 
 function ToggleMode({
@@ -143,6 +162,7 @@ export function EtfCreator({
   );
   const [source, setSource] = useState<HoldingsSnapshot | null>(null);
   const [sourceLoading, setSourceLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [countryMode, setCountryMode] =
     useState<CreatorFilterMode>("include");
   const [countries, setCountries] = useState<string[]>([]);
@@ -181,21 +201,7 @@ export function EtfCreator({
     void (async () => {
       setSourceLoading(true);
       try {
-        const response = await fetch(
-          `/api/v1/holdings/${encodeURIComponent(sourceEtfId)}`,
-          {
-          cache: "no-store",
-          signal: controller.signal,
-          },
-        );
-        const payload = (await response.json()) as {
-          data?: HoldingsSnapshot;
-          error?: string;
-        };
-        if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "The selected ETF universe is unavailable.");
-        }
-        setSource(payload.data);
+        setSource(await fetchHoldingsSnapshot(sourceEtfId, { signal: controller.signal }));
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setError(
@@ -226,18 +232,9 @@ export function EtfCreator({
     });
     void (async () => {
       try {
-        const response = await fetch(
-          `/api/v1/holdings/${encodeURIComponent(overlapEtfId)}`,
-          { cache: "no-store", signal: controller.signal },
+        setOverlapSnapshot(
+          await fetchHoldingsSnapshot(overlapEtfId, { signal: controller.signal }),
         );
-        const payload = (await response.json()) as {
-          data?: HoldingsSnapshot;
-          error?: string;
-        };
-        if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "The overlap ETF is unavailable.");
-        }
-        setOverlapSnapshot(payload.data);
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setOverlapSnapshot(null);
@@ -253,6 +250,29 @@ export function EtfCreator({
     })();
     return () => controller.abort();
   }, [overlapEtfId, overlapMode]);
+
+  const forceRefresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const [nextSource, nextOverlap] = await Promise.all([
+        fetchHoldingsSnapshot(sourceEtfId, { forceRefresh: true }),
+        overlapMode !== "none" && overlapEtfId
+          ? fetchHoldingsSnapshot(overlapEtfId, { forceRefresh: true })
+          : Promise.resolve(null),
+      ]);
+      setSource(nextSource);
+      if (nextOverlap) setOverlapSnapshot(nextOverlap);
+    } catch (refreshError) {
+      setError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "The selected ETF data could not be refreshed.",
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const countriesOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -728,12 +748,18 @@ export function EtfCreator({
             </small>
           </div>
         </div>
-        <div className="creator-source-card">
-          <span>Source universe</span>
-          <strong>{source?.etf.ticker ?? "—"}</strong>
-          <small>
-            {source ? `${formatDate(source.asOf)} · ${source.cacheTtlHours}h cache` : "Unavailable"}
-          </small>
+        <div className="panel-refresh-actions">
+          <div className="creator-source-card">
+            <span>Source universe</span>
+            <strong>{source?.etf.ticker ?? "—"}</strong>
+            <small>
+              {source ? `${formatDate(source.asOf)} · ${source.cacheTtlHours}h cache` : "Unavailable"}
+            </small>
+          </div>
+          <ManualRefreshButton
+            loading={refreshing}
+            onRefresh={() => void forceRefresh()}
+          />
         </div>
       </section>
 

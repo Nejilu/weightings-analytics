@@ -3,7 +3,10 @@ import test from "node:test";
 
 import type { HoldingsSnapshot } from "../etf";
 import type { PortfolioItem, PortfolioSecurity } from "../portfolio";
-import { analyzePortfolio } from "./analyze-portfolio";
+import {
+  analyzePortfolio,
+  analyzePortfolioForDisplay,
+} from "./analyze-portfolio";
 import { valuePortfolioPositions } from "./value-portfolio";
 
 const apple: PortfolioSecurity = {
@@ -282,7 +285,7 @@ test("recalculates component weights when prices diverge while shares stay fixed
   assert.equal(diverged.totalMarketValueUsd, 2_500);
 });
 
-test("merges Alphabet share classes in portfolio look-through weights", () => {
+test("keeps canonical Alphabet share classes in portfolio data", () => {
   const alphabetSnapshot = {
     ...snapshot,
     holdings: [
@@ -318,9 +321,146 @@ test("merges Alphabet share classes in portfolio look-through weights", () => {
     directSecurities: new Map(),
   });
 
+  assert.equal(result.positions.length, 2);
+  assert.deepEqual(
+    result.positions.map(({ securityId, ticker, weight }) => ({
+      securityId,
+      ticker,
+      weight,
+    })),
+    [
+      { securityId: "alphabet-a", ticker: "GOOGL", weight: 55 },
+      { securityId: "alphabet-c", ticker: "GOOG", weight: 45 },
+    ],
+  );
+});
+
+test("merges Alphabet share classes only for portfolio display", () => {
+  const alphabetSnapshot = {
+    ...snapshot,
+    holdings: [
+      {
+        ...apple,
+        securityId: "alphabet-a",
+        ticker: "GOOGL",
+        name: "ALPHABET INC CLASS A",
+        weight: 55,
+      },
+      {
+        ...microsoft,
+        securityId: "alphabet-c",
+        ticker: "GOOG",
+        name: "ALPHABET INC CLASS C",
+        weight: 45,
+      },
+    ],
+  } as HoldingsSnapshot;
+
+  const result = analyzePortfolioForDisplay({
+    items: [
+      {
+        id: "fund",
+        kind: "etf",
+        referenceId: "acwi-us",
+        ticker: "ACWI",
+        name: "iShares MSCI ACWI ETF",
+        allocationWeight: 100,
+      },
+    ],
+    etfSnapshots: new Map([["acwi-us", alphabetSnapshot]]),
+    directSecurities: new Map(),
+  });
+
   assert.equal(result.positions.length, 1);
   assert.equal(result.positions[0].ticker, "GOOG / GOOGL");
   assert.equal(result.positions[0].weight, 100);
+  assert.equal(result.positions[0].quoteSecurityId, "alphabet-a");
+  assert.equal(result.positions[0].quoteTicker, "GOOGL");
+});
+
+test("uses the highest-weight listing as the quote reference for a grouped position", () => {
+  const tsmcSnapshot = {
+    ...snapshot,
+    holdings: [
+      {
+        ...apple,
+        securityId: "tsmc-adr",
+        ticker: "TSM",
+        name: "TAIWAN SEMICONDUCTOR ADR",
+        country: "Taiwan",
+        weight: 20,
+      },
+      {
+        ...microsoft,
+        securityId: "tsmc-primary",
+        ticker: "2330",
+        name: "TAIWAN SEMICONDUCTOR MANUFACTURING",
+        country: "Taiwan",
+        weight: 80,
+      },
+    ],
+  } as HoldingsSnapshot;
+
+  const result = analyzePortfolioForDisplay({
+    items: [
+      {
+        id: "fund",
+        kind: "etf",
+        referenceId: "acwi-us",
+        ticker: "ACWI",
+        name: "iShares MSCI ACWI ETF",
+        allocationWeight: 100,
+      },
+    ],
+    etfSnapshots: new Map([["acwi-us", tsmcSnapshot]]),
+    directSecurities: new Map(),
+  });
+
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].ticker, "TSM / 2330");
+  assert.equal(result.positions[0].quoteSecurityId, "tsmc-primary");
+  assert.equal(result.positions[0].quoteTicker, "2330");
+});
+
+test("keeps a dominant direct depositary ticker over its canonical local listing", () => {
+  const canonicalTsmc = {
+    ...apple,
+    securityId: "tsmc-primary",
+    ticker: "2330",
+    name: "TAIWAN SEMICONDUCTOR MANUFACTURING",
+    country: "Taiwan",
+  };
+  const localSnapshot = {
+    ...snapshot,
+    holdings: [{ ...canonicalTsmc, weight: 100 }],
+  } as HoldingsSnapshot;
+
+  const result = analyzePortfolioForDisplay({
+    items: [
+      {
+        id: "direct-adr",
+        kind: "security",
+        referenceId: canonicalTsmc.securityId,
+        ticker: "TSM",
+        name: canonicalTsmc.name,
+        allocationWeight: 60,
+      },
+      {
+        id: "fund",
+        kind: "etf",
+        referenceId: "acwi-us",
+        ticker: "ACWI",
+        name: "iShares MSCI ACWI ETF",
+        allocationWeight: 40,
+      },
+    ],
+    etfSnapshots: new Map([["acwi-us", localSnapshot]]),
+    directSecurities: new Map([[canonicalTsmc.securityId, canonicalTsmc]]),
+  });
+
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].quoteSecurityId, "tsmc-primary");
+  assert.equal(result.positions[0].quoteTicker, "TSM");
 });
 
 test("preserves leveraged ETF exposure above portfolio NAV", () => {

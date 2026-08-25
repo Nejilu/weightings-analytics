@@ -119,4 +119,39 @@ test("reports ACWI coverage and scores only the common equity universe", () => {
       ?.distortionStatus,
     "non-equity",
   );
+  assert.equal(result.cashHoldingsCount, 1);
+  assert.equal(result.cashWeight, 5);
+  assert.equal(
+    result.positions.find((position) => position.ticker === "USD")?.isCash,
+    true,
+  );
+  assert.equal(
+    result.positions.find((position) => position.ticker === "A")
+      ?.normalizedWeightExCash,
+    52.631579,
+  );
+});
+
+test("groups cash, money-market funds and unclassified cash rows as cash", () => {
+  const target = snapshot("target", "TARGET", [
+    holding("A", "A", 96),
+    { ...holding("USD", "USD", 1, "Cash"), name: "USD CASH" },
+    { ...holding("MMF", "MMF", 2, "Money Market"), name: "Treasury fund" },
+    { ...holding("EUR", "EUR", 1, "Unclassified"), name: "EUR CASH" },
+  ]);
+  const acwi = snapshot("acwi-us", "ACWI", [holding("A", "A", 100)]);
+
+  const result = analyzeHoldings(target, acwi);
+
+  assert.equal(result.cashHoldingsCount, 3);
+  assert.equal(result.cashWeight, 4);
+  assert.equal(
+    result.positions.find((position) => position.ticker === "A")
+      ?.normalizedWeightExCash,
+    100,
+  );
+  assert.equal(
+    result.positions.find((position) => position.ticker === "MMF")?.isCash,
+    true,
+  );
 });

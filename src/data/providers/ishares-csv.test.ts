@@ -173,3 +173,35 @@ test("uses SEDOL as the canonical fallback when BlackRock omits ISIN", () => {
   assert.equal(parsed.holdings[0]?.sedol, "B012345");
   assert.equal(parsed.holdings[0]?.cusip, "000000001");
 });
+
+test("parses a tickerless BlackRock mutual-fund holdings CSV", () => {
+  const raw = [
+    'Fund Holdings as of,"Jun 30, 2026"',
+    "Name,Market Value,Weight (%),Shares",
+    '"NVIDIA CORP","759,250,108.87","8.64","3,794,543.00"',
+    '"SK HYNIX INC","624,788,001.03","7.11","365,277.00"',
+    '"BROADCOM INC","503,067,051.50","5.72","1,331,746.00"',
+    '"LAM RESEARCH CORP","457,406,248.13","5.20","1,055,561.00"',
+    '"SAMSUNG ELECTRONICS LTD","455,832,714.13","5.19","2,114,436.00"',
+  ].join("\n");
+
+  const parsed = parseIsharesHoldingsCsv(raw);
+
+  assert.equal(parsed.asOf, "2026-06-30");
+  assert.equal(parsed.holdings.length, 5);
+  assert.deepEqual(parsed.holdings[0], {
+    securityId: "NAME:NVIDIACORP",
+    ticker: "—",
+    name: "NVIDIA CORP",
+    sector: "Unclassified",
+    assetClass: "Unclassified",
+    country: "Not reported",
+    isin: undefined,
+    weight: 8.64,
+    marketValue: 759_250_108.87,
+    currency: undefined,
+    exchange: undefined,
+    cusip: undefined,
+    sedol: undefined,
+  });
+});

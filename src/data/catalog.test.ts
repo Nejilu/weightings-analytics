@@ -54,6 +54,16 @@ test("fixed-component synthetic ETFs exclude unavailable source constituents and
       );
     }
   }
+
+  const panx = getEtfById("panx-ucits");
+  assert.ok(panx);
+  assert.equal(panx.derivedHoldings?.model, "component-market-value");
+  if (panx.derivedHoldings?.model === "component-market-value") {
+    assert.equal(
+      panx.derivedHoldings.componentSecurityIds?.ADP,
+      "US0530151036",
+    );
+  }
 });
 
 test("supports CSEMAS as a native iShares UCITS fund with its own holdings and quote", () => {
@@ -69,4 +79,19 @@ test("supports CSEMAS as a native iShares UCITS fund with its own holdings and q
   assert.equal(csemas.priceSymbol, "CSEMAS.SW");
   assert.equal(csemas.holdingsSourceEtfId, undefined);
   assert.match(csemas.holdingsUrl, /products\/253723\//);
+});
+
+test("supports BGSIX as a BlackRock mutual fund with native holdings and quote", () => {
+  const bgsix = getEtfById("bgsix-us");
+  assert.ok(bgsix);
+  assert.equal(bgsix.ticker, "BGSIX");
+  assert.equal(bgsix.isin, "US0919296121");
+  assert.equal(bgsix.wrapper, "US_1940_ACT");
+  assert.equal(bgsix.issuer, "BlackRock");
+  assert.equal(bgsix.exchange, "Mutual fund (NAV)");
+  assert.equal(bgsix.tradingCurrency, "USD");
+  assert.equal(bgsix.ter, 0.89);
+  assert.equal(bgsix.priceSymbol, "BGSIX");
+  assert.equal(bgsix.holdingsSourceEtfId, undefined);
+  assert.match(bgsix.holdingsUrl, /products\/227450\//);
 });

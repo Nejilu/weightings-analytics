@@ -5,6 +5,7 @@ import {
   fallbackSecurityId,
   planSecurityIdentityMerges,
   preferredSecurityId,
+  securityCanonicalNameIdentity,
 } from "./security-identity";
 
 test("prefers durable market identifiers over source fallback IDs", () => {
@@ -171,5 +172,78 @@ test("joins matching strong identifiers despite provider label changes", () => {
       },
     ]),
     [{ sourceId: "SEDOL:2046251", targetId: "US0378331005" }],
+  );
+});
+
+test("normalizes corporate suffixes while retaining share-class identity", () => {
+  assert.equal(securityCanonicalNameIdentity("Apple Inc."), "APPLE");
+  assert.equal(
+    securityCanonicalNameIdentity("Alphabet Inc Class A"),
+    "ALPHABETCLASSA",
+  );
+  assert.notEqual(
+    securityCanonicalNameIdentity("Alphabet Inc Class A"),
+    securityCanonicalNameIdentity("Alphabet Inc Class C"),
+  );
+});
+
+test("resolves tickerless provider names to one unique durable identity", () => {
+  assert.deepEqual(
+    planSecurityIdentityMerges([
+      {
+        securityId: "NAME:APPLEINC",
+        name: "APPLE INC",
+      },
+      {
+        securityId: "US0378331005",
+        ticker: "AAPL",
+        name: "APPLE",
+        country: "United States",
+        isin: "US0378331005",
+      },
+      {
+        securityId: "NAME:ALPHABETINCCLASSA",
+        name: "ALPHABET INC CLASS A",
+      },
+      {
+        securityId: "US02079K3059",
+        ticker: "GOOGL",
+        name: "ALPHABET CLASS A",
+        country: "United States",
+        isin: "US02079K3059",
+      },
+      {
+        securityId: "US02079K1079",
+        ticker: "GOOG",
+        name: "ALPHABET CLASS C",
+        country: "United States",
+        isin: "US02079K1079",
+      },
+    ]),
+    [
+      { sourceId: "NAME:ALPHABETINCCLASSA", targetId: "US02079K3059" },
+      { sourceId: "NAME:APPLEINC", targetId: "US0378331005" },
+    ],
+  );
+});
+
+test("keeps tickerless canonical-name matches unresolved when durable targets conflict", () => {
+  assert.deepEqual(
+    planSecurityIdentityMerges([
+      { securityId: "NAME:EXAMPLEINC", name: "EXAMPLE INC" },
+      {
+        securityId: "US0000000001",
+        ticker: "EXA",
+        name: "EXAMPLE",
+        isin: "US0000000001",
+      },
+      {
+        securityId: "GB0000000002",
+        ticker: "EXB",
+        name: "EXAMPLE PLC",
+        isin: "GB0000000002",
+      },
+    ]),
+    [],
   );
 });

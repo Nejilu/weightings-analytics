@@ -436,6 +436,9 @@ export const ETF_CATALOG: CatalogGroup[] = [
             "WDC",
             "WDAY",
           ],
+          componentSecurityIds: {
+            ADP: "US0530151036",
+          },
         },
       },
     ],
@@ -594,6 +597,37 @@ export const ETF_CATALOG: CatalogGroup[] = [
         holdingsSourceEtfId: "qtop-us",
         description:
           "Portfolio-only accumulating share class: QTOP.AS supplies its own unit price while look-through exposure reuses the supported US QTOP holdings snapshot.",
+      },
+    ],
+  },
+  {
+    id: "blackrock-technology-opportunities",
+    name: "BlackRock Technology Opportunities",
+    provider: "BlackRock",
+    region: "Global · technology",
+    description:
+      "Actively managed global technology strategy offered as a US mutual fund.",
+    variants: [
+      {
+        id: "bgsix-us",
+        ticker: "BGSIX",
+        name: "BlackRock Technology Opportunities Fund - Institutional",
+        benchmarkId: "blackrock-technology-opportunities",
+        isin: "US0919296121",
+        wrapper: "US_1940_ACT",
+        domicile: "United States",
+        exchange: "Mutual fund (NAV)",
+        tradingCurrency: "USD",
+        distributionPolicy: "Distributing",
+        ter: 0.89,
+        issuer: "BlackRock",
+        productUrl:
+          "https://www.blackrock.com/us/individual/products/227450/technology-opportunities-fund",
+        holdingsUrl:
+          "https://www.blackrock.com/us/individual/products/227450/blackrock-science-tech-oppsinst-class-fund/1464253357814.ajax?fileType=csv&fileName=BGSIX_holdings&dataType=fund",
+        priceSymbol: "BGSIX",
+        description:
+          "Actively managed mutual fund. Holdings are loaded from BlackRock's official CSV; full-portfolio disclosures may lag the latest NAV and omit security identifiers and classifications.",
       },
     ],
   },

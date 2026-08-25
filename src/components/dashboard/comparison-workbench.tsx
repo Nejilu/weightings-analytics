@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import {
   Bar,
@@ -17,6 +17,7 @@ import {
 
 import { PortfolioAnalytics } from "@/components/dashboard/portfolio-analytics";
 import { EtfCreator } from "@/components/dashboard/etf-creator";
+import { ManualRefreshButton } from "@/components/dashboard/manual-refresh-button";
 import type {
   CatalogGroup,
   ComparisonResult,
@@ -29,6 +30,10 @@ import type {
   HoldingsAnalysisPosition,
   HoldingsAnalysisResult,
 } from "@/domain/holdings-analysis";
+import {
+  countryToContinent,
+  geographicCountryLabel,
+} from "@/domain/geography";
 import { EtfSearch } from "./etf-search";
 
 const MetricsOverview = dynamic(
@@ -44,6 +49,8 @@ interface ComparisonWorkbenchProps {
 }
 
 type SelectionSide = "left" | "right";
+type HoldingsWeightView = "securities" | "with-cash";
+type GeographyGrouping = "country" | "continent";
 
 const INITIAL_VISIBLE_POSITIONS = 50;
 
@@ -61,6 +68,36 @@ function formatPercent(value: number, digits = 1) {
 function formatDate(value: string) {
   const date = value.slice(0, 10).split("-");
   return date.length === 3 ? `${date[2]}/${date[1]}/${date[0]}` : value;
+}
+
+function holdingsPositionWeight(
+  position: HoldingsAnalysisPosition,
+  weightView: HoldingsWeightView,
+) {
+  return weightView === "with-cash"
+    ? position.publishedWeight
+    : (position.normalizedWeightExCash ?? 0);
+}
+
+function buildHoldingsDisplaySummary(
+  analysis: HoldingsAnalysisResult,
+  weightView: HoldingsWeightView,
+) {
+  const ranked = analysis.positions
+    .filter(
+      (position) => weightView === "with-cash" || !position.isCash,
+    )
+    .map((position) => ({
+      ...position,
+      displayWeight: holdingsPositionWeight(position, weightView),
+    }))
+    .sort((left, right) => right.displayWeight - left.displayWeight);
+  return {
+    top10Concentration: ranked
+      .slice(0, 10)
+      .reduce((sum, position) => sum + position.displayWeight, 0),
+    topPosition: ranked[0] ?? null,
+  };
 }
 
 function wrapperLabel(etf: EtfShareClass) {
@@ -89,6 +126,15 @@ function normalizationMessage(
     ? ` Missing from the current ACWI snapshot: ${coverage.missingTickers.join(", ")}.`
     : "";
   return `${ticker}: normalization used ${coverage.used} of ${coverage.total} configured constituents.${missing}`;
+}
+
+function comparisonApiUrl(
+  leftEtfId: string,
+  rightEtfId: string,
+  weightView: HoldingsWeightView,
+  forceRefresh = false,
+) {
+  return `/api/v1/compare?left=${encodeURIComponent(leftEtfId)}&right=${encodeURIComponent(rightEtfId)}&includeCash=${weightView === "with-cash"}${forceRefresh ? "&refresh=true" : ""}`;
 }
 
 function ThemeToggle({ mobile = false }: { mobile?: boolean }) {
@@ -171,9 +217,9 @@ function MetricCard({
   detail,
   tone = "neutral",
 }: {
-  label: string;
-  value: string;
-  detail: string;
+  label: ReactNode;
+  value: ReactNode;
+  detail: ReactNode;
   tone?: "neutral" | "positive" | "left" | "right";
 }) {
   return (
@@ -182,6 +228,24 @@ function MetricCard({
       <strong>{value}</strong>
       <p>{detail}</p>
     </article>
+  );
+}
+
+function ComparisonPair({
+  left,
+  right,
+  separator = "/",
+}: {
+  left: ReactNode;
+  right: ReactNode;
+  separator?: ReactNode;
+}) {
+  return (
+    <span className="comparison-pair">
+      <span className="fund-color--left">{left}</span>
+      <i aria-hidden="true">{separator}</i>
+      <span className="fund-color--right">{right}</span>
+    </span>
   );
 }
 
@@ -234,8 +298,8 @@ function SleeveBars({ comparison }: { comparison: ComparisonResult }) {
     <div className="sleeve-bars">
       <div className="sleeve-row">
         <div className="sleeve-row__header">
-          <strong>{leftLabel}</strong>
-          <span>{formatPercent(comparison.leftActiveWeight)} active</span>
+          <strong className="fund-color--left">{leftLabel}</strong>
+          <span className="fund-color--left">{formatPercent(comparison.leftActiveWeight)} active</span>
         </div>
         <div className="sleeve-track">
           <span
@@ -250,8 +314,8 @@ function SleeveBars({ comparison }: { comparison: ComparisonResult }) {
       </div>
       <div className="sleeve-row">
         <div className="sleeve-row__header">
-          <strong>{rightLabel}</strong>
-          <span>{formatPercent(comparison.rightActiveWeight)} active</span>
+          <strong className="fund-color--right">{rightLabel}</strong>
+          <span className="fund-color--right">{formatPercent(comparison.rightActiveWeight)} active</span>
         </div>
         <div className="sleeve-track">
           <span
@@ -265,9 +329,9 @@ function SleeveBars({ comparison }: { comparison: ComparisonResult }) {
         </div>
       </div>
       <div className="legend">
-        <span><i className="legend-dot legend-dot--left" />Active {leftLabel}</span>
-        <span><i className="legend-dot legend-dot--overlap" />Overlap</span>
-        <span><i className="legend-dot legend-dot--right" />Active {rightLabel}</span>
+        <span className="fund-color--left"><i className="legend-dot legend-dot--left" />Active {leftLabel}</span>
+        <span className="fund-color--overlap"><i className="legend-dot legend-dot--overlap" />Overlap</span>
+        <span className="fund-color--right"><i className="legend-dot legend-dot--right" />Active {rightLabel}</span>
       </div>
     </div>
   );
@@ -364,7 +428,13 @@ function ImplicitSleeveRanking({
             {side === "left" ? "ETF A" : "ETF B"} · implicit ETF
           </span>
           <h3>
-            {sourceLabel} <span>vs {relativeLabel}</span>
+            <b className={`fund-color--${side}`}>{sourceLabel}</b>{" "}
+            <span>
+              vs{" "}
+              <b className={`fund-color--${side === "left" ? "right" : "left"}`}>
+                {relativeLabel}
+              </b>
+            </span>
           </h3>
         </div>
         <strong>100%</strong>
@@ -446,8 +516,8 @@ function ImplicitSleevesPanel({
       </div>
       <p className="implicit-sleeves-intro">
         Each side contains only that ETF&apos;s relative overweights, rescaled
-        to 100%. Choosing {leftLabel} over{" "}
-        {rightLabel} is equivalent to going long the left
+        to 100%. Choosing <span className="fund-color--left">{leftLabel}</span> over{" "}
+        <span className="fund-color--right">{rightLabel}</span> is equivalent to going long the left
         implicit ETF and short the right one at the active-sleeve weight.
       </p>
       <div className="implicit-sleeves-grid">
@@ -513,9 +583,15 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
         <div>
           <span className="eyebrow">Security-level analysis</span>
           <h2>
-            {filter === "active"
-              ? `Largest ${activeRankTicker} active weights`
-              : "Largest shared positions"}
+            {filter === "active" ? (
+              <>
+                Largest{" "}
+                <span className={`fund-color--${activeRankSide}`}>
+                  {activeRankTicker}
+                </span>{" "}
+                active weights
+              </>
+            ) : "Largest shared positions"}
           </h2>
         </div>
         <div className="table-controls">
@@ -526,7 +602,7 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
                 <button
                   type="button"
                   aria-pressed={activeRankSide === "left"}
-                  className={activeRankSide === "left" ? "is-active" : ""}
+                  className={`${activeRankSide === "left" ? "is-active " : ""}fund-color--left`}
                   onClick={() => setActiveRankSide("left")}
                 >
                   {leftLabel}
@@ -534,7 +610,7 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
                 <button
                   type="button"
                   aria-pressed={activeRankSide === "right"}
-                  className={activeRankSide === "right" ? "is-active" : ""}
+                  className={`${activeRankSide === "right" ? "is-active " : ""}fund-color--right`}
                   onClick={() => setActiveRankSide("right")}
                 >
                   {rightLabel}
@@ -567,9 +643,9 @@ function PositionTable({ comparison }: { comparison: ComparisonResult }) {
           <thead>
             <tr>
               <th>Security</th>
-              <th>{leftLabel}</th>
+              <th className="fund-color--left">{leftLabel}</th>
               <th>Overlap</th>
-              <th>{rightLabel}</th>
+              <th className="fund-color--right">{rightLabel}</th>
               <th>Signal</th>
             </tr>
           </thead>
@@ -619,12 +695,17 @@ function PositionRow({
   leftTicker: string;
   rightTicker: string;
 }) {
-  const dominant =
+  const dominantSide =
     position.leftActiveWeight > position.rightActiveWeight
-      ? `Overweight ${leftTicker}`
+      ? "left"
       : position.rightActiveWeight > position.leftActiveWeight
-        ? `Overweight ${rightTicker}`
-        : "Aligned weight";
+        ? "right"
+        : "overlap";
+  const dominant = dominantSide === "left"
+    ? `Overweight ${leftTicker}`
+    : dominantSide === "right"
+      ? `Overweight ${rightTicker}`
+      : "Aligned weight";
 
   return (
     <tr>
@@ -637,14 +718,14 @@ function PositionRow({
           </div>
         </div>
       </td>
-      <td>{formatPercent(position.leftWeight, 2)}</td>
+      <td className="fund-color--left">{formatPercent(position.leftWeight, 2)}</td>
       <td>
         <span className="overlap-pill">
           {formatPercent(position.overlapWeight, 2)}
         </span>
       </td>
-      <td>{formatPercent(position.rightWeight, 2)}</td>
-      <td><span className="reading">{dominant}</span></td>
+      <td className="fund-color--right">{formatPercent(position.rightWeight, 2)}</td>
+      <td><span className={`reading fund-color--${dominantSide}`}>{dominant}</span></td>
     </tr>
   );
 }
@@ -736,10 +817,29 @@ function HoldingsDistortionPanel({
 
 function HoldingsSectorPanel({
   analysis,
+  weightView,
 }: {
   analysis: HoldingsAnalysisResult;
+  weightView: HoldingsWeightView;
 }) {
-  const sectors = analysis.sectors.slice(0, 9);
+  const sectors = useMemo(() => {
+    const weights = new Map<string, number>();
+    for (const position of analysis.positions) {
+      if (weightView === "securities" && position.isCash) continue;
+      const sector = position.isCash
+        ? "Cash & equivalents"
+        : position.sector || "Unclassified";
+      weights.set(
+        sector,
+        (weights.get(sector) ?? 0) +
+          holdingsPositionWeight(position, weightView),
+      );
+    }
+    return [...weights.entries()]
+      .map(([sector, weight]) => ({ sector, weight }))
+      .sort((left, right) => right.weight - left.weight)
+      .slice(0, 9);
+  }, [analysis.positions, weightView]);
   const largestWeight = Math.max(...sectors.map((sector) => sector.weight), 1);
   return (
     <article className="panel holdings-sector-panel">
@@ -748,7 +848,9 @@ function HoldingsSectorPanel({
           <span className="eyebrow">Allocation</span>
           <h2>Sector structure</h2>
         </div>
-        <span className="info-chip">Published weights</span>
+        <span className="info-chip">
+          {weightView === "with-cash" ? "With cash" : "Normalized securities"}
+        </span>
       </div>
       <div className="holdings-sector-list">
         {sectors.map((sector) => (
@@ -758,6 +860,84 @@ function HoldingsSectorPanel({
               <i style={{ width: `${(sector.weight / largestWeight) * 100}%` }} />
             </div>
             <strong>{formatPercent(sector.weight, 1)}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function HoldingsGeographyPanel({
+  analysis,
+  weightView,
+}: {
+  analysis: HoldingsAnalysisResult;
+  weightView: HoldingsWeightView;
+}) {
+  const [grouping, setGrouping] = useState<GeographyGrouping>("country");
+  const allocations = useMemo(() => {
+    const weights = new Map<string, number>();
+    for (const position of analysis.positions) {
+      if (weightView === "securities" && position.isCash) continue;
+      const geography = position.isCash
+        ? "Cash & equivalents"
+        : grouping === "country"
+          ? geographicCountryLabel(position.country)
+          : countryToContinent(position.country);
+      weights.set(
+        geography,
+        (weights.get(geography) ?? 0) +
+          holdingsPositionWeight(position, weightView),
+      );
+    }
+    return [...weights.entries()]
+      .map(([geography, weight]) => ({ geography, weight }))
+      .sort((left, right) => right.weight - left.weight)
+      .slice(0, grouping === "country" ? 9 : undefined);
+  }, [analysis.positions, grouping, weightView]);
+  const largestWeight = Math.max(
+    ...allocations.map((allocation) => allocation.weight),
+    1,
+  );
+
+  return (
+    <article className="panel holdings-geography-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Allocation</span>
+          <h2>Geographic structure</h2>
+        </div>
+        <div className="segmented-control" role="group" aria-label="Group geography by">
+          <button
+            type="button"
+            className={grouping === "country" ? "is-active" : ""}
+            aria-pressed={grouping === "country"}
+            onClick={() => setGrouping("country")}
+          >
+            Countries
+          </button>
+          <button
+            type="button"
+            className={grouping === "continent" ? "is-active" : ""}
+            aria-pressed={grouping === "continent"}
+            onClick={() => setGrouping("continent")}
+          >
+            Continents
+          </button>
+        </div>
+      </div>
+      <div className="holdings-sector-list holdings-geography-list">
+        {allocations.map((allocation) => (
+          <div key={allocation.geography}>
+            <span>{allocation.geography}</span>
+            <div aria-hidden="true">
+              <i
+                style={{
+                  width: `${(allocation.weight / largestWeight) * 100}%`,
+                }}
+              />
+            </div>
+            <strong>{formatPercent(allocation.weight, 1)}</strong>
           </div>
         ))}
       </div>
@@ -890,14 +1070,21 @@ function DistortionPositionsTable({
 
 function HoldingsTopPositionsPanel({
   analysis,
+  weightView,
 }: {
   analysis: HoldingsAnalysisResult;
+  weightView: HoldingsWeightView;
 }) {
-  const positions = [...analysis.positions]
-    .sort((left, right) => right.publishedWeight - left.publishedWeight)
+  const positions = analysis.positions
+    .filter((position) => weightView === "with-cash" || !position.isCash)
+    .map((position) => ({
+      ...position,
+      displayWeight: holdingsPositionWeight(position, weightView),
+    }))
+    .sort((left, right) => right.displayWeight - left.displayWeight)
     .slice(0, 10);
   const largestWeight = Math.max(
-    ...positions.map((position) => position.publishedWeight),
+    ...positions.map((position) => position.displayWeight),
     1,
   );
 
@@ -908,7 +1095,9 @@ function HoldingsTopPositionsPanel({
           <span className="eyebrow">Concentration</span>
           <h2>Largest holdings</h2>
         </div>
-        <span className="info-chip">Top 10</span>
+        <span className="info-chip">
+          Top 10 · {weightView === "with-cash" ? "with cash" : "securities"}
+        </span>
       </div>
       <div className="holdings-top-list">
         {positions.map((position) => (
@@ -920,11 +1109,11 @@ function HoldingsTopPositionsPanel({
             <div aria-hidden="true">
               <i
                 style={{
-                  width: `${(position.publishedWeight / largestWeight) * 100}%`,
+                  width: `${(position.displayWeight / largestWeight) * 100}%`,
                 }}
               />
             </div>
-            <strong>{formatPercent(position.publishedWeight, 2)}</strong>
+            <strong>{formatPercent(position.displayWeight, 2)}</strong>
           </div>
         ))}
       </div>
@@ -934,17 +1123,25 @@ function HoldingsTopPositionsPanel({
 
 function HoldingsOverviewTable({
   analysis,
+  weightView,
 }: {
   analysis: HoldingsAnalysisResult;
+  weightView: HoldingsWeightView;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const viewKey = analysis.calculatedAt;
+  const viewKey = `${analysis.calculatedAt}:${weightView}`;
   const rows = useMemo(
     () =>
-      [...analysis.positions].sort(
-        (left, right) => right.publishedWeight - left.publishedWeight,
-      ),
-    [analysis.positions],
+      analysis.positions
+        .filter(
+          (position) => weightView === "with-cash" || !position.isCash,
+        )
+        .map((position) => ({
+          ...position,
+          displayWeight: holdingsPositionWeight(position, weightView),
+        }))
+        .sort((left, right) => right.displayWeight - left.displayWeight),
+    [analysis.positions, weightView],
   );
   const isExpanded = expandedKey === viewKey;
   const visibleRows = isExpanded
@@ -959,7 +1156,9 @@ function HoldingsOverviewTable({
           <span className="eyebrow">Portfolio composition</span>
           <h2>{analysis.etf.ticker} holdings</h2>
         </div>
-        <span className="info-chip">Published weights</span>
+        <span className="info-chip">
+          {weightView === "with-cash" ? "Portfolio normalized with cash" : "Securities normalized to 100%"}
+        </span>
       </div>
       <div className="table-scroll">
         <table>
@@ -974,7 +1173,10 @@ function HoldingsOverviewTable({
           </thead>
           <tbody id="holdings-overview-positions">
             {visibleRows.map((position) => (
-              <tr key={position.securityId}>
+              <tr
+                key={position.securityId}
+                className={position.isCash ? "is-cash-position" : undefined}
+              >
                 <td>
                   <div className="security-cell">
                     <span className="security-avatar">
@@ -986,8 +1188,8 @@ function HoldingsOverviewTable({
                     </div>
                   </div>
                 </td>
-                <td>{formatPercent(position.publishedWeight, 2)}</td>
-                <td>{position.sector}</td>
+                <td>{formatPercent(position.displayWeight, 2)}</td>
+                <td>{position.isCash ? "Cash & equivalents" : position.sector}</td>
                 <td>{position.country}</td>
                 <td>{position.assetClass}</td>
               </tr>
@@ -1080,8 +1282,12 @@ export function ComparisonWorkbench({
   const [holdingsView, setHoldingsView] = useState<
     "holdings" | "distortion"
   >("holdings");
+  const [holdingsWeightView, setHoldingsWeightView] =
+    useState<HoldingsWeightView>("securities");
   const [comparisonMode, setComparisonMode] = useState(false);
   const [analysis, setAnalysis] = useState<HoldingsAnalysisResult | null>(null);
+  const [rightAnalysis, setRightAnalysis] =
+    useState<HoldingsAnalysisResult | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1102,6 +1308,28 @@ export function ComparisonWorkbench({
   );
   const leftEtf = availableEtfs.find((etf) => etf.id === leftEtfId);
   const rightEtf = availableEtfs.find((etf) => etf.id === rightEtfId);
+  const holdingsDisplaySummary = useMemo(() => {
+    if (!analysis) return null;
+    return buildHoldingsDisplaySummary(analysis, holdingsWeightView);
+  }, [analysis, holdingsWeightView]);
+  const leftComparisonSummary = useMemo(
+    () => analysis
+      ? buildHoldingsDisplaySummary(analysis, holdingsWeightView)
+      : null,
+    [analysis, holdingsWeightView],
+  );
+  const rightComparisonSummary = useMemo(
+    () => rightAnalysis
+      ? buildHoldingsDisplaySummary(rightAnalysis, holdingsWeightView)
+      : null,
+    [holdingsWeightView, rightAnalysis],
+  );
+  const comparisonReady = Boolean(
+    comparisonMode &&
+      holdingsView === "holdings" &&
+      comparison &&
+      rightAnalysis,
+  );
 
   const refreshCatalog = async () => {
     const response = await fetch("/api/v1/catalog", { cache: "no-store" });
@@ -1115,25 +1343,38 @@ export function ComparisonWorkbench({
     setAvailableCatalog(payload.data);
   };
 
-  const loadHoldingsAnalysis = async () => {
+  const loadHoldingsAnalysis = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     setUnavailable([]);
     setAnalysis(null);
+    setRightAnalysis(null);
     setComparison(null);
     try {
       const analysisRequest = fetch(
-        `/api/v1/holdings/${encodeURIComponent(leftEtfId)}/analysis`,
+        `/api/v1/holdings/${encodeURIComponent(leftEtfId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
         { cache: "no-cache" },
       );
       const comparisonRequest = comparisonMode && holdingsView === "holdings"
         ? fetch(
-            `/api/v1/compare?left=${encodeURIComponent(leftEtfId)}&right=${encodeURIComponent(rightEtfId)}`,
+            comparisonApiUrl(
+              leftEtfId,
+              rightEtfId,
+              holdingsWeightView,
+              forceRefresh,
+            ),
             { cache: "no-cache" },
           )
         : null;
-      const [analysisResponse, comparisonResponse] = await Promise.all([
+      const rightAnalysisRequest = comparisonRequest
+        ? fetch(
+            `/api/v1/holdings/${encodeURIComponent(rightEtfId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
+            { cache: "no-cache" },
+          )
+        : null;
+      const [analysisResponse, rightAnalysisResponse, comparisonResponse] = await Promise.all([
         analysisRequest,
+        rightAnalysisRequest,
         comparisonRequest,
       ]);
       const analysisPayload = (await analysisResponse.json()) as {
@@ -1151,7 +1392,21 @@ export function ComparisonWorkbench({
       }
       setAnalysis(analysisPayload.data);
 
-      if (comparisonResponse) {
+      if (comparisonResponse && rightAnalysisResponse) {
+        const rightAnalysisPayload = (await rightAnalysisResponse.json()) as {
+          data?: HoldingsAnalysisResult;
+          error?: string;
+          unavailable?: string[];
+        };
+        if (!rightAnalysisResponse.ok || !rightAnalysisPayload.data) {
+          setUnavailable(rightAnalysisPayload.unavailable ?? [rightEtfId]);
+          setError(
+            rightAnalysisPayload.error ??
+              `Holdings data is unavailable for ${rightEtf?.ticker ?? "the comparison ETF"}.`,
+          );
+          return;
+        }
+        setRightAnalysis(rightAnalysisPayload.data);
         const comparisonPayload = (await comparisonResponse.json()) as {
           data?: ComparisonResult;
           error?: string;
@@ -1174,6 +1429,51 @@ export function ComparisonWorkbench({
         requestError instanceof Error
           ? requestError.message
           : "An unexpected error occurred.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const changeHoldingsWeightView = async (next: HoldingsWeightView) => {
+    if (next === holdingsWeightView) return;
+    if (
+      !comparisonMode ||
+      holdingsView !== "holdings" ||
+      !analysis ||
+      !rightAnalysis ||
+      !comparison
+    ) {
+      setHoldingsWeightView(next);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        comparisonApiUrl(leftEtfId, rightEtfId, next),
+        { cache: "no-cache" },
+      );
+      const payload = (await response.json()) as {
+        data?: ComparisonResult;
+        error?: string;
+        unavailable?: string[];
+      };
+      if (!response.ok || !payload.data) {
+        setUnavailable(payload.unavailable ?? []);
+        setError(
+          payload.error ?? "The comparison could not be recalculated.",
+        );
+        return;
+      }
+      setComparison(payload.data);
+      setHoldingsWeightView(next);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The comparison could not be recalculated.",
       );
     } finally {
       setLoading(false);
@@ -1329,12 +1629,18 @@ export function ComparisonWorkbench({
                     one ETF. Add a peer only when a side-by-side comparison is useful.
                   </p>
                 </div>
-                <div className="metrics-provider-mark">
-                  <span>DATA</span>
-                  <div>
-                    <strong>Official holdings</strong>
-                    <small>Fund and index providers · daily cache</small>
+                <div className="panel-refresh-actions">
+                  <div className="metrics-provider-mark">
+                    <span>DATA</span>
+                    <div>
+                      <strong>Official holdings</strong>
+                      <small>Fund and index providers · daily cache</small>
+                    </div>
                   </div>
+                  <ManualRefreshButton
+                    loading={loading}
+                    onRefresh={() => void loadHoldingsAnalysis(true)}
+                  />
                 </div>
               </section>
 
@@ -1351,6 +1657,7 @@ export function ComparisonWorkbench({
                     setLeftEtfId(value);
                     setHoldingsView("holdings");
                     setAnalysis(null);
+                    setRightAnalysis(null);
                     setComparison(null);
                     setError(null);
                   }}
@@ -1365,6 +1672,7 @@ export function ComparisonWorkbench({
                       catalog={researchCatalog}
                       onEtfChange={(_, value) => {
                         setRightEtfId(value);
+                        setRightAnalysis(null);
                         setComparison(null);
                         setError(null);
                       }}
@@ -1384,6 +1692,7 @@ export function ComparisonWorkbench({
                       aria-pressed={comparisonMode}
                       onClick={() => {
                         setComparisonMode((current) => !current);
+                        setRightAnalysis(null);
                         setComparison(null);
                         setError(null);
                       }}
@@ -1394,7 +1703,7 @@ export function ComparisonWorkbench({
                   <button
                     className="primary-button"
                     type="button"
-                    onClick={loadHoldingsAnalysis}
+                    onClick={() => void loadHoldingsAnalysis()}
                     disabled={loading}
                   >
                     {loading ? <span className="spinner" /> : <span>Analyze holdings</span>}
@@ -1451,35 +1760,145 @@ export function ComparisonWorkbench({
                       aria-labelledby="holdings-overview-tab"
                       className="holdings-subview"
                     >
-                      <section className="metric-grid" aria-label="Holdings overview metrics">
+                      {comparisonReady ? (
+                        <section className="holdings-weight-control panel" aria-label="Comparison weight basis">
+                          <div>
+                            <span className="eyebrow">Comparison basis</span>
+                            <strong>
+                              {holdingsWeightView === "with-cash"
+                                ? "Portfolios normalized with cash"
+                                : "Securities normalized to 100%"}
+                            </strong>
+                            <small>
+                              {holdingsWeightView === "with-cash"
+                                ? "Cash is included in overlap, active sleeves, concentration and sector comparisons."
+                                : "Cash is shown in the summary figures but excluded from every comparison measure."}
+                            </small>
+                          </div>
+                          <div className="holdings-weight-toggle" role="group" aria-label="Comparison cash treatment">
+                            <button
+                              type="button"
+                              aria-pressed={holdingsWeightView === "securities"}
+                              disabled={loading}
+                              onClick={() => void changeHoldingsWeightView("securities")}
+                            >
+                              Securities only
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={holdingsWeightView === "with-cash"}
+                              disabled={loading}
+                              onClick={() => void changeHoldingsWeightView("with-cash")}
+                            >
+                              Include cash
+                            </button>
+                          </div>
+                        </section>
+                      ) : (
+                        <section className="holdings-weight-control panel" aria-label="Holdings weight display">
+                          <div>
+                            <span className="eyebrow">Weight basis</span>
+                            <strong>
+                              {holdingsWeightView === "with-cash"
+                                ? "Portfolio normalized with cash"
+                                : "Securities normalized to 100%"}
+                            </strong>
+                            <small>
+                              {holdingsWeightView === "with-cash"
+                                ? "Cash, money-market and collateral positions are included in the allocation."
+                                : "Cash-like positions are excluded and the remaining securities are rescaled to 100%."}
+                            </small>
+                          </div>
+                          <div className="holdings-weight-toggle" role="group" aria-label="Cash treatment">
+                            <button
+                              type="button"
+                              aria-pressed={holdingsWeightView === "securities"}
+                              disabled={loading}
+                              onClick={() => void changeHoldingsWeightView("securities")}
+                            >
+                              Securities only
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={holdingsWeightView === "with-cash"}
+                              disabled={loading}
+                              onClick={() => void changeHoldingsWeightView("with-cash")}
+                            >
+                              Include cash
+                            </button>
+                          </div>
+                        </section>
+                      )}
+                      <section className="metric-grid holdings-metric-grid" aria-label="Holdings overview metrics">
                         <MetricCard
                           label="Weight distortion index"
-                          value={analysis.distortion.score === null ? "—" : analysis.distortion.score.toFixed(1)}
-                          detail="Open Distortion details for the full breakdown"
-                          tone={analysis.distortion.score !== null && analysis.distortion.score < 2 ? "positive" : "left"}
+                          value={comparisonReady && rightAnalysis
+                            ? <ComparisonPair
+                                left={analysis.distortion.score === null ? "—" : analysis.distortion.score.toFixed(1)}
+                                right={rightAnalysis.distortion.score === null ? "—" : rightAnalysis.distortion.score.toFixed(1)}
+                              />
+                            : analysis.distortion.score === null ? "—" : analysis.distortion.score.toFixed(1)}
+                          detail={comparisonReady && rightAnalysis
+                            ? <ComparisonPair left={analysis.etf.ticker} right={rightAnalysis.etf.ticker} />
+                            : "Open Distortion details for the full breakdown"}
+                          tone={comparisonReady ? "neutral" : analysis.distortion.score !== null && analysis.distortion.score < 2 ? "positive" : "left"}
                         />
                         <MetricCard
                           label="Holdings universe"
-                          value={`${analysis.holdingsCount}`}
-                          detail={`${analysis.equityHoldingsCount} equity positions`}
+                          value={comparisonReady && comparison
+                            ? <ComparisonPair left={comparison.left.holdingsCount} right={comparison.right.holdingsCount} />
+                            : `${analysis.holdingsCount}`}
+                          detail={comparisonReady && comparison
+                            ? <><ComparisonPair left={comparisonFundLabel(comparison, "left")} right={comparisonFundLabel(comparison, "right")} /> · {holdingsWeightView === "with-cash" ? "cash included" : "cash excluded"}</>
+                            : `${analysis.equityHoldingsCount} equity · ${analysis.cashHoldingsCount} cash-like`}
+                        />
+                        <MetricCard
+                          label="Cash & equivalents"
+                          value={comparisonReady && rightAnalysis
+                            ? <ComparisonPair left={formatPercent(analysis.cashWeight, 2)} right={formatPercent(rightAnalysis.cashWeight, 2)} />
+                            : formatPercent(analysis.cashWeight, 2)}
+                          detail={comparisonReady && rightAnalysis
+                            ? <><ComparisonPair left={analysis.etf.ticker} right={rightAnalysis.etf.ticker} /> · {holdingsWeightView === "with-cash" ? "included in comparison" : "excluded from comparison"}</>
+                            : `${analysis.cashHoldingsCount} source position${analysis.cashHoldingsCount === 1 ? "" : "s"} · ${holdingsWeightView === "with-cash" ? "included in view" : "excluded from view"}`}
+                          tone={analysis.cashWeight > 0 ? "positive" : "neutral"}
                         />
                         <MetricCard
                           label="Top 10 concentration"
-                          value={formatPercent(analysis.top10Concentration, 1)}
-                          detail="Share held by the ten largest positions"
-                          tone="right"
+                          value={comparisonReady && comparison
+                            ? <ComparisonPair left={formatPercent(comparison.left.top10Concentration, 1)} right={formatPercent(comparison.right.top10Concentration, 1)} />
+                            : formatPercent(holdingsDisplaySummary?.top10Concentration ?? 0, 1)}
+                          detail={comparisonReady
+                            ? <><ComparisonPair left={comparison ? comparisonFundLabel(comparison, "left") : "ETF A"} right={comparison ? comparisonFundLabel(comparison, "right") : "ETF B"} /> · {holdingsWeightView === "with-cash" ? "cash included" : "cash excluded"}</>
+                            : "Share held by the ten largest displayed positions"}
+                          tone={comparisonReady ? "neutral" : "right"}
                         />
                         <MetricCard
                           label="Largest holding"
-                          value={analysis.topPosition?.ticker ?? "—"}
-                          detail={analysis.topPosition ? `${analysis.topPosition.name} · ${formatPercent(analysis.topPosition.weight, 2)}` : "No positions"}
+                          value={comparisonReady
+                            ? <ComparisonPair left={leftComparisonSummary?.topPosition?.ticker ?? "—"} right={rightComparisonSummary?.topPosition?.ticker ?? "—"} />
+                            : holdingsDisplaySummary?.topPosition?.ticker ?? "—"}
+                          detail={comparisonReady
+                            ? <ComparisonPair
+                                left={`${comparison ? comparisonFundLabel(comparison, "left") : "ETF A"} ${formatPercent(leftComparisonSummary?.topPosition?.displayWeight ?? 0, 2)}`}
+                                right={`${comparison ? comparisonFundLabel(comparison, "right") : "ETF B"} ${formatPercent(rightComparisonSummary?.topPosition?.displayWeight ?? 0, 2)}`}
+                              />
+                            : holdingsDisplaySummary?.topPosition ? `${holdingsDisplaySummary.topPosition.name} · ${formatPercent(holdingsDisplaySummary.topPosition.displayWeight, 2)}` : "No positions"}
                         />
                       </section>
-                      <section className="analysis-grid holdings-analysis-grid">
-                        <HoldingsTopPositionsPanel analysis={analysis} />
-                        <HoldingsSectorPanel analysis={analysis} />
-                      </section>
-                      <HoldingsOverviewTable analysis={analysis} />
+                      {!comparisonReady ? (
+                        <>
+                          <section className="analysis-grid holdings-analysis-grid">
+                            <HoldingsTopPositionsPanel analysis={analysis} weightView={holdingsWeightView} />
+                            <HoldingsSectorPanel analysis={analysis} weightView={holdingsWeightView} />
+                            <HoldingsGeographyPanel
+                              key={analysis.etf.id}
+                              analysis={analysis}
+                              weightView={holdingsWeightView}
+                            />
+                          </section>
+                          <HoldingsOverviewTable analysis={analysis} weightView={holdingsWeightView} />
+                        </>
+                      ) : null}
                     </div>
                   ) : (
                     <div
@@ -1542,9 +1961,15 @@ export function ComparisonWorkbench({
                 <section className="holdings-comparison-section">
                   <div className="holdings-comparison-heading panel">
                     <div>
-                      <span className="eyebrow">Optional peer analysis</span>
-                      <h2>{comparisonFundLabel(comparison, "left")} vs {comparisonFundLabel(comparison, "right")}</h2>
-                      <p>The primary ETF deep dive remains independent; this section adds relative overlap, active sleeves and sector differences.</p>
+                      <span className="eyebrow comparison-eyebrow">Optional peer analysis</span>
+                      <h2>
+                        <span className="fund-color--left">{comparisonFundLabel(comparison, "left")}</span>{" "}
+                        <i>vs</i>{" "}
+                        <span className="fund-color--right">{comparisonFundLabel(comparison, "right")}</span>
+                      </h2>
+                      <p>
+                        Relative overlap, active sleeves and sector differences use weights normalized to 100%. Cash is {holdingsWeightView === "with-cash" ? "included because Include cash is selected" : "excluded because Securities only is selected"}.
+                      </p>
                     </div>
                   </div>
                   {([comparison.left, comparison.right] as const).map((side) =>
@@ -1557,32 +1982,39 @@ export function ComparisonWorkbench({
                   <section className="metric-grid" aria-label="Optional comparison metrics">
                     <MetricCard
                       label="Weighted overlap"
-                      value={formatPercent(comparison.overlapWeight)}
+                      value={<span className="fund-color--overlap">{formatPercent(comparison.overlapWeight)}</span>}
                       detail={`${comparison.sharedPositionsCount} shared securities`}
                       tone="positive"
                     />
                     <MetricCard
-                      label={`${comparisonFundLabel(comparison, "left")} active sleeve`}
-                      value={formatPercent(comparison.leftActiveWeight)}
+                      label={<><span className="fund-color--left">{comparisonFundLabel(comparison, "left")}</span> active sleeve</>}
+                      value={<span className="fund-color--left">{formatPercent(comparison.leftActiveWeight)}</span>}
                       detail={`Top 10 = ${formatPercent(comparison.left.top10Concentration)}`}
                       tone="left"
                     />
                     <MetricCard
-                      label={`${comparisonFundLabel(comparison, "right")} active sleeve`}
-                      value={formatPercent(comparison.rightActiveWeight)}
+                      label={<><span className="fund-color--right">{comparisonFundLabel(comparison, "right")}</span> active sleeve</>}
+                      value={<span className="fund-color--right">{formatPercent(comparison.rightActiveWeight)}</span>}
                       detail={`Top 10 = ${formatPercent(comparison.right.top10Concentration)}`}
                       tone="right"
                     />
                     <MetricCard
                       label="Holdings universe"
-                      value={`${comparison.left.holdingsCount} / ${comparison.right.holdingsCount}`}
+                      value={<ComparisonPair left={comparison.left.holdingsCount} right={comparison.right.holdingsCount} />}
                       detail="positions in each ETF"
                     />
                   </section>
                   <section className="analysis-grid">
                     <article className="panel overlap-panel">
                       <div className="panel-heading">
-                        <div><span className="eyebrow">Sleeve decomposition</span><h2>Overlap vs active</h2></div>
+                        <div>
+                          <span className="eyebrow">Sleeve decomposition</span>
+                          <h2>
+                            <span className="fund-color--overlap">Overlap</span>{" "}
+                            vs{" "}
+                            <span className="comparison-active-label">active</span>
+                          </h2>
+                        </div>
                         <span className="info-chip">Normalised weights</span>
                       </div>
                       <div className="overlap-layout">
@@ -1598,8 +2030,8 @@ export function ComparisonWorkbench({
                       <div className="panel-heading">
                         <div><span className="eyebrow">Allocation</span><h2>Sector comparison</h2></div>
                         <div className="mini-legend">
-                          <span><i style={{ background: COLORS.left }} />{comparisonFundLabel(comparison, "left")}</span>
-                          <span><i style={{ background: COLORS.right }} />{comparisonFundLabel(comparison, "right")}</span>
+                          <span className="fund-color--left"><i style={{ background: COLORS.left }} />{comparisonFundLabel(comparison, "left")}</span>
+                          <span className="fund-color--right"><i style={{ background: COLORS.right }} />{comparisonFundLabel(comparison, "right")}</span>
                         </div>
                       </div>
                       <SectorChart comparison={comparison} />

@@ -73,6 +73,7 @@ export interface PortfolioSecurity {
   assetClass: string;
   country: string;
   isin?: string;
+  exchange?: string;
 }
 
 export interface MarketPrice {
@@ -117,6 +118,8 @@ export interface PortfolioContribution {
 export interface PortfolioLookThroughPosition extends PortfolioSecurity {
   weight: number;
   contributions: PortfolioContribution[];
+  quoteSecurityId?: string;
+  quoteTicker?: string;
 }
 
 export interface PortfolioSectorExposure {

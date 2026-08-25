@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { Holding } from "@/domain/etf";
+import type { Holding, HoldingsSnapshot } from "@/domain/etf";
 import type { SecurityEstimateSeries, SecurityMetricValues } from "@/domain/metrics";
-import { buildComponentValuation } from "./metrics-overview-model";
+import type { PortfolioItem, PortfolioSecurity } from "@/domain/portfolio";
+import { analyzePortfolio } from "@/domain/processors/analyze-portfolio";
+import {
+  buildComponentValuation,
+  buildEtfMetricsOverview,
+} from "./metrics-overview-model";
 
 const holding = (securityId: string, weight: number): Holding => ({
   securityId,
@@ -107,4 +112,94 @@ test("does not require legacy 4Q valuation fields for the fixed bubble measures"
   assert.equal(view.points[0]?.epsGrowthNextQuarterVsQMinus3, 50);
   assert.equal(view.points[0]?.peQMinus3Annualized, 100 / 8);
   assert.equal(view.points[0]?.peNextQuarterAnnualized, 100 / 12);
+});
+
+test("keeps portfolio share classes canonical through mapping and bubble metrics", () => {
+  const alphabetA: PortfolioSecurity = {
+    securityId: "US02079K3059",
+    ticker: "GOOGL",
+    name: "ALPHABET CLASS A",
+    sector: "Communication",
+    assetClass: "Equity",
+    country: "United States",
+  };
+  const alphabetC: PortfolioSecurity = {
+    securityId: "US02079K1079",
+    ticker: "GOOG",
+    name: "ALPHABET CLASS C",
+    sector: "Communication",
+    assetClass: "Equity",
+    country: "United States",
+  };
+  const sourceSnapshot = {
+    etf: { id: "source", ticker: "SOURCE" },
+    asOf: "2026-08-19",
+    fetchedAt: "2026-08-19T00:00:00.000Z",
+    sourceStatus: "cached",
+    sourceUrl: "fixture://source",
+    cacheTtlHours: 24,
+    holdings: [
+      { ...alphabetA, weight: 55 },
+      { ...alphabetC, weight: 45 },
+    ],
+  } as HoldingsSnapshot;
+  const items: PortfolioItem[] = [{
+    id: "source-item",
+    kind: "etf",
+    referenceId: "source",
+    ticker: "SOURCE",
+    name: "Source ETF",
+    allocationWeight: 100,
+  }];
+  const analysis = analyzePortfolio({
+    items,
+    etfSnapshots: new Map([["source", sourceSnapshot]]),
+    directSecurities: new Map(),
+  });
+  const portfolioSnapshot = {
+    ...sourceSnapshot,
+    etf: { id: "portfolio", ticker: "PF", name: "Portfolio ETF" },
+    holdings: analysis.positions.map((position) => ({
+      securityId: position.securityId,
+      ticker: position.ticker,
+      name: position.name,
+      sector: position.sector,
+      assetClass: position.assetClass,
+      country: position.country,
+      weight: position.weight,
+    })),
+  } as HoldingsSnapshot;
+  const metrics = new Map<string, SecurityMetricValues>([
+    [alphabetA.securityId, {
+      securityId: alphabetA.securityId,
+      providerSymbol: "NASDAQ:GOOGL",
+      values: {},
+      estimateSeries: { ...series, providerSymbol: "NASDAQ:GOOGL" },
+    }],
+    [alphabetC.securityId, {
+      securityId: alphabetC.securityId,
+      providerSymbol: "NASDAQ:GOOG",
+      values: {},
+      estimateSeries: { ...series, providerSymbol: "NASDAQ:GOOG" },
+    }],
+  ]);
+
+  const overview = buildEtfMetricsOverview(
+    portfolioSnapshot,
+    new Set([alphabetA.securityId, alphabetC.securityId]),
+    metrics,
+  );
+
+  assert.equal(overview.mappingCoverageWeight, 100);
+  assert.equal(overview.mappedHoldings, 2);
+  assert.deepEqual(
+    overview.componentValuation.points.map(({ securityId, ticker }) => ({
+      securityId,
+      ticker,
+    })),
+    [
+      { securityId: alphabetA.securityId, ticker: "GOOGL" },
+      { securityId: alphabetC.securityId, ticker: "GOOG" },
+    ],
+  );
 });

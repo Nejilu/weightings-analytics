@@ -2,6 +2,7 @@ import {
   getHoldingsSnapshot,
   HoldingsUnavailableError,
 } from "@/data/services/holdings-service";
+import { SUPPORTED_INDIVIDUAL_SECURITIES } from "@/data/supported-individual-securities";
 import { securityQuoteAlias } from "@/domain/security-equivalence";
 
 const MAX_RESULTS = 12;
@@ -18,7 +19,16 @@ export async function GET(request: Request) {
 
   try {
     const acwi = await getHoldingsSnapshot("ACWI");
-    const matches = acwi.holdings
+    const searchUniverse = new Map(
+      acwi.holdings.map((holding) => [holding.securityId, holding]),
+    );
+    for (const security of SUPPORTED_INDIVIDUAL_SECURITIES) {
+      if (!searchUniverse.has(security.securityId)) {
+        searchUniverse.set(security.securityId, { ...security, weight: 0 });
+      }
+    }
+
+    const matches = [...searchUniverse.values()]
       .map((holding) => ({
         holding,
         alias: securityQuoteAlias(holding),
@@ -72,9 +82,10 @@ export async function GET(request: Request) {
       {
         data: matches,
         meta: {
-          universe: "ACWI",
+          universe: "ACWI + supported securities",
           asOf: acwi.asOf,
           sourceStatus: acwi.sourceStatus,
+          supportedSecurities: SUPPORTED_INDIVIDUAL_SECURITIES.length,
         },
       },
       {
@@ -90,7 +101,7 @@ export async function GET(request: Request) {
       return Response.json(
         {
           error:
-            "The ACWI security universe is unavailable. Try again when the iShares source is reachable.",
+            "The security universe is unavailable. Try again when the iShares source is reachable.",
         },
         { status: 503, headers: { "Cache-Control": "no-store" } },
       );

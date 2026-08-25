@@ -47,9 +47,10 @@ function errorResponse(error: unknown, fallback: string): Response {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const portfolio = await getPortfolio();
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
+    const portfolio = await getPortfolio({ forceRefresh });
     return Response.json(
       { data: portfolio },
       { headers: { "Cache-Control": "no-store" } },
@@ -61,6 +62,7 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
     const payload = (await request.json()) as {
       items?: PortfolioRequestItem[];
       cashPositions?: PortfolioRequestCashPosition[];
@@ -85,6 +87,7 @@ export async function PUT(request: Request) {
     const portfolio = await savePortfolio(
       payload.items,
       payload.cashPositions ?? [],
+      { forceRefresh },
     );
     return Response.json(
       { data: portfolio },

@@ -125,6 +125,37 @@ test("falls back to official weights when market values are incomplete", () => {
   assert.equal(result.leftActiveWeight, 0);
 });
 
+test("excludes cash by default and includes it only when requested", () => {
+  const cash = {
+    ...holding("CASH:USD", "USD", 50),
+    name: "USD CASH",
+    assetClass: "Cash",
+  };
+  const result = compareHoldings(
+    snapshot("LEFT", [holding("A", "A", 50), cash]),
+    snapshot("RIGHT", [holding("A", "A", 100)]),
+  );
+
+  assert.equal(result.overlapWeight, 100);
+  assert.equal(result.leftActiveWeight, 0);
+  assert.equal(result.rightActiveWeight, 0);
+  assert.equal(result.left.holdingsCount, 1);
+  assert.equal(result.left.top10Concentration, 100);
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].ticker, "A");
+
+  const withCash = compareHoldings(
+    snapshot("LEFT", [holding("A", "A", 50), cash]),
+    snapshot("RIGHT", [holding("A", "A", 100)]),
+    { includeCash: true },
+  );
+  assert.equal(withCash.overlapWeight, 50);
+  assert.equal(withCash.leftActiveWeight, 50);
+  assert.equal(withCash.rightActiveWeight, 50);
+  assert.equal(withCash.left.holdingsCount, 2);
+  assert.equal(withCash.positions.some((position) => position.ticker === "USD"), true);
+});
+
 test("shows Alphabet share classes as one economic position", () => {
   const result = compareHoldings(
     snapshot("LEFT", [

@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const kind = url.searchParams.get("kind") as PortfolioAssetKind | null;
   const referenceId = url.searchParams.get("referenceId")?.trim();
+  const forceRefresh = url.searchParams.get("refresh") === "true";
   if (
     (kind !== "etf" && kind !== "security") ||
     !referenceId ||
@@ -21,12 +22,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    const price = await getMarketPrice(kind, referenceId);
+    const price = await getMarketPrice(kind, referenceId, { forceRefresh });
     return Response.json(
       { data: price },
       {
         headers: {
-          "Cache-Control": price.sourceStatus === "stale"
+          "Cache-Control": forceRefresh || price.sourceStatus === "stale"
             ? "no-store"
             : "private, max-age=60",
         },

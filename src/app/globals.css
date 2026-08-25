@@ -1511,6 +1511,46 @@ tbody tr:hover {
   color: var(--coral);
 }
 
+.portfolio-currency-toggle {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 10px;
+  padding: 2px;
+  width: 106px;
+}
+
+.portfolio-currency-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 750;
+  min-height: 24px;
+}
+
+.portfolio-currency-toggle button.is-active {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+.portfolio-currency-toggle button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.portfolio-currency-error {
+  color: var(--coral) !important;
+  margin-top: 6px;
+  max-width: 220px;
+  text-align: right;
+}
+
 .portfolio-builder-grid {
   display: grid;
   gap: 14px;
@@ -2355,7 +2395,7 @@ tbody tr:hover {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: 24px minmax(150px, 1.2fr) minmax(140px, 0.8fr) 74px;
+  grid-template-columns: 24px minmax(145px, 1.2fr) minmax(125px, 0.8fr) 82px 88px;
 }
 
 .synthetic-ranking__header {
@@ -2368,7 +2408,7 @@ tbody tr:hover {
   text-transform: uppercase;
 }
 
-.synthetic-ranking__header span:last-child {
+.synthetic-ranking__header span:nth-last-child(-n + 2) {
   text-align: right;
 }
 
@@ -2435,6 +2475,29 @@ tbody tr:hover {
   color: var(--coral);
 }
 
+.synthetic-shares,
+.synthetic-weight {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.synthetic-shares span {
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.synthetic-shares small,
+.synthetic-weight small {
+  color: var(--faint);
+  font-size: 7px;
+  font-weight: 500;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
 .contribution-list {
   display: flex;
   flex-wrap: wrap;
@@ -2458,6 +2521,10 @@ tbody tr:hover {
 .synthetic-weight {
   font-size: 10px;
   text-align: right;
+}
+
+.synthetic-weight > span {
+  color: inherit;
 }
 
 .portfolio-side-panels {
@@ -2954,10 +3021,144 @@ tbody tr:hover {
   gap: 14px;
 }
 
+.panel-refresh-actions {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  z-index: 2;
+}
+
+.manual-refresh-button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 720;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 11px;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.manual-refresh-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.manual-refresh-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.manual-refresh-button > span {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.manual-refresh-button > span.is-refreshing {
+  animation: manual-refresh-spin 800ms linear infinite;
+}
+
+@keyframes manual-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manual-refresh-button > span.is-refreshing {
+    animation: none;
+  }
+}
+
+.holdings-weight-control {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 14px 18px;
+}
+
+.holdings-weight-control > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.holdings-weight-control strong {
+  font-size: 12px;
+}
+
+.holdings-weight-control small {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.holdings-weight-toggle {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 3px;
+}
+
+.holdings-weight-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 650;
+  min-height: 32px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.holdings-weight-toggle button:hover {
+  color: var(--ink);
+}
+
+.holdings-weight-toggle button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.holdings-weight-toggle button[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+  color: var(--ink);
+}
+
+.holdings-weight-toggle button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.holdings-metric-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 0;
+}
+
 .holdings-distortion-panel,
+.holdings-geography-panel,
 .holdings-sector-panel,
 .holdings-top-panel {
   padding: 20px;
+}
+
+.holdings-analysis-grid {
+  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
 .holdings-top-list {
@@ -3141,6 +3342,10 @@ tbody tr:hover {
   height: 100%;
 }
 
+.holdings-geography-list i {
+  background: var(--mint);
+}
+
 .holdings-position-table {
   overflow: hidden;
 }
@@ -3158,6 +3363,15 @@ tbody tr:hover {
   width: 31%;
 }
 
+.holdings-overview-table tr.is-cash-position td {
+  background: color-mix(in srgb, var(--mint) 7%, var(--surface));
+}
+
+.holdings-overview-table tr.is-cash-position .security-avatar {
+  background: var(--mint-soft);
+  color: var(--mint);
+}
+
 .holdings-distortion-alert {
   margin-top: 0;
 }
@@ -3167,14 +3381,139 @@ tbody tr:hover {
   gap: 14px;
 }
 
+.fund-color--left {
+  color: var(--left);
+}
+
+.fund-color--right {
+  color: var(--right);
+}
+
+.fund-color--overlap {
+  color: var(--overlap);
+}
+
+.comparison-pair {
+  align-items: baseline;
+  display: inline-grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  max-width: 100%;
+  width: 100%;
+}
+
+.comparison-pair > span:first-child {
+  text-align: right;
+}
+
+.comparison-pair > span:last-child {
+  text-align: left;
+}
+
+.comparison-pair i {
+  color: var(--faint);
+  font-size: 0.68em;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.metric-card strong > .comparison-pair {
+  font-size: 0.76em;
+}
+
+.metric-card p .comparison-pair {
+  display: inline-flex;
+  gap: 4px;
+  width: auto;
+}
+
+.metric-card p .comparison-pair i {
+  font-size: 1em;
+}
+
+.segmented-control button.fund-color--left,
+.positions-panel td.fund-color--left,
+.positions-panel th.fund-color--left,
+.sleeve-row__header .fund-color--left,
+.legend .fund-color--left,
+.mini-legend .fund-color--left {
+  color: var(--left);
+}
+
+.segmented-control button.fund-color--right,
+.positions-panel td.fund-color--right,
+.positions-panel th.fund-color--right,
+.sleeve-row__header .fund-color--right,
+.legend .fund-color--right,
+.mini-legend .fund-color--right {
+  color: var(--right);
+}
+
+.legend .fund-color--overlap {
+  color: var(--overlap);
+}
+
+.implicit-sleeve__header h3 b,
+.implicit-sleeve__header h3 span b {
+  font-weight: 750;
+}
+
+.implicit-sleeve__header h3 .fund-color--left,
+.implicit-sleeves-intro .fund-color--left {
+  color: var(--left);
+}
+
+.implicit-sleeve__header h3 .fund-color--right,
+.implicit-sleeves-intro .fund-color--right {
+  color: var(--right);
+}
+
+.implicit-sleeve--left .implicit-sleeve__label,
+.implicit-sleeve--left .implicit-ranking__security strong {
+  color: var(--left);
+}
+
+.implicit-sleeve--right .implicit-sleeve__label,
+.implicit-sleeve--right .implicit-ranking__security strong {
+  color: var(--right);
+}
+
+.implicit-sleeve--left .implicit-sleeve__stats b,
+.implicit-sleeve--left .implicit-sleeve__footer strong {
+  color: var(--left);
+}
+
+.implicit-sleeve--right .implicit-sleeve__stats b,
+.implicit-sleeve--right .implicit-sleeve__footer strong {
+  color: var(--right);
+}
+
+.holdings-comparison-section .donut-center strong {
+  color: var(--overlap);
+}
+
+.comparison-active-label,
+.comparison-eyebrow {
+  -webkit-background-clip: text;
+  background: linear-gradient(90deg, var(--left) 0 48%, var(--right) 52% 100%);
+  background-clip: text;
+  color: transparent;
+}
+
 .holdings-comparison-heading {
   padding: 20px 22px;
 }
 
 .holdings-comparison-heading h2 {
-  color: var(--coral);
   font-size: 18px;
   margin: 0;
+}
+
+.holdings-comparison-heading h2 i {
+  color: var(--faint);
+  font-size: 0.58em;
+  font-style: normal;
+  font-weight: 600;
 }
 
 .holdings-comparison-heading p {
@@ -4334,6 +4673,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .holdings-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .no-data-panel {
     grid-template-columns: auto 1fr;
   }
@@ -4485,12 +4828,22 @@ tbody tr:hover {
     gap: 5px;
   }
 
+  .holdings-weight-control {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
   .primary-button {
     width: 100%;
   }
 
   .metric-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .holdings-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .implicit-sleeves-grid {
@@ -4575,6 +4928,14 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .holdings-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .holdings-weight-toggle button {
+    padding: 0 8px;
+  }
+
   .holdings-hero {
     align-items: flex-start;
     flex-direction: column;
@@ -4636,6 +4997,16 @@ tbody tr:hover {
 
   .metrics-provider-mark {
     width: 100%;
+  }
+
+  .panel-refresh-actions,
+  .manual-refresh-button {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .manual-refresh-button {
+    justify-content: center;
   }
 
   .metrics-selector-grid,
@@ -4720,6 +5091,10 @@ tbody tr:hover {
     align-items: flex-start;
   }
 
+  .portfolio-currency-error {
+    text-align: left;
+  }
+
   .asset-kind-tabs,
   .portfolio-add-action,
   .cash-add-row,
@@ -4789,7 +5164,7 @@ tbody tr:hover {
 
   .synthetic-ranking__header,
   .synthetic-ranking__row {
-    min-width: 570px;
+    min-width: 700px;
   }
 
   .no-data-panel {
