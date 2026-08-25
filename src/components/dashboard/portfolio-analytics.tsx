@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail } from "@/domain/local-etf";
@@ -154,6 +154,7 @@ export function PortfolioAnalytics({
   const [etfName, setEtfName] = useState("My Portfolio ETF");
   const [etfDescription, setEtfDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const definitionRequestId = useRef(0);
 
   const applyPortfolioRecord = (record: PortfolioRecord) => {
     setPortfolio(record);
@@ -161,43 +162,28 @@ export function PortfolioAnalytics({
     setCashPositions(record.cashPositions ?? []);
   };
 
-  const loadDefaultPortfolio = async () => {
-    setDefinitionLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/v1/portfolio", { cache: "no-store" });
-      const payload = (await response.json()) as {
-        data?: PortfolioRecord;
-        error?: string;
-      };
-      if (!response.ok || !payload.data) {
-        throw new Error(payload.error ?? "The saved portfolio could not be loaded.");
-      }
-      applyPortfolioRecord(payload.data);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "The saved portfolio could not be loaded.",
-      );
-    } finally {
-      setDefinitionLoading(false);
-    }
-  };
-
   const startCreateMode = () => {
+    definitionRequestId.current += 1;
     setWorkflowMode("create");
     setEditingEtfId("");
+    setDefinitionLoading(false);
     setConfirmDelete(false);
+    setItems([]);
+    setCashPositions([]);
+    setPortfolio(null);
+    setCompositionPrices({});
+    setCompositionPricesLoading(false);
+    setResultFilter("");
     setEtfTicker("");
     setEtfName("My Portfolio ETF");
     setEtfDescription("");
     setSavedEtf(null);
-    void loadDefaultPortfolio();
+    setError(null);
   };
 
   const loadEditablePortfolioEtf = async (etfId: string) => {
     if (!etfId) return;
+    const requestId = ++definitionRequestId.current;
     setDefinitionLoading(true);
     setError(null);
     setSavedEtf(null);
@@ -214,6 +200,7 @@ export function PortfolioAnalytics({
       if (!response.ok || !payload.data || payload.data.kind !== "portfolio") {
         throw new Error(payload.error ?? "The portfolio ETF could not be loaded.");
       }
+      if (requestId !== definitionRequestId.current) return;
       setWorkflowMode("edit");
       setEditingEtfId(payload.data.etf.id);
       setEtfTicker(payload.data.etf.ticker);
@@ -221,13 +208,16 @@ export function PortfolioAnalytics({
       setEtfDescription(payload.data.editableDescription);
       applyPortfolioRecord(payload.data.portfolio);
     } catch (loadError) {
+      if (requestId !== definitionRequestId.current) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "The portfolio ETF could not be loaded.",
       );
     } finally {
-      setDefinitionLoading(false);
+      if (requestId === definitionRequestId.current) {
+        setDefinitionLoading(false);
+      }
     }
   };
 
@@ -263,6 +253,7 @@ export function PortfolioAnalytics({
 
   useEffect(() => {
     let active = true;
+    const requestId = ++definitionRequestId.current;
     async function load() {
       try {
         const response = await fetch("/api/v1/portfolio", { cache: "no-store" });
@@ -273,11 +264,11 @@ export function PortfolioAnalytics({
         if (!response.ok || !payload.data) {
           throw new Error(payload.error ?? "The saved portfolio could not be loaded.");
         }
-        if (active) {
+        if (active && requestId === definitionRequestId.current) {
           applyPortfolioRecord(payload.data);
         }
       } catch (loadError) {
-        if (active) {
+        if (active && requestId === definitionRequestId.current) {
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -285,7 +276,7 @@ export function PortfolioAnalytics({
           );
         }
       } finally {
-        if (active) setLoading(false);
+        if (active && requestId === definitionRequestId.current) setLoading(false);
       }
     }
     void load();
@@ -513,7 +504,7 @@ export function PortfolioAnalytics({
       setError(
         kind === "etf"
           ? "Select an ETF."
-          : "Select a security from the ACWI search results.",
+          : "Select a security from the search results.",
       );
       return;
     }
@@ -968,7 +959,7 @@ export function PortfolioAnalytics({
           <span className="eyebrow">Look-through aggregation</span>
           <h1>Portfolio Analytics</h1>
           <p>
-            Combine ETF sleeves and individual ACWI stocks into one synthetic
+            Combine ETF sleeves and supported individual stocks into one synthetic
             portfolio, then see your true security-level ranking.
           </p>
         </div>
@@ -1055,7 +1046,7 @@ export function PortfolioAnalytics({
               }}
             >
               Individual stock
-              <small>ACWI security universe</small>
+              <small>ACWI + supported securities</small>
             </button>
           </div>
 
@@ -1069,7 +1060,7 @@ export function PortfolioAnalytics({
           ) : (
             <div className="security-search">
               <label className="field">
-                <span>Search ACWI constituents</span>
+                <span>Search individual securities</span>
                 <input
                   type="search"
                   value={query}
@@ -1086,7 +1077,7 @@ export function PortfolioAnalytics({
               {query.trim().length >= 2 && !selectedSecurity ? (
                 <div className="security-search-results" role="listbox">
                   {searching ? (
-                    <div className="security-search-message">Searching ACWI…</div>
+                    <div className="security-search-message">Searching securities…</div>
                   ) : searchResults.length > 0 ? (
                     searchResults.map((security) => (
                       <button
@@ -1112,7 +1103,7 @@ export function PortfolioAnalytics({
                     ))
                   ) : (
                     <div className="security-search-message">
-                      No matching ACWI security.
+                      No matching supported security.
                     </div>
                   )}
                 </div>

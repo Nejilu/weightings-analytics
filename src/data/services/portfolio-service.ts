@@ -177,7 +177,7 @@ async function resolveDrafts(
 
     const security = directSecurities.get(draft.referenceId);
     if (!security) {
-      throw new PortfolioRequestError("One of the selected ACWI securities is no longer available.");
+      throw new PortfolioRequestError("One of the selected securities is no longer available.");
     }
     const alias = securityQuoteAlias(security);
     return {

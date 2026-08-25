@@ -1,6 +1,7 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import { ETF_CATALOG } from "../data/catalog";
+import { SUPPORTED_INDIVIDUAL_SECURITIES } from "../data/supported-individual-securities";
 import { getDb } from "./client";
 import { migrateCustomEtfDefinitions } from "./repositories/local-etf-repository";
 import { reconcilePersistedSecurityIdentities } from "./security-identity-repository";
@@ -116,15 +117,50 @@ export function seedCatalog(): void {
     transaction
       .delete(securities)
       .where(
-        sql`NOT EXISTS (
-          SELECT 1 FROM ${holdings}
-          WHERE ${holdings.securityId} = ${securities.id}
-        ) AND NOT EXISTS (
-          SELECT 1 FROM ${portfolioItems}
-          WHERE ${portfolioItems.securityId} = ${securities.id}
-        )`,
+        and(
+          notInArray(
+            securities.id,
+            SUPPORTED_INDIVIDUAL_SECURITIES.map((security) => security.securityId),
+          ),
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${holdings}
+            WHERE ${holdings.securityId} = ${securities.id}
+          ) AND NOT EXISTS (
+            SELECT 1 FROM ${portfolioItems}
+            WHERE ${portfolioItems.securityId} = ${securities.id}
+          )`,
+        ),
       )
       .run();
+
+    for (const security of SUPPORTED_INDIVIDUAL_SECURITIES) {
+      const values = {
+        id: security.securityId,
+        isin: security.isin ?? null,
+        primaryTicker: security.ticker,
+        name: security.name,
+        assetClass: security.assetClass,
+        sector: security.sector,
+        country: security.country,
+        currency: security.currency,
+        identifiersJson: {
+          exchange: security.exchange,
+          ...(security.cusip ? { cusip: security.cusip } : {}),
+          ...(security.sedol ? { sedol: security.sedol } : {}),
+        },
+      };
+      transaction
+        .insert(securities)
+        .values(values)
+        .onConflictDoUpdate({
+          target: securities.id,
+          set: {
+            ...values,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          },
+        })
+        .run();
+    }
 
     for (const benchmark of ETF_CATALOG) {
       transaction

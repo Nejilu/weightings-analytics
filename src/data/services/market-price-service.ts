@@ -116,6 +116,8 @@ async function resolveSecuritySymbol(
 ): Promise<string> {
   const alias = securityQuoteAlias(security);
   if (alias) return alias.providerSymbol;
+  const listingSymbol = securityListingQuoteSymbol(security);
+  if (listingSymbol) return listingSymbol;
 
   if (
     security.country.toLowerCase().includes("united states") &&
@@ -219,10 +221,14 @@ async function refreshMarketPrice(
       ? findSecuritiesByIds([assetId]).get(assetId)
       : undefined;
   const alias = security ? securityQuoteAlias(security) : undefined;
+  const listingSymbol = security
+    ? securityListingQuoteSymbol(security)
+    : undefined;
+  const preferredSecuritySymbol = alias?.providerSymbol ?? listingSymbol;
   const fallbackCached =
-    !alias ||
+    !preferredSecuritySymbol ||
     cached?.providerSymbol.toUpperCase() ===
-      alias.providerSymbol.toUpperCase()
+      preferredSecuritySymbol.toUpperCase()
       ? cached
       : undefined;
   if (!options.forceRefresh && fallbackCached && isFresh(fallbackCached.fetchedAt)) {
@@ -230,7 +236,7 @@ async function refreshMarketPrice(
   }
 
   try {
-    let providerSymbol = alias?.providerSymbol ?? fallbackCached?.providerSymbol;
+    let providerSymbol = preferredSecuritySymbol ?? fallbackCached?.providerSymbol;
     if (assetKind === "etf") {
       const etf = findEtfById(assetId);
       if (
@@ -254,11 +260,14 @@ async function refreshMarketPrice(
     try {
       quote = await fetchQuote(providerSymbol);
     } catch (error) {
-      if (assetKind !== "security" || fallbackCached || alias) throw error;
+      if (assetKind !== "security" || fallbackCached || preferredSecuritySymbol) {
+        throw error;
+      }
       if (!security) throw error;
       providerSymbol = await resolveSecuritySymbol({
         ...security,
         country: "",
+        exchange: undefined,
       });
       quote = await fetchQuote(providerSymbol);
     }

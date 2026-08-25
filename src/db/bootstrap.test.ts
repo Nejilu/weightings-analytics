@@ -6,7 +6,11 @@ import test from "node:test";
 
 import { ensureLocalDatabase } from "./bootstrap";
 import { applicationRoot, closeDatabase, getDb } from "./client";
-import { findEtfById, findEtfByTicker } from "./repositories/catalog-repository";
+import {
+  findEtfById,
+  findEtfByTicker,
+  findSecuritiesByIds,
+} from "./repositories/catalog-repository";
 import { etfs } from "./schema";
 
 test("reinitializes migrations and catalog when DATABASE_PATH changes", () => {
@@ -22,6 +26,16 @@ test("reinitializes migrations and catalog when DATABASE_PATH changes", () => {
       findEtfById("qtop-ucits")?.holdingsSourceEtfId,
       "qtop-us",
     );
+    assert.deepEqual(findSecuritiesByIds(["US55087P1049"]).get("US55087P1049"), {
+      securityId: "US55087P1049",
+      isin: "US55087P1049",
+      ticker: "LYFT",
+      name: "LYFT INC CLASS A",
+      assetClass: "Equity",
+      sector: "Industrials",
+      country: "United States",
+      exchange: "NASDAQ",
+    });
     assert.ok(existsSync(process.env.DATABASE_PATH));
 
     closeDatabase();

@@ -73,6 +73,7 @@ export interface PortfolioSecurity {
   assetClass: string;
   country: string;
   isin?: string;
+  exchange?: string;
 }
 
 export interface MarketPrice {

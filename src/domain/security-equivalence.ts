@@ -2,7 +2,8 @@ import type { Holding } from "./etf";
 
 type SecurityDescriptor = Pick<Holding, "securityId" | "ticker" | "name">;
 type QuoteDescriptor = Pick<Holding, "ticker" | "name">;
-type ListingQuoteDescriptor = QuoteDescriptor & Pick<Holding, "country">;
+type ListingQuoteDescriptor = QuoteDescriptor &
+  Pick<Holding, "country" | "exchange">;
 
 interface EconomicSecurityGroup {
   key: string;
@@ -110,6 +111,42 @@ export function securityListingQuoteSymbol(
   if (!ticker || ticker === "—") return undefined;
   if (ticker === "HY9H") return "HY9H.F";
   if (ticker === "SMSN") return "SMSN.IL";
+  if (/\.(?:T|KS|KQ|TW|TWO|HK|SS|SZ|SR|NS|BO|SI|IL|F)$/.test(ticker)) {
+    return ticker;
+  }
+
+  const exchange = normalized(security.exchange ?? "");
+  if (exchange === "NASDAQ" || exchange === "NYSE") return ticker;
+  if (exchange.includes("TOKYO")) return `${ticker}.T`;
+  if (exchange.includes("KOSDAQ")) return `${ticker}.KQ`;
+  if (exchange.includes("KOREA EXCHANGE")) return `${ticker}.KS`;
+  if (exchange.includes("GRETAI")) return `${ticker}.TWO`;
+  if (exchange.includes("TAIWAN STOCK")) return `${ticker}.TW`;
+  if (exchange.includes("HONG KONG")) {
+    return /^\d{1,5}$/.test(ticker)
+      ? `${ticker.padStart(4, "0")}.HK`
+      : undefined;
+  }
+  if (exchange.includes("SHANGHAI")) return `${ticker}.SS`;
+  if (exchange.includes("SHENZHEN")) return `${ticker}.SZ`;
+  if (exchange.includes("SAUDI")) return `${ticker}.SR`;
+  if (exchange.includes("NATIONAL STOCK EXCHANGE OF INDIA")) {
+    return `${ticker.replace(/\./g, "-")}.NS`;
+  }
+  if (exchange.includes("BSE LTD")) {
+    const bseAliases: Record<string, string> = {
+      "532483": "CANBK.BO",
+      "534091": "MCX.BO",
+    };
+    return bseAliases[ticker] ?? `${ticker}.BO`;
+  }
+  if (exchange.includes("SINGAPORE")) {
+    const singaporeAliases: Record<string, string> = {
+      CICT: "C38U.SI",
+      CLAR: "A17U.SI",
+    };
+    return singaporeAliases[ticker] ?? `${ticker}.SI`;
+  }
   if (ticker.includes(".")) return ticker;
 
   const country = normalized(security.country);
@@ -132,8 +169,13 @@ export function securityListingQuoteSymbol(
   if (/^\d{1,5}$/.test(ticker) && country.includes("HONG KONG")) {
     return `${ticker.padStart(4, "0")}.HK`;
   }
-  if (/^\d{6}$/.test(ticker) && country.includes("CHINA")) {
-    return `${ticker}.${ticker.startsWith("6") ? "SS" : "SZ"}`;
+  if (country.includes("CHINA")) {
+    if (/^\d{6}$/.test(ticker)) {
+      return `${ticker}.${/^[569]/.test(ticker) ? "SS" : "SZ"}`;
+    }
+    if (/^\d{1,5}$/.test(ticker)) {
+      return `${ticker.padStart(4, "0")}.HK`;
+    }
   }
   return undefined;
 }

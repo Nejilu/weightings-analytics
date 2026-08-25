@@ -204,17 +204,26 @@ export function findSecuritiesByIds(
     .all();
 
   return new Map(
-    rows.map((row) => [
-      row.id,
-      {
-        securityId: row.id,
-        ticker: row.primaryTicker ?? "—",
-        name: row.name,
-        sector: row.sector ?? "Unclassified",
-        assetClass: row.assetClass ?? "Unclassified",
-        country: row.country ?? "Not reported",
-        isin: row.isin ?? undefined,
-      },
-    ]),
+    rows.map((row) => {
+      const identifiers = row.identifiersJson &&
+        typeof row.identifiersJson === "object"
+        ? row.identifiersJson as Record<string, unknown>
+        : {};
+      return [
+        row.id,
+        {
+          securityId: row.id,
+          ticker: row.primaryTicker ?? "—",
+          name: row.name,
+          sector: row.sector ?? "Unclassified",
+          assetClass: row.assetClass ?? "Unclassified",
+          country: row.country ?? "Not reported",
+          isin: row.isin ?? undefined,
+          exchange: typeof identifiers.exchange === "string"
+            ? identifiers.exchange
+            : undefined,
+        },
+      ];
+    }),
   );
 }
