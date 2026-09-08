@@ -51,6 +51,7 @@ Copy `.env.example` to `.env` only when overriding a default.
 
 | Variable | Default | Valid values / purpose |
 | --- | ---: | --- |
+| `BIND_HOST` | `0.0.0.0` | Standalone listen address; set in the shell environment, e.g. `127.0.0.1` for loopback only. Overrides Docker's automatic `HOSTNAME`. |
 | `DATABASE_PATH` | `.data/weightings-analytics.sqlite` | Durable SQLite database path |
 | `DRIZZLE_MIGRATIONS_PATH` | `drizzle` | Migration directory; useful when embedded in another runtime image |
 | `HOLDINGS_CACHE_TTL_SECONDS` | `86400` | Positive holdings snapshot TTL |

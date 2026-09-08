@@ -8,6 +8,15 @@ import { prepareStandaloneAssets } from "./start-standalone-assets.mjs";
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = resolve(projectRoot, ".next", "standalone", "server.js");
 
+export function standaloneEnvironment(env = process.env) {
+  return {
+    ...env,
+    HOSTNAME: env.BIND_HOST?.trim() || "0.0.0.0",
+    DRIZZLE_MIGRATIONS_PATH: env.DRIZZLE_MIGRATIONS_PATH ??
+      resolve(projectRoot, "drizzle"),
+  };
+}
+
 export function startStandalone() {
   if (!existsSync(serverPath)) {
     console.error("Standalone server is missing. Run npm run build first.");
@@ -23,12 +32,7 @@ export function startStandalone() {
 
   const child = spawn(process.execPath, [serverPath], {
     cwd: projectRoot,
-    env: {
-      ...process.env,
-      HOSTNAME: "0.0.0.0",
-      DRIZZLE_MIGRATIONS_PATH: process.env.DRIZZLE_MIGRATIONS_PATH ??
-        resolve(projectRoot, "drizzle"),
-    },
+    env: standaloneEnvironment(),
     stdio: "inherit",
   });
 

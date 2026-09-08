@@ -12,6 +12,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { prepareStandaloneAssets } from "./start-standalone-assets.mjs";
+import { standaloneEnvironment } from "./start-standalone.mjs";
+
+test("standalone binding ignores the machine hostname and supports an explicit override", () => {
+  assert.equal(standaloneEnvironment({}).HOSTNAME, "0.0.0.0");
+  assert.equal(standaloneEnvironment({ HOSTNAME: "docker-container" }).HOSTNAME, "0.0.0.0");
+  assert.equal(standaloneEnvironment({ HOSTNAME: "docker-container", BIND_HOST: "127.0.0.1" }).HOSTNAME, "127.0.0.1");
+  assert.equal(standaloneEnvironment({ BIND_HOST: "  " }).HOSTNAME, "0.0.0.0");
+});
 
 test("copies static and public assets into the standalone layout", () => {
   const root = mkdtempSync(join(tmpdir(), "weightings-analytics-standalone-assets-"));
