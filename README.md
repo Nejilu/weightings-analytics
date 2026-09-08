@@ -7,18 +7,20 @@ and creating reusable ETFs from iShares source universes.
 ## Features
 
 - Inspect one ETF or compare two ETFs by concentration, sector allocation,
-  overlap, active sleeves, and ACWI-implied weighting distortion.
+  overlap, active sleeves, geography, and ACWI-implied weighting distortion.
 - Build long/short portfolios from ETFs and direct equities, including cash or
   borrowing in multiple currencies, then inspect gross or NAV exposure.
 - Save portfolios as local ETFs or create rule-based, free-float-weighted ETFs.
-- Fetch official iShares/BlackRock holdings and persist validated snapshots.
+- Inspect supported iShares/BlackRock ETFs and funds, and persist validated
+  official holdings snapshots.
 - Enrich constituents with TradingView fundamentals and consensus EPS series.
 - Aggregate valuation, earnings, quality, size, income, and risk metrics with
   explicit data coverage and source freshness.
 
 ## Quick start
 
-Requirements: Node.js 22.13 or newer and npm.
+Requirements: Node.js 22.13 or newer and npm. Run commands from the project root.
+An internet connection is needed to load new provider data.
 
 ```bash
 npm ci
@@ -27,6 +29,9 @@ npm run dev
 
 Open `http://localhost:3000`. The development launcher applies committed SQLite
 migrations and idempotently seeds the ETF catalog before starting Next.js.
+
+Holdings are fetched on demand. The catalog contains supported source funds and
+local definitions; it is not a search of every listed ETF.
 
 Use `npm ci` for a fresh checkout and stop if it reports an error. Do not copy or
 cache `node_modules` between machines; the GitHub Actions workflow caches only
@@ -43,7 +48,9 @@ npm run start
 The application is served at `http://localhost:3000`. The standalone launcher
 keeps database and migration paths anchored to the project root and stages the
 required static assets before starting the generated server. Check
-`/api/health` to verify both the application and database.
+`/api/health` to verify application and SQLite readiness (`200` when healthy,
+`503` otherwise). This endpoint does not check external provider availability.
+`npm run start` also applies migrations and seeds the catalog before launch.
 
 ## Configuration
 
@@ -67,7 +74,9 @@ Copy `.env.example` to `.env` only when overriding a default.
 | `TRADINGVIEW_ESTIMATES_MISSING_TTL_SECONDS` | `900` | Confirmed missing series TTL, 60–86400 |
 
 Relative paths resolve from the project root. The database, WAL files, and
-backups are ignored by Git and survive rebuilds or deletion of `.next`.
+backups at the default location are ignored by Git and survive rebuilds or
+deletion of `.next`. If you change `DATABASE_PATH`, keep the database and backups
+outside build directories and outside version control.
 
 ## Common commands
 
@@ -77,9 +86,13 @@ npm run typecheck        # TypeScript validation
 npm run lint             # ESLint
 npm run db:setup         # apply migrations and seed the catalog
 npm run db:stats         # display database size and row counts
-npm run db:backup        # create a safe backup in .data/backups
+npm run db:backup        # back up SQLite to a sibling backups directory
 npm run db:audit-mappings -- --strict --breakdown
 ```
+
+Backups default to `.data/backups`; with a custom database path, they are written
+to `backups` beside that database. The backup command applies pending migrations
+before using the SQLite backup API.
 
 The mapping audit opens SQLite read-only. It checks current provider mappings,
 provenance, metadata, identity consistency, unresolved weight, duplicates, and
@@ -93,7 +106,8 @@ npm run db:import-tradingview-mappings -- path/to/stocks.sqlite
 
 ## API
 
-The main endpoints are:
+Holdings routes accept a catalog ID or ticker; use IDs to identify a specific
+share class. The endpoints are:
 
 - `GET /api/health`
 - `GET /api/v1/catalog`
@@ -103,10 +117,27 @@ The main endpoints are:
 - `GET|PUT /api/v1/portfolio`
 - `POST /api/v1/portfolio/save-as-etf`
 - `GET /api/v1/securities/search?q=AAPL`
-- `GET /api/v1/prices/quote`
+- `GET /api/v1/prices/quote?kind=etf&referenceId=ivv-us`
+- `POST /api/v1/prices/quotes`
+- `GET /api/v1/prices/fx?currency=EUR`
 - `POST /api/v1/etf-creator`
 - `GET|PATCH|DELETE /api/v1/local-etfs/:etfId`
 - `GET /api/v1/metrics/overview?etfs=ivv-us,acwi-us`
+
+Comparison excludes cash by default. Add `includeCash=true` to include it in
+weight normalization, overlap, and active-sleeve calculations. Metrics Overview
+accepts one to four distinct ETFs after reference resolution.
+
+Add `refresh=true` to holdings, holdings analysis, comparison, portfolio, single
+quote, or Metrics Overview requests to request fresh source data. Provider
+failures can still return stale fallback data. The FX endpoint has no refresh
+query option.
+
+Batch listing quotes accept a JSON body with `quotes` entries containing `key`,
+`securityId`, and `ticker` (up to 30 distinct keys), plus optional `refresh: true`.
+Use canonical security IDs returned by the application. Request body contracts
+for writes are defined in `src/app/api/v1`; this is an endpoint index, not a
+complete API schema.
 
 ## Architecture
 
@@ -124,9 +155,8 @@ drizzle/                committed SQL migrations
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the data, cache, identity,
-and metric contracts that must remain stable. That file is the only detailed
-technical reference; completed plans and chronological review logs are kept in
-Git history instead of active documentation.
+and metric contracts that must remain stable. That file is the detailed technical
+reference.
 
 No demonstration holdings dataset is included. Each installation builds its
 own local history from official source files. Data is indicative and does not
