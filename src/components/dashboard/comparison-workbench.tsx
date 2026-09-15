@@ -34,6 +34,7 @@ import {
   countryToContinent,
   geographicCountryLabel,
 } from "@/domain/geography";
+import { holdingsCashDisplayPositions, type HoldingsCashDisplay } from "@/domain/holdings-cash-display";
 import { EtfSearch } from "./etf-search";
 
 const MetricsOverview = dynamic(
@@ -220,7 +221,7 @@ function MetricCard({
   label: ReactNode;
   value: ReactNode;
   detail: ReactNode;
-  tone?: "neutral" | "positive" | "left" | "right";
+  tone?: "neutral" | "positive" | "negative" | "left" | "right";
 }) {
   return (
     <article className={`metric-card metric-card--${tone}`}>
@@ -824,11 +825,13 @@ function HoldingsSectorPanel({
 }) {
   const sectors = useMemo(() => {
     const weights = new Map<string, number>();
+    const cashLabels = new Set<string>();
     for (const position of analysis.positions) {
       if (weightView === "securities" && position.isCash) continue;
       const sector = position.isCash
-        ? "Cash & equivalents"
+        ? position.name
         : position.sector || "Unclassified";
+      if (position.isCash) cashLabels.add(sector);
       weights.set(
         sector,
         (weights.get(sector) ?? 0) +
@@ -838,9 +841,9 @@ function HoldingsSectorPanel({
     return [...weights.entries()]
       .map(([sector, weight]) => ({ sector, weight }))
       .sort((left, right) => right.weight - left.weight)
-      .slice(0, 9);
+      .filter((entry, index) => index < 9 || cashLabels.has(entry.sector));
   }, [analysis.positions, weightView]);
-  const largestWeight = Math.max(...sectors.map((sector) => sector.weight), 1);
+  const largestWeight = Math.max(...sectors.map((sector) => Math.abs(sector.weight)), 1);
   return (
     <article className="panel holdings-sector-panel">
       <div className="panel-heading">
@@ -854,10 +857,10 @@ function HoldingsSectorPanel({
       </div>
       <div className="holdings-sector-list">
         {sectors.map((sector) => (
-          <div key={sector.sector}>
+          <div key={sector.sector} className={sector.weight < 0 ? "is-negative" : undefined}>
             <span>{sector.sector}</span>
             <div aria-hidden="true">
-              <i style={{ width: `${(sector.weight / largestWeight) * 100}%` }} />
+              <i className={sector.weight < 0 ? "is-negative" : undefined} style={{ width: `${(Math.abs(sector.weight) / largestWeight) * 100}%` }} />
             </div>
             <strong>{formatPercent(sector.weight, 1)}</strong>
           </div>
@@ -877,13 +880,15 @@ function HoldingsGeographyPanel({
   const [grouping, setGrouping] = useState<GeographyGrouping>("country");
   const allocations = useMemo(() => {
     const weights = new Map<string, number>();
+    const cashLabels = new Set<string>();
     for (const position of analysis.positions) {
       if (weightView === "securities" && position.isCash) continue;
       const geography = position.isCash
-        ? "Cash & equivalents"
+        ? position.name
         : grouping === "country"
           ? geographicCountryLabel(position.country)
           : countryToContinent(position.country);
+      if (position.isCash) cashLabels.add(geography);
       weights.set(
         geography,
         (weights.get(geography) ?? 0) +
@@ -893,10 +898,10 @@ function HoldingsGeographyPanel({
     return [...weights.entries()]
       .map(([geography, weight]) => ({ geography, weight }))
       .sort((left, right) => right.weight - left.weight)
-      .slice(0, grouping === "country" ? 9 : undefined);
+      .filter((entry, index) => grouping !== "country" || index < 9 || cashLabels.has(entry.geography));
   }, [analysis.positions, grouping, weightView]);
   const largestWeight = Math.max(
-    ...allocations.map((allocation) => allocation.weight),
+    ...allocations.map((allocation) => Math.abs(allocation.weight)),
     1,
   );
 
@@ -928,12 +933,13 @@ function HoldingsGeographyPanel({
       </div>
       <div className="holdings-sector-list holdings-geography-list">
         {allocations.map((allocation) => (
-          <div key={allocation.geography}>
+          <div key={allocation.geography} className={allocation.weight < 0 ? "is-negative" : undefined}>
             <span>{allocation.geography}</span>
             <div aria-hidden="true">
               <i
                 style={{
-                  width: `${(allocation.weight / largestWeight) * 100}%`,
+                  width: `${(Math.abs(allocation.weight) / largestWeight) * 100}%`,
+                  background: allocation.weight < 0 ? "var(--negative)" : undefined,
                 }}
               />
             </div>
@@ -1084,7 +1090,7 @@ function HoldingsTopPositionsPanel({
     .sort((left, right) => right.displayWeight - left.displayWeight)
     .slice(0, 10);
   const largestWeight = Math.max(
-    ...positions.map((position) => position.displayWeight),
+    ...positions.map((position) => Math.abs(position.displayWeight)),
     1,
   );
 
@@ -1101,7 +1107,7 @@ function HoldingsTopPositionsPanel({
       </div>
       <div className="holdings-top-list">
         {positions.map((position) => (
-          <div key={position.securityId}>
+          <div key={position.securityId} className={position.displayWeight < 0 ? "is-negative" : undefined}>
             <div>
               <strong>{position.ticker}</strong>
               <span>{position.name}</span>
@@ -1109,7 +1115,8 @@ function HoldingsTopPositionsPanel({
             <div aria-hidden="true">
               <i
                 style={{
-                  width: `${(position.displayWeight / largestWeight) * 100}%`,
+                  width: `${(Math.abs(position.displayWeight) / largestWeight) * 100}%`,
+                  background: position.displayWeight < 0 ? "var(--negative)" : undefined,
                 }}
               />
             </div>
@@ -1129,7 +1136,7 @@ function HoldingsOverviewTable({
   weightView: HoldingsWeightView;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const viewKey = `${analysis.calculatedAt}:${weightView}`;
+  const viewKey = `${analysis.calculatedAt}:${weightView}:${analysis.positions.map((position) => position.securityId).join(",")}`;
   const rows = useMemo(
     () =>
       analysis.positions
@@ -1146,8 +1153,10 @@ function HoldingsOverviewTable({
   const isExpanded = expandedKey === viewKey;
   const visibleRows = isExpanded
     ? rows
-    : rows.slice(0, INITIAL_VISIBLE_POSITIONS);
-  const hasAdditionalRows = rows.length > INITIAL_VISIBLE_POSITIONS;
+    : rows.filter((position, index) => index < INITIAL_VISIBLE_POSITIONS || position.isCash);
+  const hasAdditionalRows = rows.some(
+    (position, index) => index >= INITIAL_VISIBLE_POSITIONS && !position.isCash,
+  );
 
   return (
     <section className="panel holdings-position-table holdings-overview-table">
@@ -1175,7 +1184,7 @@ function HoldingsOverviewTable({
             {visibleRows.map((position) => (
               <tr
                 key={position.securityId}
-                className={position.isCash ? "is-cash-position" : undefined}
+                className={[position.isCash ? "is-cash-position" : "", position.displayWeight < 0 ? "is-negative" : ""].filter(Boolean).join(" ")}
               >
                 <td>
                   <div className="security-cell">
@@ -1188,7 +1197,7 @@ function HoldingsOverviewTable({
                     </div>
                   </div>
                 </td>
-                <td>{formatPercent(position.displayWeight, 2)}</td>
+                <td className={position.displayWeight < 0 ? "negative-position-weight" : undefined}>{formatPercent(position.displayWeight, 2)}</td>
                 <td>{position.isCash ? "Cash & equivalents" : position.sector}</td>
                 <td>{position.country}</td>
                 <td>{position.assetClass}</td>
@@ -1213,7 +1222,7 @@ function HoldingsOverviewTable({
           <small>
             {isExpanded
               ? `${rows.length} holdings displayed`
-              : `${INITIAL_VISIBLE_POSITIONS} of ${rows.length} displayed`}
+              : `${visibleRows.length} of ${rows.length} displayed`}
           </small>
           <b aria-hidden="true">{isExpanded ? "↑" : "↓"}</b>
         </button>
@@ -1284,6 +1293,7 @@ export function ComparisonWorkbench({
   >("holdings");
   const [holdingsWeightView, setHoldingsWeightView] =
     useState<HoldingsWeightView>("securities");
+  const [cashDisplay, setCashDisplay] = useState<HoldingsCashDisplay>("combined");
   const [comparisonMode, setComparisonMode] = useState(false);
   const [analysis, setAnalysis] = useState<HoldingsAnalysisResult | null>(null);
   const [rightAnalysis, setRightAnalysis] =
@@ -1308,10 +1318,14 @@ export function ComparisonWorkbench({
   );
   const leftEtf = availableEtfs.find((etf) => etf.id === leftEtfId);
   const rightEtf = availableEtfs.find((etf) => etf.id === rightEtfId);
+  const holdingsDisplayAnalysis = useMemo(() => analysis ? {
+    ...analysis,
+    positions: holdingsCashDisplayPositions(analysis.positions, cashDisplay),
+  } : null, [analysis, cashDisplay]);
   const holdingsDisplaySummary = useMemo(() => {
-    if (!analysis) return null;
-    return buildHoldingsDisplaySummary(analysis, holdingsWeightView);
-  }, [analysis, holdingsWeightView]);
+    if (!holdingsDisplayAnalysis) return null;
+    return buildHoldingsDisplaySummary(holdingsDisplayAnalysis, holdingsWeightView);
+  }, [holdingsDisplayAnalysis, holdingsWeightView]);
   const leftComparisonSummary = useMemo(
     () => analysis
       ? buildHoldingsDisplaySummary(analysis, holdingsWeightView)
@@ -1809,6 +1823,7 @@ export function ComparisonWorkbench({
                                 : "Cash-like positions are excluded and the remaining securities are rescaled to 100%."}
                             </small>
                           </div>
+                          <div className="holdings-weight-options">
                           <div className="holdings-weight-toggle" role="group" aria-label="Cash treatment">
                             <button
                               type="button"
@@ -1826,6 +1841,17 @@ export function ComparisonWorkbench({
                             >
                               Include cash
                             </button>
+                          </div>
+                            {holdingsWeightView === "with-cash" ? (
+                              <div className="holdings-cash-detail" role="group" aria-label="Cash grouping">
+                                <button type="button" aria-pressed={cashDisplay === "combined"} onClick={() => setCashDisplay("combined")}>
+                                  Combined
+                                </button>
+                                <button type="button" aria-pressed={cashDisplay === "positions"} onClick={() => setCashDisplay("positions")}>
+                                  Separate
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         </section>
                       )}
@@ -1860,7 +1886,7 @@ export function ComparisonWorkbench({
                           detail={comparisonReady && rightAnalysis
                             ? <><ComparisonPair left={analysis.etf.ticker} right={rightAnalysis.etf.ticker} /> · {holdingsWeightView === "with-cash" ? "included in comparison" : "excluded from comparison"}</>
                             : `${analysis.cashHoldingsCount} source position${analysis.cashHoldingsCount === 1 ? "" : "s"} · ${holdingsWeightView === "with-cash" ? "included in view" : "excluded from view"}`}
-                          tone={analysis.cashWeight > 0 ? "positive" : "neutral"}
+                          tone={analysis.cashWeight < 0 ? "negative" : analysis.cashWeight > 0 ? "positive" : "neutral"}
                         />
                         <MetricCard
                           label="Top 10 concentration"
@@ -1888,15 +1914,15 @@ export function ComparisonWorkbench({
                       {!comparisonReady ? (
                         <>
                           <section className="analysis-grid holdings-analysis-grid">
-                            <HoldingsTopPositionsPanel analysis={analysis} weightView={holdingsWeightView} />
-                            <HoldingsSectorPanel analysis={analysis} weightView={holdingsWeightView} />
+                            <HoldingsTopPositionsPanel analysis={holdingsDisplayAnalysis ?? analysis} weightView={holdingsWeightView} />
+                            <HoldingsSectorPanel analysis={holdingsDisplayAnalysis ?? analysis} weightView={holdingsWeightView} />
                             <HoldingsGeographyPanel
                               key={analysis.etf.id}
-                              analysis={analysis}
+                              analysis={holdingsDisplayAnalysis ?? analysis}
                               weightView={holdingsWeightView}
                             />
                           </section>
-                          <HoldingsOverviewTable analysis={analysis} weightView={holdingsWeightView} />
+                          <HoldingsOverviewTable analysis={holdingsDisplayAnalysis ?? analysis} weightView={holdingsWeightView} />
                         </>
                       ) : null}
                     </div>

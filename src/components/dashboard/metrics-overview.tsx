@@ -415,6 +415,7 @@ function ComponentBubbleChart({
   const [selectedEtfId, setSelectedEtfId] = useState("");
   const [showFullExtent, setShowFullExtent] = useState(false);
   const [showAllCompanies, setShowAllCompanies] = useState(false);
+  const [isConstituentHovered, setIsConstituentHovered] = useState(false);
   const selected = result.etfs.find((etf) => etf.etfId === selectedEtfId) ?? result.etfs[0];
   const view = selected.componentValuation;
   const allPoints = useMemo(() => view.points.map((point): DisplayComponentValuationPoint => ({
@@ -494,6 +495,11 @@ function ComponentBubbleChart({
         point.epsGrowth >= robustMinGrowth &&
         point.epsGrowth <= robustMaxGrowth &&
         point.peNextQuarter <= robustMaxPe);
+  // Points remain sorted by weight after filtering, so label the largest visible bubbles.
+  const labeledPoints = plottedPoints.map((point, index) => ({
+    ...point,
+    bubbleLabel: index < 10 ? point.ticker : "",
+  }));
   const plottedPointWeight = plottedPoints.reduce((sum, point) => sum + point.weight, 0);
   const representedWeight = totalEligibleWeight > 0
     ? (plottedPointWeight / totalEligibleWeight) * 100
@@ -578,8 +584,21 @@ function ComponentBubbleChart({
             <ZAxis zAxisId="constituents" type="number" dataKey="plotSize" name="ETF weight" unit="%" range={[18, 900]} />
             <ZAxis zAxisId="etfs" type="number" dataKey="plotSize" range={[80, 80]} />
             <ReferenceLine x={0} stroke="var(--faint)" strokeDasharray="3 4" />
-            <Tooltip content={(props) => <ComponentTooltip {...props} />} cursor={{ strokeDasharray: "3 4" }} />
-            <Scatter zAxisId="constituents" data={plottedPoints} fill={FUND_COLORS[result.etfs.indexOf(selected)]} fillOpacity={0.7} stroke="var(--surface)" strokeWidth={0.8} isAnimationActive={false} />
+            <Tooltip content={(props) => <ComponentTooltip {...props} />} offset={28} wrapperStyle={{ pointerEvents: "none" }} cursor={{ strokeDasharray: "3 4" }} />
+            <Scatter
+              zAxisId="constituents"
+              data={labeledPoints}
+              fill={FUND_COLORS[result.etfs.indexOf(selected)]}
+              fillOpacity={0.7}
+              stroke="var(--surface)"
+              strokeWidth={0.8}
+              onMouseEnter={() => setIsConstituentHovered(true)}
+              onMouseLeave={() => setIsConstituentHovered(false)}
+              activeShape={isConstituentHovered ? { fill: "#f5b942", fillOpacity: 1, stroke: "#61420b", strokeWidth: 2 } : false}
+              isAnimationActive={false}
+            >
+              <LabelList dataKey="bubbleLabel" position="center" fill="var(--bubble-label)" fontSize={9} fontWeight={700} pointerEvents="none" />
+            </Scatter>
             <Scatter zAxisId="etfs" data={etfPoints} shape="square" fillOpacity={1} stroke="var(--surface)" strokeWidth={1.5} isAnimationActive={false}>
               {etfPoints.map((point) => <Cell key={point.ticker} fill={point.fill} />)}
               <LabelList dataKey="ticker" position="top" fill="var(--ink)" fontSize={10} fontWeight={800} />

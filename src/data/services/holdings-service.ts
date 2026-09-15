@@ -145,7 +145,7 @@ async function buildPortfolioEtfSnapshot(
   });
   const explicitCashHoldings = cashPositions.flatMap((position) => {
     const valueUsd = position.valueUsd ?? 0;
-    if (valueUsd <= 0) return [];
+    if (!Number.isFinite(valueUsd) || valueUsd === 0) return [];
     return [{
       securityId: `CASH:${position.currency}`,
       ticker: position.currency,
