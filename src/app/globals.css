@@ -1,5 +1,6 @@
 :root {
   --ink: #202630;
+  --bubble-label: #000000;
   --muted: #69717e;
   --faint: #98a0ab;
   --line: #dfe3e8;
@@ -8,6 +9,7 @@
   --sidebar: #15191f;
   --purple: #536b8a;
   --purple-soft: #edf1f5;
+  --negative: #b4233a;
   --coral: #9a6358;
   --coral-soft: #f6efed;
   --mint: #26775f;
@@ -26,6 +28,7 @@
 }
 
 [data-theme="dark"] {
+  --bubble-label: #ffffff;
   --ink: #e7ebf0;
   --muted: #a0a9b5;
   --faint: #7f8996;
@@ -35,6 +38,7 @@
   --sidebar: #0c1117;
   --purple: #829abb;
   --purple-soft: #273443;
+  --negative: #ff8595;
   --coral: #c08275;
   --coral-soft: #3a2b2a;
   --mint: #56aa8f;
@@ -2469,11 +2473,11 @@ tbody tr:hover {
 
 .synthetic-security i b.is-negative,
 .sector-exposure-list i b.is-negative {
-  background: var(--coral);
+  background: var(--negative);
 }
 
 .synthetic-ranking__row.is-negative .synthetic-weight {
-  color: var(--coral);
+  color: var(--negative);
 }
 
 .synthetic-shares,
@@ -5242,4 +5246,65 @@ tbody tr:hover {
     scroll-behavior: auto !important;
     transition: none !important;
   }
+}
+
+.holdings-sector-list i.is-negative {
+  background: var(--negative);
+}
+
+.negative-position-weight {
+  color: var(--negative);
+}
+
+.metric-card--negative::before {
+  background: var(--negative);
+}
+
+.holdings-weight-options {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 0;
+}
+
+.holdings-weight-options > .holdings-weight-toggle {
+  grid-column: 1 / -1;
+}
+
+.holdings-cash-detail {
+  display: flex;
+  grid-column: 2;
+  justify-content: center;
+  gap: 2px;
+}
+
+.holdings-cash-detail button {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 8px;
+  min-height: 24px;
+  padding: 2px 6px;
+}
+
+.holdings-cash-detail button[aria-pressed="true"] {
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.holdings-cash-detail button:hover {
+  color: var(--ink);
+}
+
+.holdings-cash-detail button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.holdings-top-list > .is-negative strong,
+.holdings-sector-list > .is-negative strong,
+.holdings-overview-table tr.is-negative .security-cell strong {
+  color: var(--negative);
 }

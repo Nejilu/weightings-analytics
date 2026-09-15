@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { EtfShareClass, Holding, HoldingsSnapshot } from "../etf";
+import { holdingsCashDisplayPositions } from "../holdings-cash-display";
 import { analyzeHoldings } from "./analyze-holdings";
 
 function snapshot(
@@ -154,4 +155,55 @@ test("groups cash, money-market funds and unclassified cash rows as cash", () =>
     result.positions.find((position) => position.ticker === "MMF")?.isCash,
     true,
   );
+});
+
+test("preserves borrowed cash and net asset weights while normalizing securities separately", () => {
+  const target = snapshot("target", "TARGET", [
+    holding("A", "A", 120),
+    holding("CASH:USD", "USD", 10, "Cash"),
+    holding("CASH:EUR", "EUR", -30, "Cash"),
+  ]);
+  const acwi = snapshot("acwi-us", "ACWI", [holding("A", "A", 100)]);
+  const result = analyzeHoldings(target, acwi);
+  assert.equal(result.cashHoldingsCount, 2);
+  assert.equal(result.cashWeight, -20);
+  assert.equal(result.positions.find((p) => p.securityId === "CASH:EUR")?.publishedWeight, -30);
+  assert.equal(result.positions.find((p) => p.securityId === "CASH:EUR")?.normalizedWeightExCash, null);
+  assert.equal(result.positions.find((p) => p.securityId === "A")?.publishedWeight, 120);
+  assert.equal(result.positions.find((p) => p.securityId === "A")?.normalizedWeightExCash, 100);
+  assert.equal(result.positions.reduce((sum, p) => sum + p.publishedWeight, 0), 100);
+});
+
+test("preserves offsetting cash currencies even when net cash is zero", () => {
+  const target = snapshot("target", "TARGET", [
+    holding("A", "A", 100),
+    holding("CASH:USD", "USD", 20, "Cash"),
+    holding("CASH:EUR", "EUR", -20, "Cash"),
+  ]);
+  const result = analyzeHoldings(target, target);
+  assert.equal(result.cashHoldingsCount, 2);
+  assert.equal(result.cashWeight, 0);
+  assert.equal(result.positions.find((p) => p.securityId === "CASH:EUR")?.publishedWeight, -20);
+});
+
+
+test("cash display grouping preserves signed totals and canonical positions", () => {
+  for (const negativeCash of [-30, -10]) {
+    const target = snapshot("target", "TARGET", [
+      holding("A", "A", 90 - negativeCash),
+      holding("CASH:USD", "USD", 10, "Cash"),
+      holding("CASH:EUR", "EUR", negativeCash, "Cash"),
+    ]);
+    const analysis = analyzeHoldings(target, target);
+    const original = structuredClone(analysis.positions);
+    const combined = holdingsCashDisplayPositions(analysis.positions, "combined");
+    const separate = holdingsCashDisplayPositions(analysis.positions, "positions");
+    assert.equal(combined.length, 2);
+    assert.equal(combined.find((p) => p.isCash)?.publishedWeight, 10 + negativeCash);
+    assert.equal(combined.reduce((sum, p) => sum + p.publishedWeight, 0), 100);
+    assert.equal(separate.length, 3);
+    assert.equal(separate.find((p) => p.securityId === "CASH:EUR")?.publishedWeight, negativeCash);
+    assert.deepEqual(analysis.positions, original);
+    assert.deepEqual(combined.filter((p) => !p.isCash), original.filter((p) => !p.isCash));
+  }
 });

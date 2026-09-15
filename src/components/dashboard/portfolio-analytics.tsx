@@ -144,7 +144,6 @@ export function PortfolioAnalytics({
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [resultFilter, setResultFilter] = useState("");
-  const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -250,40 +249,6 @@ export function PortfolioAnalytics({
       setDefinitionLoading(false);
     }
   };
-
-  useEffect(() => {
-    let active = true;
-    const requestId = ++definitionRequestId.current;
-    async function load() {
-      try {
-        const response = await fetch("/api/v1/portfolio", { cache: "no-store" });
-        const payload = (await response.json()) as {
-          data?: PortfolioRecord;
-          error?: string;
-        };
-        if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "The saved portfolio could not be loaded.");
-        }
-        if (active && requestId === definitionRequestId.current) {
-          applyPortfolioRecord(payload.data);
-        }
-      } catch (loadError) {
-        if (active && requestId === definitionRequestId.current) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "The saved portfolio could not be loaded.",
-          );
-        }
-      } finally {
-        if (active && requestId === definitionRequestId.current) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (
@@ -833,15 +798,6 @@ export function PortfolioAnalytics({
     })();
     return () => controller.abort();
   }, [visibleSecurityQuotesKey]);
-
-  if (loading) {
-    return (
-      <section className="panel portfolio-loading" aria-live="polite">
-        <span className="spinner" />
-        Loading your saved portfolio…
-      </section>
-    );
-  }
 
   const analysis = portfolio?.analysis;
   const maxPositionWeight = compositionRows.reduce(
