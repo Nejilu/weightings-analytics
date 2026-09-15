@@ -117,6 +117,12 @@ The mapping audit opens SQLite read-only. It checks current provider mappings,
 provenance, metadata, identity consistency, unresolved weight, duplicates, and
 orphaned references. Add `--json` for machine-readable output.
 
+Repeated listing labels used only in superseded snapshots are reported separately
+as historical collisions, not active duplicates. Current snapshots, saved portfolio
+positions and ETF definitions keep a collision actionable. This does not infer
+corporate actions or merge identities. For example, ONEOK's September 2026 identifier
+change leaves distinct old/new ISINs in the source history.
+
 Import a legacy TradingView mapping database once with:
 
 ```bash

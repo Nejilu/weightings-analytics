@@ -8,7 +8,7 @@ import { auditDatabase } from "./audit-tradingview-mappings.mjs";
 function fixture({ valid }) {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
-    CREATE TABLE etfs (id TEXT PRIMARY KEY, ticker TEXT, active INTEGER);
+    CREATE TABLE etfs (id TEXT PRIMARY KEY, ticker TEXT, active INTEGER, metadata_json TEXT);
     CREATE TABLE holding_snapshots (id TEXT PRIMARY KEY, etf_id TEXT, as_of TEXT, fetched_at TEXT);
     CREATE TABLE holdings (snapshot_id TEXT, security_id TEXT, weight REAL);
     CREATE TABLE securities (
@@ -29,7 +29,7 @@ function fixture({ valid }) {
   const mappingSymbol = valid ? "NASDAQ:GOOD" : "NASDAQ:WRONG";
   const sourceSymbol = valid ? mappingSymbol : "NASDAQ:OTHER";
   sqlite.exec(`
-    INSERT INTO etfs VALUES ('etf-1', 'TEST', 1);
+    INSERT INTO etfs VALUES ('etf-1', 'TEST', 1, NULL);
     INSERT INTO holding_snapshots VALUES ('snapshot-1', 'etf-1', '2026-08-01', '2026-08-02T00:00:00.000Z');
     INSERT INTO securities VALUES (
       'security-1', 'GOOD', 'Good Company', 'Equity', 'Taiwan',
@@ -63,6 +63,7 @@ test("audits current ETF coverage and accepts a fully identified mapping", () =>
       sourceMismatches: 0,
       estimateMismatches: 0,
       duplicateListings: 0,
+      historicalListingCollisions: [],
       duplicateStrongIdentifiers: 0,
       orphanReferences: 0,
     });
@@ -92,6 +93,7 @@ test("reports missing provenance and persisted identity mismatches", () => {
       sourceMismatches: 1,
       estimateMismatches: 1,
       duplicateListings: 0,
+      historicalListingCollisions: [],
       duplicateStrongIdentifiers: 0,
       orphanReferences: 0,
     });
@@ -116,6 +118,69 @@ test("reports duplicate strong identifiers even when listing labels differ", () 
     const audit = auditDatabase(sqlite, "fixture");
     assert.equal(audit.identity.duplicateListings, 0);
     assert.equal(audit.identity.duplicateStrongIdentifiers, 1);
+  } finally {
+    sqlite.close();
+  }
+});
+
+function addHistoricalListing(sqlite) {
+  sqlite.exec(`
+    INSERT INTO securities VALUES (
+      'old-security', 'GOOD', 'Good Company', 'Equity', 'Taiwan',
+      '{"sedol":"OLD1234"}'
+    );
+    INSERT INTO holding_snapshots VALUES ('old-snapshot', 'etf-1', '2026-07-01', '2026-07-02');
+    INSERT INTO holdings VALUES ('old-snapshot', 'old-security', 100);
+  `);
+}
+
+test("reports historical label reuse separately without modifying identities or positions", () => {
+  const sqlite = fixture({ valid: true });
+  try {
+    addHistoricalListing(sqlite);
+    const before = sqlite.serialize();
+    const audit = auditDatabase(sqlite, "fixture");
+    assert.equal(audit.identity.duplicateListings, 0);
+    assert.deepEqual(audit.identity.historicalListingCollisions, [{
+      ticker: "GOOD", name: "GOOD COMPANY", country: "TAIWAN",
+      currentIds: ["security-1"], historicalIds: ["old-security"],
+    }]);
+    assert.equal(audit.etfs[0].holdings, 1);
+    assert.deepEqual(sqlite.serialize(), before);
+  } finally {
+    sqlite.close();
+  }
+});
+
+for (const [reference, insert] of [
+  ["current snapshot", "INSERT INTO holdings VALUES ('snapshot-1', 'old-security', 1)"],
+  ["another ETF's latest snapshot", `
+    INSERT INTO etfs VALUES ('etf-2', 'OTHER', 1, NULL);
+    INSERT INTO holding_snapshots VALUES ('other-snapshot', 'etf-2', '2026-07-01', '2026-07-02');
+    INSERT INTO holdings VALUES ('other-snapshot', 'old-security', 100);
+  `],
+  ["saved portfolio", "INSERT INTO portfolio_items VALUES ('security', 'old-security')"],
+  ["saved ETF definition", `UPDATE etfs SET metadata_json = '{"componentSecurityIds":{"GOOD":"old-security"}}'`],
+]) {
+  test(`still flags a historical identity referenced by a ${reference}`, () => {
+    const sqlite = fixture({ valid: true });
+    try {
+      addHistoricalListing(sqlite);
+      sqlite.exec(insert);
+      const audit = auditDatabase(sqlite, "fixture");
+      assert.equal(audit.identity.duplicateListings, 1);
+      assert.deepEqual(audit.identity.historicalListingCollisions, []);
+    } finally {
+      sqlite.close();
+    }
+  });
+}
+
+test("does not dismiss an unreferenced duplicate as historical", () => {
+  const sqlite = fixture({ valid: true });
+  try {
+    sqlite.exec(`INSERT INTO securities VALUES ('duplicate', 'GOOD', 'Good Company', 'Equity', 'Taiwan', NULL)`);
+    assert.equal(auditDatabase(sqlite, "fixture").identity.duplicateListings, 1);
   } finally {
     sqlite.close();
   }
