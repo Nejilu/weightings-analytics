@@ -1,5 +1,10 @@
 # Weightings Analytics
 
+This site-deployment branch adds public/owner access through Cloudflare and
+private, weights-only or public portfolio visibility. See
+[website deployment](docs/site-deployment.md) before exposing the application.
+Local development requires `SITE_ACCESS_MODE=local` and loopback binding.
+
 Weightings Analytics is a local-first Next.js application for analysing ETF
 holdings, comparing underlying exposures, building look-through portfolios,
 and creating reusable ETFs from iShares source universes.
@@ -24,8 +29,17 @@ An internet connection is needed to load new provider data.
 
 ```bash
 npm ci
-npm run dev
 ```
+
+Create `.env.development.local` with:
+
+```dotenv
+SITE_ACCESS_MODE=local
+SITE_LOCAL_PUBLIC_PREVIEW=true
+```
+
+Then run `npm run dev -- --hostname 127.0.0.1`. Open `http://localhost:3000`
+for the owner interface or `http://127.0.0.1:3000` for the public preview.
 
 Open `http://localhost:3000`. The development launcher applies committed SQLite
 migrations and idempotently seeds the ETF catalog before starting Next.js.
@@ -37,7 +51,10 @@ Use `npm ci` for a fresh checkout and stop if it reports an error. Do not copy o
 cache `node_modules` between machines; the GitHub Actions workflow caches only
 npm downloads and rebuilds dependencies from `package-lock.json` on every run.
 
-## Production-like local run
+## Production run
+
+Configure Cloudflare Access and the production environment as described in
+[website deployment](docs/site-deployment.md). Production rejects local access mode.
 
 ```bash
 npm ci
@@ -45,7 +62,7 @@ npm run build
 npm run start
 ```
 
-The application is served at `http://localhost:3000`. The standalone launcher
+Open the configured HTTPS public or owner domain through Caddy. The standalone launcher
 keeps database and migration paths anchored to the project root and stages the
 required static assets before starting the generated server. Check
 `/api/health` to verify application and SQLite readiness (`200` when healthy,
@@ -54,7 +71,9 @@ required static assets before starting the generated server. Check
 
 ## Configuration
 
-Copy `.env.example` to `.env` only when overriding a default.
+Use `.env.example` as the configuration template. Site access settings are required;
+the production systemd service reads `/etc/weightings-analytics.env`, which you
+create on the VPS. Local preview settings belong in `.env.development.local`.
 
 | Variable | Default | Valid values / purpose |
 | --- | ---: | --- |
@@ -122,11 +141,17 @@ share class. The endpoints are:
 - `GET /api/v1/prices/fx?currency=EUR`
 - `POST /api/v1/etf-creator`
 - `GET|PATCH|DELETE /api/v1/local-etfs/:etfId`
+- `PATCH /api/v1/local-etfs/:etfId/visibility` (owner only)
+- `GET /api/v1/published-portfolios/:etfId` (fully public portfolios only)
 - `GET /api/v1/metrics/overview?etfs=ivv-us,acwi-us`
 
 Comparison excludes cash by default. Add `includeCash=true` to include it in
 weight normalization, overlap, and active-sleeve calculations. Metrics Overview
 accepts one to four distinct ETFs after reference resolution.
+
+Portfolio and ETF editing routes require owner access, including their GET
+endpoints. Public catalog and analysis routes exclude private ETFs and personal
+amounts; exact published amounts use the dedicated published-portfolios route.
 
 Add `refresh=true` to holdings, holdings analysis, comparison, portfolio, single
 quote, or Metrics Overview requests to request fresh source data. Provider

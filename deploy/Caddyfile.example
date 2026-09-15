@@ -1,0 +1,6 @@
+# Add to the existing Caddyfile when Caddy and Node run on the same host.
+# Proxy both DNS records through Cloudflare; protect the entire admin hostname
+# with Cloudflare Access. Keep Node bound to 127.0.0.1:3000.
+pf.nejilu.com, admin-pf.nejilu.com {
+    reverse_proxy 127.0.0.1:3000
+}

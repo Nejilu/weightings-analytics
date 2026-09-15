@@ -1,0 +1,25 @@
+[Unit]
+Description=Weightings Analytics
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=weightings
+Group=weightings
+WorkingDirectory=/opt/weightings-analytics
+EnvironmentFile=/etc/weightings-analytics.env
+Environment=NODE_ENV=production
+Environment=BIND_HOST=127.0.0.1
+Environment=PORT=3000
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
