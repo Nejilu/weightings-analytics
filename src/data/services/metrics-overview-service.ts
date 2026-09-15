@@ -1,3 +1,4 @@
+import { catalogRevision } from "@/server/site-runtime";
 import "server-only";
 
 import {
@@ -379,7 +380,7 @@ export function getMetricsOverview(
   if (normalized.length < 1 || normalized.length > 4) {
     return Promise.reject(new MetricsOverviewRequestError(INVALID_SELECTION_MESSAGE));
   }
-  const key = `${databasePath()}::${normalized.slice().sort().join("|")}`;
+  const key = `${databasePath()}::${catalogRevision()}::${normalized.slice().sort().join("|")}`;
   if (!options.forceRefresh) {
     const cached = resultCache.get(key);
     if (cached) {
@@ -392,7 +393,8 @@ export function getMetricsOverview(
     }
   }
   const requestKey = `${key}::${options.forceRefresh ? "force" : "cached"}`;
-  const existing = inFlightRequests.get(requestKey);
+  const existing = inFlightRequests.get(requestKey)
+    ?? (!options.forceRefresh ? inFlightRequests.get(`${key}::force`) : undefined);
   if (existing) return existing.then((result) => resultForOrder(result, normalized));
   const request = buildOverview(normalized, options)
     .then((result) => {

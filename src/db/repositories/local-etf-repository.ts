@@ -27,6 +27,7 @@ import {
 import { findEtfById } from "./catalog-repository";
 
 interface LocalEtfIdentityInput {
+  visibility?: import("@/domain/visibility").EtfVisibility;
   id: string;
   ticker: string;
   name: string;
@@ -387,6 +388,7 @@ export function replaceCustomEtfRecord(
       .set({
         ticker: input.ticker,
         name: input.name,
+        ...(input.visibility === undefined ? {} : { visibility: input.visibility }),
         description: input.description,
         metadataJson: {
           compositionModel: "dynamic-source-free-float",
@@ -481,6 +483,7 @@ export function replacePortfolioEtfRecord(
       .set({
         ticker: input.ticker,
         name: input.name,
+        ...(input.visibility === undefined ? {} : { visibility: input.visibility }),
         description: input.description,
         metadataJson: {
           compositionModel: "relational-look-through",

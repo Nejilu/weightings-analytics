@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import {
   getMetricsOverview,
   MetricsOverviewRequestError,
@@ -5,7 +6,7 @@ import {
 } from "@/data/services/metrics-overview-service";
 import { metricsOverviewHttpResponse } from "./etag";
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const url = new URL(request.url);
   const forceRefresh = url.searchParams.get("refresh") === "true";
   const references = url.searchParams
@@ -44,3 +45,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "metrics");

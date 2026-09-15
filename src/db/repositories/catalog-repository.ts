@@ -95,6 +95,7 @@ function mapEtfRow(row: typeof etfs.$inferSelect): EtfShareClass {
   const derivedHoldings = mapDerivedHoldings(row.metadataJson);
   const holdingsSourceEtfId = mapHoldingsSourceEtfId(row.metadataJson);
   return {
+    visibility: row.visibility,
     id: row.id,
     ticker: row.ticker,
     name: row.name,

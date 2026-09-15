@@ -14,7 +14,7 @@
     "start": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test-processors.ts && node scripts/audit-tradingview-mappings.test.mjs && node scripts/test-migrations.mjs && node --test scripts/start-standalone-assets.test.mjs",
+    "test": "tsx scripts/test-processors.ts && node scripts/audit-tradingview-mappings.test.mjs && node scripts/test-migrations.mjs && node --test scripts/start-standalone-assets.test.mjs && npm run test:site",
     "test:migrations": "node scripts/test-migrations.mjs",
     "test:portfolio": "tsx src/domain/processors/analyze-portfolio.test.ts",
     "test:tradingview": "tsx scripts/test-tradingview-estimates.ts",
@@ -27,13 +27,15 @@
     "db:stats": "tsx scripts/db-stats.ts",
     "db:audit-mappings": "node scripts/audit-tradingview-mappings.mjs",
     "db:backup": "tsx scripts/db-backup.ts",
-    "db:import-tradingview-mappings": "tsx scripts/import-tradingview-mappings.ts"
+    "db:import-tradingview-mappings": "tsx scripts/import-tradingview-mappings.ts",
+    "test:site": "node --conditions=react-server --import tsx --test src/server/site.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "0.45.2",
-    "next": "16.3.2",
+    "jose": "^6.2.12",
+    "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-is": "19.2.8",
@@ -51,7 +53,7 @@
     "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.4",
     "eslint": "^9.39.0",
-    "eslint-config-next": "16.3.2",
+    "eslint-config-next": "16.3.5",
     "typescript": "^5.9.0"
   }
 }

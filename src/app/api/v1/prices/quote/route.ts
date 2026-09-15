@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import { getMarketPrice } from "@/data/services/market-price-service";
 import {
   MarketPriceRequestError,
@@ -5,7 +6,7 @@ import {
   type PortfolioAssetKind,
 } from "@/domain/portfolio";
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const url = new URL(request.url);
   const kind = url.searchParams.get("kind") as PortfolioAssetKind | null;
   const referenceId = url.searchParams.get("referenceId")?.trim();
@@ -52,3 +53,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "quote");

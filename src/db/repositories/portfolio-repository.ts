@@ -241,6 +241,7 @@ export function replaceDefaultPortfolio(
 }
 
 interface SavePortfolioAsEtfInput {
+  visibility?: import("@/domain/visibility").EtfVisibility;
   ticker: string;
   name: string;
   description: string;
@@ -340,6 +341,7 @@ export function saveDefaultPortfolioAsEtf(
         priceSymbol: null,
         fundType: "portfolio",
         portfolioId,
+        visibility: input.visibility ?? "private",
         description: input.description,
         active: true,
         metadataJson: {
@@ -356,6 +358,7 @@ export function saveDefaultPortfolioAsEtf(
   });
 
   return {
+    visibility: input.visibility ?? "private",
     id: etfId,
     ticker: input.ticker,
     name: input.name,

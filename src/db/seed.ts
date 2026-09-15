@@ -205,6 +205,7 @@ export function seedCatalog(): void {
             priceSymbol:
               etf.priceSymbol ??
               (etf.wrapper === "UCITS" ? `${etf.ticker}.L` : etf.ticker),
+            visibility: "public",
             fundType: "physical",
             portfolioId: null,
             description: etf.description ?? null,

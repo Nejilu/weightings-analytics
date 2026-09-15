@@ -1,5 +1,8 @@
 "use client";
 
+import { VisibilitySelect } from "./visibility-select";
+import type { EtfVisibility } from "@/domain/visibility";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
@@ -152,6 +155,7 @@ export function PortfolioAnalytics({
   const [etfTicker, setEtfTicker] = useState("");
   const [etfName, setEtfName] = useState("My Portfolio ETF");
   const [etfDescription, setEtfDescription] = useState("");
+  const [visibility, setVisibility] = useState<EtfVisibility>("private");
   const [error, setError] = useState<string | null>(null);
   const definitionRequestId = useRef(0);
 
@@ -176,6 +180,7 @@ export function PortfolioAnalytics({
     setEtfTicker("");
     setEtfName("My Portfolio ETF");
     setEtfDescription("");
+    setVisibility("private");
     setSavedEtf(null);
     setError(null);
   };
@@ -205,6 +210,7 @@ export function PortfolioAnalytics({
       setEtfTicker(payload.data.etf.ticker);
       setEtfName(payload.data.etf.name);
       setEtfDescription(payload.data.editableDescription);
+      setVisibility(payload.data.etf.visibility ?? "private");
       applyPortfolioRecord(payload.data.portfolio);
     } catch (loadError) {
       if (requestId !== definitionRequestId.current) return;
@@ -567,6 +573,7 @@ export function PortfolioAnalytics({
                 ticker: etfTicker,
                 name: etfName,
                 description: etfDescription,
+                visibility,
               }
             : {}),
           items: normalizedItems.map(({ id, kind: itemKind, referenceId, quantity }) => ({
@@ -628,6 +635,7 @@ export function PortfolioAnalytics({
           ticker: etfTicker,
           name: etfName,
           description: etfDescription,
+          visibility,
           ...(isEditing
             ? {
                 kind: "portfolio",
@@ -967,6 +975,9 @@ export function PortfolioAnalytics({
         <div className="alert alert--error">{portfolio.analysisError}</div>
       ) : null}
 
+      <section className="panel publication-settings">
+              <VisibilitySelect value={visibility} onChange={setVisibility} etfId={workflowMode === "edit" ? editingEtfId : undefined} onSaved={onCatalogChanged} disabled={savingEtf || saving} />
+      </section>
       <section className="portfolio-builder-grid">
         <article className="panel portfolio-add-panel">
           <div className="panel-heading">

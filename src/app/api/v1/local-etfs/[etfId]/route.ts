@@ -1,3 +1,5 @@
+import { withSiteAccess } from "@/server/site-route";
+import { isEtfVisibility } from "@/domain/visibility";
 import {
   deleteLocalEtf,
   getLocalEtfDetail,
@@ -37,7 +39,7 @@ function errorResponse(error: unknown, fallback: string): Response {
   );
 }
 
-export async function PATCH(
+async function handlePATCH(
   request: Request,
   context: { params: Promise<{ etfId: string }> },
 ) {
@@ -46,6 +48,7 @@ export async function PATCH(
     const { etfId } = await context.params;
     const payload = (await request.json()) as {
       kind?: "custom" | "portfolio";
+      visibility?: import("@/domain/visibility").EtfVisibility;
       ticker?: string;
       name?: string;
       description?: string;
@@ -65,6 +68,7 @@ export async function PATCH(
       !payload ||
       typeof payload !== "object" ||
       Array.isArray(payload) ||
+      (payload.visibility !== undefined && !isEtfVisibility(payload.visibility)) ||
       typeof payload.ticker !== "string" ||
       typeof payload.name !== "string" ||
       typeof payload.description !== "string" ||
@@ -94,6 +98,7 @@ export async function PATCH(
         {
           data: await updateCustomLocalEtf(etfId, {
             kind: "custom",
+            visibility: payload.visibility,
             ticker: payload.ticker,
             name: payload.name,
             description: payload.description,
@@ -116,6 +121,7 @@ export async function PATCH(
       {
         data: await updatePortfolioLocalEtf(etfId, {
           kind: "portfolio",
+          visibility: payload.visibility,
           ticker: payload.ticker,
           name: payload.name,
           description: payload.description,
@@ -130,7 +136,7 @@ export async function PATCH(
   }
 }
 
-export async function GET(
+async function handleGET(
   request: Request,
   context: { params: Promise<{ etfId: string }> },
 ) {
@@ -146,7 +152,7 @@ export async function GET(
   }
 }
 
-export async function DELETE(
+async function handleDELETE(
   _request: Request,
   context: { params: Promise<{ etfId: string }> },
 ) {
@@ -161,3 +167,9 @@ export async function DELETE(
     return errorResponse(error, "The local ETF could not be deleted.");
   }
 }
+
+export const PATCH = withSiteAccess(handlePATCH, "owner");
+
+export const GET = withSiteAccess(handleGET, "owner");
+
+export const DELETE = withSiteAccess(handleDELETE, "owner");

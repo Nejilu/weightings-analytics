@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import {
   getPortfolio,
   PortfolioRequestError,
@@ -47,7 +48,7 @@ function errorResponse(error: unknown, fallback: string): Response {
   );
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   try {
     const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
     const portfolio = await getPortfolio({ forceRefresh });
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+async function handlePUT(request: Request) {
   try {
     const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
     const payload = (await request.json()) as {
@@ -97,3 +98,7 @@ export async function PUT(request: Request) {
     return errorResponse(error, "The portfolio could not be saved.");
   }
 }
+
+export const GET = withSiteAccess(handleGET, "owner");
+
+export const PUT = withSiteAccess(handlePUT, "owner");

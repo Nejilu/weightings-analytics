@@ -1,3 +1,5 @@
+import { withSiteAccess } from "@/server/site-route";
+import { isEtfVisibility } from "@/domain/visibility";
 import {
   PortfolioRequestError,
   PortfolioUnavailableError,
@@ -29,9 +31,10 @@ function errorResponse(error: unknown): Response {
   );
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const payload = (await request.json()) as {
+      visibility?: import("@/domain/visibility").EtfVisibility;
       ticker?: string;
       name?: string;
       description?: string;
@@ -39,6 +42,7 @@ export async function POST(request: Request) {
     if (
       !payload ||
       typeof payload !== "object" ||
+      (payload.visibility !== undefined && !isEtfVisibility(payload.visibility)) ||
       typeof payload.ticker !== "string" ||
       typeof payload.name !== "string" ||
       (payload.description !== undefined && typeof payload.description !== "string")
@@ -50,6 +54,7 @@ export async function POST(request: Request) {
     }
 
     const etf = await savePortfolioAsEtf({
+      visibility: payload.visibility,
       ticker: payload.ticker,
       name: payload.name,
       description: payload.description,
@@ -62,3 +67,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withSiteAccess(handlePOST, "owner");

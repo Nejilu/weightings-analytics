@@ -7,17 +7,28 @@ import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
-  const metadataBase = new URL(
-    host ? `${protocol}://${host}` : "http://localhost:3000",
-  );
+  const host = requestHeaders.get("host");
+  const configuredOrigin = [
+    process.env.SITE_PUBLIC_ORIGIN,
+    process.env.SITE_OWNER_ORIGIN,
+  ].find((value) => {
+    try {
+      return value && new URL(value).host === host;
+    } catch {
+      return false;
+    }
+  });
+  const metadataBase = new URL(configuredOrigin ?? "http://localhost:3000");
   const title = "Weightings Analytics — Holdings & Portfolio Look-Through";
   const description =
     "Explore ETF holdings, free-float weight distortion, optional peer comparisons, and security-level portfolios.";
 
   return {
     metadataBase,
+    robots: {
+      index: configuredOrigin === process.env.SITE_PUBLIC_ORIGIN && Boolean(configuredOrigin),
+      follow: true,
+    },
     title,
     description,
     openGraph: {

@@ -1,8 +1,9 @@
+import { withSiteAccess } from "@/server/site-route";
 import { getAvailableSecurityListingPrices } from "@/data/services/market-price-service";
 
 const MAX_SECURITY_IDS = 30;
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const payload = (await request.json()) as {
       quotes?: Array<{ key?: string; securityId?: string; ticker?: string }>;
@@ -55,3 +56,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withSiteAccess(handlePOST, "read");

@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import {
   getHoldingsSnapshot,
   HoldingsUnavailableError,
@@ -8,7 +9,7 @@ import { analyzeHoldings } from "@/domain/processors/analyze-holdings";
 
 const ACWI_REFERENCE = "acwi-us";
 
-export async function GET(
+async function handleGET(
   request: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
@@ -58,3 +59,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "holdings");

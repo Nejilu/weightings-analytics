@@ -5308,3 +5308,20 @@ tbody tr:hover {
 .holdings-overview-table tr.is-negative .security-cell strong {
   color: var(--negative);
 }
+/* Site publication controls */
+.visibility-control { display: grid; gap: 0.6rem; margin: 1rem 0; }
+.visibility-control label { display: grid; gap: 0.5rem; }
+.visibility-control select { width: 100%; min-height: 42px; padding: 0.65rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.visibility-control small { line-height: 1.5; }
+.site-access-links { display: grid; gap: 0.8rem; padding: 1rem; }
+.site-access-links a { color: inherit; font-size: 0.85rem; }
+.published-portfolio { padding: 1.5rem; margin-top: 1rem; }
+.published-portfolio .table-scroll { overflow-x: auto; }
+.published-portfolio table { width: 100%; border-collapse: collapse; }
+.published-portfolio th, .published-portfolio td { padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.published-portfolio th:first-child, .published-portfolio td:first-child { text-align: left; }
+
+.publication-settings { padding: 1.25rem; margin: 1rem 0; }
+.publication-settings summary { cursor: pointer; font-weight: 600; }
+.publication-settings > label { display: grid; gap: 0.5rem; }
+.publication-settings select { max-width: 100%; padding: 0.6rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }

@@ -264,6 +264,13 @@ try {
     ],
   );
 
+  // Existing portfolios remain private when upgrading an already populated database.
+  sqlite.exec("UPDATE etfs SET fund_type = 'portfolio' WHERE id = 'legacy-etf'");
+  executeMigration("0013_rebrand_weightings_analytics.sql");
+  executeMigration("0014_site_visibility.sql");
+  assert.equal(sqlite.prepare("SELECT visibility FROM etfs WHERE id = 'legacy-etf'").get().visibility, "private");
+  assert.equal(sqlite.prepare("SELECT visibility FROM etfs WHERE id = 'acwi-us'").get().visibility, "public");
+  assert.throws(() => sqlite.exec("UPDATE etfs SET visibility = 'invalid'"));
   console.log("Migration smoke test passed.");
 } finally {
   sqlite.close();

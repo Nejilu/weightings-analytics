@@ -46,6 +46,8 @@ export interface Benchmark {
 }
 
 export interface EtfShareClass {
+  visibility?: import("./visibility").EtfVisibility;
+  publiclyAvailable?: boolean;
   id: string;
   ticker: string;
   name: string;

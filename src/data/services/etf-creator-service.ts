@@ -16,6 +16,7 @@ import type { EtfShareClass } from "@/domain/etf";
 import { getHoldingsSnapshot } from "./holdings-service";
 
 interface CreateEtfDraft {
+  visibility?: import("@/domain/visibility").EtfVisibility;
   ticker: string;
   name: string;
   description?: string;
@@ -170,6 +171,7 @@ export async function createEtfFromSource(
     );
 
     return saveCreatedEtf({
+      visibility: draft.visibility,
       ticker,
       name,
       description,

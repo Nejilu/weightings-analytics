@@ -46,6 +46,7 @@ export class LocalEtfNotFoundError extends Error {
 }
 
 interface UpdateLocalEtfDraft {
+  visibility?: import("@/domain/visibility").EtfVisibility;
   ticker: string;
   name: string;
   description: string;
@@ -246,6 +247,7 @@ export async function updateCustomLocalEtf(
     sourceEtf.ticker,
   );
   const updated = replaceCustomEtfRecord({
+    visibility: draft.visibility,
     id,
     ticker: identity.ticker,
     name: identity.name,

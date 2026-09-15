@@ -1,7 +1,8 @@
+import { withSiteAccess } from "@/server/site-route";
 import { getFxRate } from "@/data/services/market-price-service";
 import { SUPPORTED_CASH_CURRENCIES } from "@/domain/portfolio";
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const currency = new URL(request.url).searchParams
     .get("currency")
     ?.trim()
@@ -36,3 +37,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "read");

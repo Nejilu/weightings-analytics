@@ -1,6 +1,7 @@
+import { withSiteAccess } from "@/server/site-route";
 import { getCatalog } from "@/data/services/catalog-service";
 
-export function GET() {
+function handleGET() {
   try {
     return Response.json(
       { data: getCatalog() },
@@ -17,3 +18,5 @@ export function GET() {
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "catalog");

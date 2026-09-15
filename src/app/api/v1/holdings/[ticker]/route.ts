@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import {
   getHoldingsSnapshot,
   HoldingsUnavailableError,
@@ -5,7 +6,7 @@ import {
 import { ensureLocalDatabase } from "@/db/bootstrap";
 import { findEtfByReference } from "@/db/repositories/catalog-repository";
 
-export async function GET(
+async function handleGET(
   request: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
@@ -64,3 +65,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "holdings");

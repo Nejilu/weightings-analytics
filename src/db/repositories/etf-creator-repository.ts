@@ -17,6 +17,7 @@ import {
 const INSERT_BATCH_SIZE = 75;
 
 interface SaveCreatedEtfInput {
+  visibility?: import("@/domain/visibility").EtfVisibility;
   ticker: string;
   name: string;
   description: string;
@@ -85,6 +86,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
         priceSymbol: null,
         fundType: "custom",
         portfolioId: null,
+        visibility: input.visibility ?? "weights",
         description: input.description,
         active: true,
         metadataJson: {
@@ -185,6 +187,7 @@ export function saveCreatedEtf(input: SaveCreatedEtfInput): EtfShareClass {
   });
 
   return {
+    visibility: input.visibility ?? "weights",
     id: etfId,
     ticker: input.ticker,
     name: input.name,

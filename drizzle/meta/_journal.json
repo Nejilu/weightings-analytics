@@ -99,6 +99,13 @@
       "when": 1787661442846,
       "tag": "0013_rebrand_weightings_analytics",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789516800000,
+      "tag": "0014_site_visibility",
+      "breakpoints": true
     }
   ]
 }

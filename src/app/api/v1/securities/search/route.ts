@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import {
   getHoldingsSnapshot,
   HoldingsUnavailableError,
@@ -11,7 +12,7 @@ function normalized(value: string): string {
   return value.trim().toLocaleUpperCase("en-US");
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const query = normalized(new URL(request.url).searchParams.get("q") ?? "");
   if (query.length < 2) {
     return Response.json({ data: [] });
@@ -112,3 +113,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "read");

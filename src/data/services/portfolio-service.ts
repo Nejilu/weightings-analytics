@@ -394,6 +394,7 @@ export async function savePortfolio(
 }
 
 interface SavePortfolioEtfDraft {
+  visibility?: import("@/domain/visibility").EtfVisibility;
   ticker: string;
   name: string;
   description?: string;
@@ -492,6 +493,7 @@ export async function updatePortfolioEtf(
       cashPositions,
     );
     const updated = replacePortfolioEtfRecord({
+      visibility: draft.visibility,
       id: etfId,
       portfolioId: existing.portfolioId,
       ticker: identity.ticker,
@@ -554,6 +556,7 @@ export async function savePortfolioAsEtf(
     );
 
     return saveDefaultPortfolioAsEtf({
+      visibility: draft.visibility,
       ticker,
       name,
       description,

@@ -1,3 +1,5 @@
+import { withSiteAccess } from "@/server/site-route";
+import { isEtfVisibility } from "@/domain/visibility";
 import {
   createEtfFromSource,
   EtfCreatorRequestError,
@@ -5,7 +7,7 @@ import {
 } from "@/data/services/etf-creator-service";
 import type { EtfCreatorCriteria } from "@/domain/etf-creator";
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const rawPayload = await request.json();
     if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
@@ -15,6 +17,7 @@ export async function POST(request: Request) {
       );
     }
     const payload = rawPayload as {
+      visibility?: import("@/domain/visibility").EtfVisibility;
       ticker?: string;
       name?: string;
       description?: string;
@@ -23,6 +26,7 @@ export async function POST(request: Request) {
       criteria?: EtfCreatorCriteria;
     };
     if (
+      (payload.visibility !== undefined && !isEtfVisibility(payload.visibility)) ||
       typeof payload.ticker !== "string" ||
       typeof payload.name !== "string" ||
       typeof payload.sourceEtfId !== "string" ||
@@ -40,6 +44,7 @@ export async function POST(request: Request) {
     }
 
     const etf = await createEtfFromSource({
+      visibility: payload.visibility,
       ticker: payload.ticker,
       name: payload.name,
       description: payload.description,
@@ -78,3 +83,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withSiteAccess(handlePOST, "owner");

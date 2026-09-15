@@ -1,3 +1,4 @@
+import { withSiteAccess } from "@/server/site-route";
 import {
   getHoldingsSnapshot,
   HoldingsUnavailableError,
@@ -6,7 +7,7 @@ import { ensureLocalDatabase } from "@/db/bootstrap";
 import { findEtfByReference } from "@/db/repositories/catalog-repository";
 import { compareHoldings } from "@/domain/processors/compare-holdings";
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   try {
     const url = new URL(request.url);
     const leftReference = url.searchParams.get("left")?.trim() ?? "";
@@ -97,3 +98,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withSiteAccess(handleGET, "compare");
