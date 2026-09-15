@@ -1509,7 +1509,7 @@ export function ComparisonWorkbench({
             onClick={() => setWorkspaceView("portfolio")}
           >
             <span className="nav-icon">Σ</span>
-            Portfolio
+            Portfolio Manager
           </button>
           <button
             className={`nav-item${workspaceView === "creator" ? " nav-item--active" : ""}`}
@@ -1601,7 +1601,7 @@ export function ComparisonWorkbench({
               className={workspaceView === "portfolio" ? "is-active" : ""}
               onClick={() => setWorkspaceView("portfolio")}
             >
-              Portfolio
+              Portfolio Manager
             </button>
             <button
               type="button"
