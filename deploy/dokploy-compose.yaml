@@ -1,0 +1,60 @@
+services:
+  app:
+    image: weightings-analytics:production
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /data/weightings-analytics.sqlite
+      DRIZZLE_MIGRATIONS_PATH: /app/drizzle
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - /home/julie/weightings-analytics/data:/data
+    networks:
+      dokploy-network:
+        aliases:
+          - weightings-app
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.services.weightings.loadbalancer.server.port=3000
+      - traefik.http.routers.weightings-http.rule=Host(`pf.nejilu.com`) || Host(`admin-pf.nejilu.com`)
+      - traefik.http.routers.weightings-http.entrypoints=web
+      - traefik.http.routers.weightings-http.middlewares=redirect-to-https@file
+      - traefik.http.routers.weightings-http.service=weightings
+      - traefik.http.routers.weightings-public.rule=Host(`pf.nejilu.com`)
+      - traefik.http.routers.weightings-public.entrypoints=websecure
+      - traefik.http.routers.weightings-public.tls.certresolver=letsencrypt
+      - traefik.http.routers.weightings-public.service=weightings
+      - traefik.http.routers.weightings-owner.rule=Host(`admin-pf.nejilu.com`)
+      - traefik.http.routers.weightings-owner.entrypoints=websecure
+      - traefik.http.routers.weightings-owner.tls.certresolver=letsencrypt
+      - traefik.http.routers.weightings-owner.service=weightings
+networks:
+  dokploy-network:
+    external: true

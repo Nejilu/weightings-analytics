@@ -1,0 +1,10 @@
+.git
+.next
+.data
+node_modules
+.env*
+*.sqlite*
+*.tsbuildinfo
+backups
+data
+deploy/production.env

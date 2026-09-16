@@ -53,6 +53,33 @@ Visibility cannot revoke data someone already downloaded while an ETF was public
 
 ## VPS setup
 
+### Automatic deployment on the current VPS
+
+Dokploy's `Webapp` service follows `codex/site-deployment-access` using
+`deploy/dokploy-compose.yaml`. A GitHub push webhook triggers a fresh checkout,
+Docker build, and replacement of the application container. Other branches are
+ignored. There is no CI test gate or server-side test suite; the Dockerfile runs
+the production build only. Dokploy waits for the container health check.
+
+Runtime secrets stay in Dokploy. SQLite stays in
+`/home/julie/weightings-analytics/data`; it is not part of the image.
+Traefik routes the public and owner hostnames to the same application.
+
+On the VPS, `weightings-image-retention.timer` checks every 30 seconds and keeps
+`weightings-analytics:current` and `weightings-analytics:previous` for healthy
+deployments. `production` is the build/deployment tag, normally the same image
+as `current`. Older Weightings runtime images are removed without touching
+other applications or data volumes. Docker build cache is separate from these
+runtime images. The timer and setup scripts live in the VPS operations workspace.
+
+For rollback, disable Auto Deploy in Dokploy, point this service to the
+`previous` image, and deploy with builds disabled. Keep the same environment,
+volume and routing configuration. An image rollback does not undo database
+migrations; a schema-incompatible rollback requires a matching database backup.
+
+The following Caddy/systemd instructions describe alternative installations,
+not the current Dokploy/Traefik VPS.
+
 1. Create a dedicated `weightings` system account. Install Node.js matching
    `package.json` and build this branch in `/opt/weightings-analytics`:
    `npm ci`, `npm test`, `npm run typecheck`, `npm run build`.
