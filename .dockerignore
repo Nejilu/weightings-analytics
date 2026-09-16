@@ -3,6 +3,7 @@
 .data
 node_modules
 .env*
+**/.env*
 *.sqlite*
 *.tsbuildinfo
 backups
