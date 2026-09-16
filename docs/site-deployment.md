@@ -65,17 +65,9 @@ Runtime secrets stay in Dokploy. SQLite stays in
 `/home/julie/weightings-analytics/data`; it is not part of the image.
 Traefik routes the public and owner hostnames to the same application.
 
-On the VPS, `weightings-image-retention.timer` checks every 30 seconds and keeps
-`weightings-analytics:current` and `weightings-analytics:previous` for healthy
-deployments. `production` is the build/deployment tag, normally the same image
-as `current`. Older Weightings runtime images are removed without touching
-other applications or data volumes. Docker build cache is separate from these
-runtime images. The timer and setup scripts live in the VPS operations workspace.
-
-For rollback, disable Auto Deploy in Dokploy, point this service to the
-`previous` image, and deploy with builds disabled. Keep the same environment,
-volume and routing configuration. An image rollback does not undo database
-migrations; a schema-incompatible rollback requires a matching database backup.
+The deployment image is `weightings-analytics:production`. No archive image or
+custom image-retention timer is maintained. Unused Docker images and build cache
+are not automatically removed by this setup.
 
 The following Caddy/systemd instructions describe alternative installations,
 not the current Dokploy/Traefik VPS.
