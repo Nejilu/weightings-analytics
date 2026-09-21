@@ -1,5 +1,7 @@
 "use client";
 
+import { HoldingsSourceWarning } from "./holdings-source-warning";
+
 import { VisibilitySelect } from "./visibility-select";
 import type { EtfVisibility } from "@/domain/visibility";
 
@@ -1340,6 +1342,7 @@ export function PortfolioAnalytics({
         </article>
       </section>
 
+      <HoldingsSourceWarning issues={analysis?.sources.flatMap((source) => source.sourceIssues ?? [])} />
       {analysis ? (
         <>
           <section className="panel portfolio-exposure-switch" aria-label="Composition display mode">

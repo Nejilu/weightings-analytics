@@ -1,0 +1,19 @@
+[
+  "https://www.blackrock.com/us/individual/products/227450/blackrock-science-tech-oppsinst-class-fund/1464253357814.ajax?fileType=csv&fileName=BGSIX_holdings&dataType=fund",
+  "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=239600&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
+  "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=239696&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
+  "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=239726&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
+  "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=244050&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
+  "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=339775&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
+  "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=351653&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
+  "https://www.blackrock.com/varnish-api/uk-retail01-product-data/product-data/api/v2/get-product-data?portfolioId=253723&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=uk-ishares&locale=en_GB&userType=individual",
+  "https://www.blackrock.com/varnish-api/uk-retail01-product-data/product-data/api/v2/get-product-data?portfolioId=339541&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=uk-ishares&locale=en_GB&userType=individual",
+  "https://www.ishares.com/ch/individual/en/products/253723/ishares-msci-em-asia-ucits-etf/1495092304805.ajax?fileType=csv&fileName=CSEMAS_holdings&dataType=fund",
+  "https://www.ishares.com/ch/individual/en/products/339541/ishares-s-p-500-top-20-ucits-etf/1495092304805.ajax?fileType=csv&fileName=SP20_holdings&dataType=fund",
+  "https://www.ishares.com/us/products/239600/ishares-msci-acwi-etf/latest-holdings.csv",
+  "https://www.ishares.com/us/products/239696/ishares-msci-world-etf/latest-holdings.csv",
+  "https://www.ishares.com/us/products/239726/ishares-core-s-p-500-etf/latest-holdings.csv",
+  "https://www.ishares.com/us/products/244050/ishares-core-msci-emerging-markets-etf/latest-holdings.csv",
+  "https://www.ishares.com/us/products/339775/ishares-nasdaq-top-30-stocks-etf/latest-holdings.csv",
+  "https://www.ishares.com/us/products/351653/ishares-nasdaq-100-etf/latest-holdings.csv"
+]

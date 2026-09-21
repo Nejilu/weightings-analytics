@@ -132,6 +132,7 @@ export interface PortfolioSource {
   ticker: string;
   asOf: string;
   sourceStatus: HoldingsSnapshot["sourceStatus"];
+  sourceIssues?: HoldingsSnapshot["sourceIssues"];
   constituentCoverage?: HoldingsSnapshot["constituentCoverage"];
 }
 

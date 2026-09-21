@@ -1,5 +1,7 @@
 "use client";
 
+import { HoldingsSourceWarning } from "./holdings-source-warning";
+
 import { useEffect, useRef, useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -1778,6 +1780,7 @@ export function ComparisonWorkbench({
               </section>
 
               {error && <div className="alert alert--error">{error}</div>}
+              <HoldingsSourceWarning issues={[...(analysis?.sourceIssues ?? []), ...(comparisonMode ? rightAnalysis?.sourceIssues ?? [] : []), ...(comparison?.left.sourceIssues ?? []), ...(comparison?.right.sourceIssues ?? [])]} />
 
               {analysis ? (
                 <>

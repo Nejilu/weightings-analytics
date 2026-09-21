@@ -14,7 +14,7 @@
     "start": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test-processors.ts && node scripts/audit-tradingview-mappings.test.mjs && node scripts/test-migrations.mjs && node --test scripts/start-standalone-assets.test.mjs && npm run test:site",
+    "test": "tsx scripts/test-processors.ts && node scripts/audit-tradingview-mappings.test.mjs && node scripts/test-migrations.mjs && node --test scripts/start-standalone-assets.test.mjs && npm run test:site && npm run test:holdings",
     "test:migrations": "node scripts/test-migrations.mjs",
     "test:portfolio": "tsx src/domain/processors/analyze-portfolio.test.ts",
     "test:tradingview": "tsx scripts/test-tradingview-estimates.ts",
@@ -28,7 +28,8 @@
     "db:audit-mappings": "node scripts/audit-tradingview-mappings.mjs",
     "db:backup": "tsx scripts/db-backup.ts",
     "db:import-tradingview-mappings": "tsx scripts/import-tradingview-mappings.ts",
-    "test:site": "node --conditions=react-server --import tsx --test src/server/site.test.ts"
+    "test:site": "node --conditions=react-server --import tsx --test src/server/site.test.ts",
+    "test:holdings": "node --conditions=react-server --import tsx --test src/data/services/holdings-refresh.test.ts && node --test deploy/ishares-relay/worker.test.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

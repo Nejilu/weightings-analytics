@@ -1,3 +1,5 @@
+import { sourceFailure } from "@/data/providers/holdings-request";
+import { holdingsSourceIssues } from "@/domain/holdings-source-issues";
 import { catalogRevision } from "@/server/site-runtime";
 import "server-only";
 
@@ -16,6 +18,7 @@ import {
   findLatestSnapshot,
   loadSnapshot,
   persistSnapshot,
+  recordSnapshotFailure,
 } from "@/db/repositories/holdings-repository";
 import { findDynamicCustomEtfDefinition } from "@/db/repositories/local-etf-repository";
 import { ensureLocalDatabase } from "@/db/bootstrap";
@@ -80,8 +83,9 @@ export class HoldingsUnavailableError extends Error {
   constructor(ticker: string, reference: string, cause?: unknown) {
     super(
       cause instanceof Error
-        ? `Holdings for ${ticker} are unavailable: ${cause.message}`
+        ? `Holdings for ${ticker} are unavailable [${sourceFailure(cause).code}]: ${sourceFailure(cause).message}`
         : `Holdings for ${ticker} are unavailable.`,
+      { cause },
     );
     this.name = "HoldingsUnavailableError";
     this.ticker = ticker;
@@ -176,6 +180,7 @@ async function buildPortfolioEtfSnapshot(
     asOf,
     fetchedAt: new Date().toISOString(),
     sourceStatus,
+    sourceIssues: holdingsSourceIssues(snapshots),
     sourceUrl: etf.holdingsUrl,
     cacheTtlHours: cacheTtlSeconds() / 3600,
     holdings: [
@@ -211,7 +216,8 @@ async function buildDynamicCustomEtfSnapshot(
   try {
     source = await getHoldingsSnapshot(definition.sourceEtfId, options);
   } catch (error) {
-    if (latest) return loadSnapshot(etf, latest, "stale", ttlHours);
+    if (latest) return { ...loadSnapshot(etf, latest, "stale", ttlHours),
+      sourceIssues: [{ ticker: etf.ticker, asOf: latest.asOf, ...sourceFailure(error) }] };
     throw new HoldingsUnavailableError(etf.ticker, etf.id, error);
   }
 
@@ -253,6 +259,7 @@ async function buildDynamicCustomEtfSnapshot(
     source.sourceStatus,
     ttlHours,
   );
+  snapshot.sourceIssues = holdingsSourceIssues([source]);
   return derived.missingSecurities.length > 0
     ? {
         ...snapshot,
@@ -286,7 +293,8 @@ async function buildDerivedEtfSnapshot(
     source = await getHoldingsSnapshot(definition.sourceEtfId, options);
   } catch (error) {
     if (latest) {
-      const snapshot = loadSnapshot(etf, latest, "stale", ttlHours);
+      const snapshot = { ...loadSnapshot(etf, latest, "stale", ttlHours),
+        sourceIssues: [{ ticker: etf.ticker, asOf: latest.asOf, ...sourceFailure(error) }] };
       if (
         definition.model === "component-market-value" &&
         latest.rowCount < definition.componentTickers.length
@@ -363,6 +371,7 @@ async function buildDerivedEtfSnapshot(
     source.sourceStatus,
     ttlHours,
   );
+  snapshot.sourceIssues = holdingsSourceIssues([source]);
   return constituentCoverage
     ? { ...snapshot, constituentCoverage }
     : snapshot;
@@ -415,6 +424,7 @@ async function refreshHoldings(
     !options.forceRefresh &&
     latest &&
     latestIsPlausible &&
+    latest.sourceStatus !== "stale" &&
     latestUsesCurrentNormalization &&
     isFresh(latest.fetchedAt, ttlSeconds)
   ) {
@@ -442,8 +452,10 @@ async function refreshHoldings(
 
     return loadSnapshot(etf, stored, "live", ttlHours);
   } catch (error) {
+    console.warn("Holdings refresh failed", { etfId: etf.id, ...sourceFailure(error) });
     if (latest && latestIsPlausible) {
-      return loadSnapshot(etf, latest, "stale", ttlHours);
+      const failed = recordSnapshotFailure(latest, sourceFailure(error));
+      return loadSnapshot(etf, failed, "stale", ttlHours);
     }
     throw new HoldingsUnavailableError(etf.ticker, etf.id, error);
   }

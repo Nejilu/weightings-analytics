@@ -69,6 +69,25 @@ required static assets before starting the generated server. Check
 `503` otherwise). This endpoint does not check external provider availability.
 `npm run start` also applies migrations and seeds the catalog before launch.
 
+## Provider access from servers
+
+iShares/BlackRock may reject datacenter IPs (HTTP 403), even when the same
+request succeeds from a residential connection. Expect this possibility when
+deploying to a VPS; a healthy application does not guarantee provider access.
+Cloudflare in front of your website does not change its outgoing IP.
+
+Failed updates retain the last usable holdings and display a prominent warning
+with the error code and original holdings date, including affected dependencies.
+A successful refresh clears the warning. HTTP 403/429/5xx, network failures and
+invalid responses are distinguished; no substitute holdings are fabricated.
+
+Operators should test provider downloads from their deployment before choosing
+a remedy: an optional restricted Cloudflare Worker relay, an authorised outbound
+proxy, another usable network, or a supported data feed. Worker/datacenter
+addresses can also be blocked. The project does not require Cloudflare Workers
+and never provisions a proxy automatically. See the [optional relay setup](deploy/ishares-relay/README.md)
+for configuration, limits, testing and rollback.
+
 ## Configuration
 
 Use `.env.example` as the configuration template. Site access settings are required;
@@ -81,6 +100,7 @@ create on the VPS. Local preview settings belong in `.env.development.local`.
 | `DATABASE_PATH` | `.data/weightings-analytics.sqlite` | Durable SQLite database path |
 | `DRIZZLE_MIGRATIONS_PATH` | `drizzle` | Migration directory; useful when embedded in another runtime image |
 | `HOLDINGS_CACHE_TTL_SECONDS` | `86400` | Positive holdings snapshot TTL |
+| `ISHARES_RELAY_URL` | unset | Optional operator-managed HTTPS relay for iShares/BlackRock; direct access remains the default |
 | `HOLDINGS_REFRESH_CONCURRENCY` | `4` | Parallel holdings refreshes, 1–8 |
 | `MARKET_PRICE_TTL_SECONDS` | `86400` | Positive Yahoo price and FX TTL |
 | `MARKET_PRICE_CONCURRENCY` | `4` | Parallel Yahoo requests, 1–8 |

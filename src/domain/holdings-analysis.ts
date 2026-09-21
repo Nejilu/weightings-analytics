@@ -1,3 +1,4 @@
+import type { HoldingsSourceIssue } from "./holdings-source-issues";
 import type { DataStatus, EtfShareClass } from "./etf";
 
 export type DistortionCoverageStatus =
@@ -49,6 +50,7 @@ export interface HoldingsAnalysisResult {
   etf: EtfShareClass;
   asOf: string;
   sourceStatus: DataStatus;
+  sourceIssues?: HoldingsSourceIssue[];
   cacheTtlHours: number;
   calculatedAt: string;
   holdingsCount: number;

@@ -160,3 +160,17 @@ Run the full tests, typecheck, targeted lint, production build and
 
 - [Cloudflare Access JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
 - [Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+
+## Provider connectivity
+
+Test iShares/BlackRock downloads from the application container: datacenter IPs
+may receive HTTP 403 despite a working website. Reverse-proxying incoming
+traffic through Cloudflare does not alter outgoing requests. An optional
+operator-managed relay is documented in [the relay guide](../deploy/ishares-relay/README.md).
+Leave `ISHARES_RELAY_URL` unset for direct access. Configure it only in the server
+environment when needed; it is not a mandatory project dependency.
+
+Holdings refresh failures show an alert with the provider/transport error code
+and the retained composition date. The same diagnostics propagate through
+shared holdings, derived funds, portfolios, comparisons and metrics.
+`/api/health` reports application/database readiness, not provider connectivity.

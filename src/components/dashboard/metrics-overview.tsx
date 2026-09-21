@@ -1,5 +1,7 @@
 "use client";
 
+import { HoldingsSourceWarning } from "./holdings-source-warning";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
@@ -836,6 +838,7 @@ export function MetricsOverview({ catalog, initialEtfIds }: MetricsOverviewProps
 
       {result ? (
         <>
+          <HoldingsSourceWarning issues={result.holdingsSourceIssues} />
           <section className="metrics-coverage-grid" aria-label="TradingView mapping coverage">
             {result.etfs.map((etf, index) => <article key={etf.etfId} style={{ borderTopColor: FUND_COLORS[index] }}><span>{etf.ticker} · symbol coverage</span><strong>{etf.mappingCoverageWeight.toFixed(1)}%</strong><small>{etf.mappedHoldings} / {etf.holdingsCount} equity holdings · {formatDate(etf.asOf)}</small></article>)}
           </section>
