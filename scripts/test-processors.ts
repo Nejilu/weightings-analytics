@@ -1,3 +1,4 @@
+import "../src/data/providers/holdings-request.test";
 import "../src/data/providers/ishares-source.test";
 import "../src/data/providers/ishares-csv.test";
 import "../src/data/catalog.test";

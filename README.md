@@ -52,6 +52,23 @@ required static assets before starting the generated server. Check
 `503` otherwise). This endpoint does not check external provider availability.
 `npm run start` also applies migrations and seeds the catalog before launch.
 
+## Provider access
+
+iShares/BlackRock may reject datacenter IPs (HTTP 403), even when the same
+request succeeds from a residential connection. Expect this possibility when
+deploying to a VPS; a healthy application does not guarantee provider access.
+Cloudflare in front of your website does not change its outgoing IP.
+
+Failed updates retain the last usable holdings and display a prominent warning
+with the error code and original holdings date, including affected dependencies.
+A successful refresh clears the warning. HTTP 403/429/5xx, network failures and
+invalid responses are distinguished; no substitute holdings are fabricated.
+
+Test provider downloads from the runtime before choosing a remedy. The optional
+`ISHARES_RELAY_URL` routes only iShares/BlackRock requests through an HTTPS relay;
+direct access remains the default. Restrict any relay to approved provider URLs
+and callers. This project does not provision one automatically.
+
 ## Configuration
 
 Copy `.env.example` to `.env` only when overriding a default.
@@ -62,6 +79,7 @@ Copy `.env.example` to `.env` only when overriding a default.
 | `DATABASE_PATH` | `.data/weightings-analytics.sqlite` | Durable SQLite database path |
 | `DRIZZLE_MIGRATIONS_PATH` | `drizzle` | Migration directory; useful when embedded in another runtime image |
 | `HOLDINGS_CACHE_TTL_SECONDS` | `86400` | Positive holdings snapshot TTL |
+| `ISHARES_RELAY_URL` | unset | Optional operator-managed HTTPS relay for iShares/BlackRock; direct access remains the default |
 | `HOLDINGS_REFRESH_CONCURRENCY` | `4` | Parallel holdings refreshes, 1–8 |
 | `MARKET_PRICE_TTL_SECONDS` | `86400` | Positive Yahoo price and FX TTL |
 | `MARKET_PRICE_CONCURRENCY` | `4` | Parallel Yahoo requests, 1–8 |

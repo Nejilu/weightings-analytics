@@ -1,3 +1,4 @@
+import { holdingsSourceIssues } from "@/domain/holdings-source-issues";
 import type {
   ComparisonResult,
   Holding,
@@ -218,6 +219,7 @@ export function compareHoldings(
       etf: leftSnapshot.etf,
       asOf: leftSnapshot.asOf,
       sourceStatus: leftSnapshot.sourceStatus,
+      sourceIssues: holdingsSourceIssues([leftSnapshot]),
       holdingsCount: leftHoldings.length,
       top10Concentration: topConcentration(leftHoldings, 10),
       constituentCoverage: leftSnapshot.constituentCoverage,
@@ -226,6 +228,7 @@ export function compareHoldings(
       etf: rightSnapshot.etf,
       asOf: rightSnapshot.asOf,
       sourceStatus: rightSnapshot.sourceStatus,
+      sourceIssues: holdingsSourceIssues([rightSnapshot]),
       holdingsCount: rightHoldings.length,
       top10Concentration: topConcentration(rightHoldings, 10),
       constituentCoverage: rightSnapshot.constituentCoverage,

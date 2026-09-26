@@ -1,3 +1,4 @@
+import { HoldingsSourceError, requestHoldingsSource, sourceFailure } from "./holdings-request";
 import type { EtfShareClass } from "@/domain/etf";
 
 interface IsharesHoldingsFile {
@@ -5,7 +6,6 @@ interface IsharesHoldingsFile {
   sourceUrl: string;
 }
 
-const CSV_ACCEPT_HEADER = "text/csv,text/plain;q=0.9,*/*;q=0.8";
 const LEGACY_UK_DOWNLOAD_ID = "1506575576011.ajax";
 const CURRENT_CH_DOWNLOAD_ID = "1495092304805.ajax";
 const BLACKROCK_PRODUCT_DATA_PATH =
@@ -242,25 +242,11 @@ async function fetchBlackrockDatedPayload(
 export async function fetchIsharesHoldingsFile(
   etf: EtfShareClass,
 ): Promise<IsharesHoldingsFile> {
-  const failures: string[] = [];
+  const failures: ReturnType<typeof sourceFailure>[] = [];
 
   for (const sourceUrl of holdingsSourceCandidates(etf.holdingsUrl, etf.productUrl)) {
     try {
-      const request = (url: string) =>
-        fetch(url, {
-          headers: {
-            Accept: url.includes(BLACKROCK_PRODUCT_DATA_PATH)
-              ? "application/json,*/*;q=0.8"
-              : CSV_ACCEPT_HEADER,
-            "User-Agent": "WeightingsAnalytics/0.1 holdings-research",
-          },
-          // SQLite is the single 24-hour holdings cache. Reusing Next's
-          // revalidation cache here can return a stale response once and then
-          // persist it with a fresh SQLite timestamp, delaying new holdings by
-          // another full TTL.
-          cache: "no-store",
-          signal: AbortSignal.timeout(12_000),
-        });
+      const request = requestHoldingsSource;
 
       const response = await request(sourceUrl);
 
@@ -276,13 +262,12 @@ export async function fetchIsharesHoldingsFile(
       assertPlausibleIsharesHoldingsCount(etf, assertCsvContainsRows(raw));
       return { raw, sourceUrl };
     } catch (error) {
-      failures.push(
-        error instanceof Error ? error.message : "Unknown source error",
-      );
+      failures.push(sourceFailure(error));
     }
   }
 
-  throw new Error(
-    `iShares holdings source unavailable: ${failures.join("; ")}`,
+  throw new HoldingsSourceError(
+    [...new Set(failures.map((failure) => failure.code))].join(", "),
+    [...new Set(failures.map((failure) => failure.message))].join(" "),
   );
 }

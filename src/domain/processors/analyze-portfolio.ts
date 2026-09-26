@@ -1,3 +1,4 @@
+import { holdingsSourceIssues } from "@/domain/holdings-source-issues";
 import type {
   PortfolioAnalysis,
   PortfolioAnalysisInput,
@@ -233,6 +234,7 @@ function analyzePortfolioWithIdentity({
       ticker: snapshot.etf.ticker,
       asOf: snapshot.asOf,
       sourceStatus: snapshot.sourceStatus,
+      sourceIssues: holdingsSourceIssues([snapshot]),
       constituentCoverage: snapshot.constituentCoverage,
     })),
   };

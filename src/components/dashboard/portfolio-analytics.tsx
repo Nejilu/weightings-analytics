@@ -1,5 +1,7 @@
 "use client";
 
+import { HoldingsSourceWarning } from "./holdings-source-warning";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
@@ -1324,6 +1326,7 @@ export function PortfolioAnalytics({
         </article>
       </section>
 
+      <HoldingsSourceWarning issues={analysis?.sources.flatMap((source) => source.sourceIssues ?? [])} />
       {analysis ? (
         <>
           <section className="panel portfolio-exposure-switch" aria-label="Composition display mode">
