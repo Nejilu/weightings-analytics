@@ -1,5 +1,7 @@
 "use client";
 
+import { HoldingsSourceWarning } from "./holdings-source-warning";
+
 import { useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -1318,6 +1320,7 @@ export function ComparisonWorkbench({
   );
   const leftEtf = availableEtfs.find((etf) => etf.id === leftEtfId);
   const rightEtf = availableEtfs.find((etf) => etf.id === rightEtfId);
+  const hasStaleHoldings = Boolean(analysis?.sourceIssues?.length || analysis?.sourceStatus === "stale" || (comparisonMode && (rightAnalysis?.sourceIssues?.length || rightAnalysis?.sourceStatus === "stale")) || comparison?.left.sourceStatus === "stale" || comparison?.right.sourceStatus === "stale");
   const holdingsDisplayAnalysis = useMemo(() => analysis ? {
     ...analysis,
     positions: holdingsCashDisplayPositions(analysis.positions, cashDisplay),
@@ -1577,7 +1580,7 @@ export function ComparisonWorkbench({
                   ? ""
                   : workspaceView === "metrics"
                     ? ""
-                  : error
+                  : error || hasStaleHoldings
                     ? "source-badge--error"
                     : analysis
                       ? ""
@@ -1593,8 +1596,10 @@ export function ComparisonWorkbench({
                   ? "TradingView"
                 : error
                   ? "Unavailable"
-                  : analysis
-                    ? "Live data"
+                  : hasStaleHoldings
+                    ? "Stale data"
+                    : analysis
+                    ? analysis.sourceStatus === "cached" ? "Cached data" : "Live data"
                     : "Not loaded"}
             </span>
             <ThemeToggle />
@@ -1727,6 +1732,7 @@ export function ComparisonWorkbench({
               </section>
 
               {error && <div className="alert alert--error">{error}</div>}
+              <HoldingsSourceWarning issues={[...(analysis?.sourceIssues ?? []), ...(comparisonMode ? rightAnalysis?.sourceIssues ?? [] : []), ...(comparison?.left.sourceIssues ?? []), ...(comparison?.right.sourceIssues ?? [])]} />
 
               {analysis ? (
                 <>

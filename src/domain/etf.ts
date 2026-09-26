@@ -1,3 +1,4 @@
+import type { HoldingsSourceIssue } from "./holdings-source-issues";
 export type FundWrapper = "UCITS" | "US_1940_ACT" | "SYNTHETIC";
 export type DistributionPolicy =
   | "Accumulating"
@@ -104,6 +105,7 @@ export interface HoldingsSnapshot {
   asOf: string;
   fetchedAt: string;
   sourceStatus: DataStatus;
+  sourceIssues?: HoldingsSourceIssue[];
   sourceUrl: string;
   cacheTtlHours: number;
   holdings: Holding[];
@@ -152,6 +154,7 @@ export interface ComparisonResult {
     etf: EtfShareClass;
     asOf: string;
     sourceStatus: DataStatus;
+  sourceIssues?: HoldingsSourceIssue[];
     holdingsCount: number;
     top10Concentration: number;
     constituentCoverage?: ConstituentCoverage;
@@ -160,6 +163,7 @@ export interface ComparisonResult {
     etf: EtfShareClass;
     asOf: string;
     sourceStatus: DataStatus;
+  sourceIssues?: HoldingsSourceIssue[];
     holdingsCount: number;
     top10Concentration: number;
     constituentCoverage?: ConstituentCoverage;

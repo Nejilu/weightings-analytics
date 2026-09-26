@@ -1,3 +1,4 @@
+import { holdingsSourceIssues } from "@/domain/holdings-source-issues";
 import type { Holding, HoldingsSnapshot } from "@/domain/etf";
 import { isCashHolding } from "@/domain/cash-holdings";
 import type {
@@ -154,6 +155,7 @@ export function analyzeHoldings(
     etf: targetSnapshot.etf,
     asOf: targetSnapshot.asOf,
     sourceStatus: targetSnapshot.sourceStatus,
+    sourceIssues: holdingsSourceIssues([targetSnapshot, acwiSnapshot]),
     cacheTtlHours: Math.min(
       targetSnapshot.cacheTtlHours,
       acwiSnapshot.cacheTtlHours,

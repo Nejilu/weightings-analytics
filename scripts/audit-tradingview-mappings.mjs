@@ -241,17 +241,48 @@ function buildEtfSummaries(holdings, mappings) {
     .sort((left, right) => left.ticker.localeCompare(right.ticker));
 }
 
-function canonicalIdentityAudit(sqlite) {
-  const duplicateListings = sqlite.prepare(`
-    SELECT COUNT(*) AS count FROM (
-      SELECT UPPER(TRIM(primary_ticker)), UPPER(TRIM(name)),
-        UPPER(TRIM(COALESCE(country, '')))
+function canonicalIdentityAudit(sqlite, snapshots) {
+  // A label can legitimately survive an ISIN change. Keep historical identities;
+  // only downgrade a collision when its extra identities are used exclusively
+  // by superseded snapshots, never by current holdings or saved definitions.
+  const currentSnapshotIds = new Set([...snapshots.values()].map((row) => row.id));
+  const historicalIds = new Set();
+  const currentIds = new Set();
+  for (const row of sqlite.prepare("SELECT snapshot_id, security_id FROM holdings").all()) {
+    historicalIds.add(row.security_id);
+    if (currentSnapshotIds.has(row.snapshot_id)) currentIds.add(row.security_id);
+  }
+  for (const row of sqlite.prepare("SELECT security_id FROM portfolio_items WHERE asset_type = 'security'").all()) {
+    currentIds.add(row.security_id);
+  }
+  for (const row of sqlite.prepare(`
+    SELECT DISTINCT j.value AS security_id
+    FROM etfs e, json_tree(CASE WHEN json_valid(e.metadata_json) THEN e.metadata_json ELSE '{}' END) j
+    WHERE j.type = 'text'
+  `).all()) currentIds.add(row.security_id);
+
+  const listingGroups = sqlite.prepare(`
+      SELECT UPPER(TRIM(primary_ticker)) AS ticker, UPPER(TRIM(name)) AS name,
+        UPPER(TRIM(COALESCE(country, ''))) AS country, json_group_array(id) AS ids
       FROM securities
       WHERE primary_ticker IS NOT NULL AND TRIM(primary_ticker) <> ''
       GROUP BY 1, 2, 3
       HAVING COUNT(*) > 1
-    )
-  `).get().count;
+  `).all();
+  const historicalListingCollisions = [];
+  let duplicateListings = 0;
+  for (const group of listingGroups) {
+    const ids = JSON.parse(group.ids);
+    const current = ids.filter((id) => currentIds.has(id) || !historicalIds.has(id));
+    if (current.length > 1) duplicateListings += 1;
+    else historicalListingCollisions.push({
+      ticker: group.ticker,
+      name: group.name,
+      country: group.country,
+      currentIds: current,
+      historicalIds: ids.filter((id) => !current.includes(id)),
+    });
+  }
   const duplicateStrongIdentifiers = sqlite.prepare(`
     SELECT COUNT(*) AS count FROM (
       SELECT kind, value FROM (
@@ -295,7 +326,7 @@ function canonicalIdentityAudit(sqlite) {
     (total, query) => total + sqlite.prepare(query).get().count,
     0,
   );
-  return { duplicateListings, duplicateStrongIdentifiers, orphanReferences };
+  return { duplicateListings, historicalListingCollisions, duplicateStrongIdentifiers, orphanReferences };
 }
 
 export function auditDatabase(sqlite, database) {
@@ -304,7 +335,7 @@ export function auditDatabase(sqlite, database) {
   const mappingAudit = loadMappings(sqlite);
   const identity = {
     ...countIdentityMismatches(sqlite, mappingAudit.bySecurity),
-    ...canonicalIdentityAudit(sqlite),
+    ...canonicalIdentityAudit(sqlite, snapshots),
   };
   const resolved = [...mappingAudit.bySecurity.values()]
     .filter((mapping) => mapping.providerSymbol).length;
@@ -332,6 +363,9 @@ function printAudit(audit, json, breakdown) {
   console.log(`TradingView mappings: ${audit.resolvedMappings.toLocaleString()} resolved, ${audit.unresolvedMappings.toLocaleString()} unresolved`);
   console.log(`Provenance: ${JSON.stringify(audit.provenanceCounts)}`);
   console.log(`Identity mismatches: source=${audit.identity.sourceMismatches}, estimates=${audit.identity.estimateMismatches}, duplicate listings=${audit.identity.duplicateListings}, duplicate strong identifiers=${audit.identity.duplicateStrongIdentifiers}, orphan references=${audit.identity.orphanReferences}`);
+  for (const group of audit.identity.historicalListingCollisions) {
+    console.log(`Historical listing labels (review, not merged): ${group.ticker}, current=${group.currentIds.join(",") || "none"}, historical=${group.historicalIds.join(",")}`);
+  }
   console.log(`Metadata: malformed=${audit.malformedMetadata}, resolved without provenance=${audit.resolvedWithoutProvenance}`);
   for (const etf of audit.etfs) {
     console.log(`${etf.ticker}: ${etf.mapped}/${etf.holdings} mapped, ${etf.mappingCoverageWeight.toFixed(2)}% weight, provenance=${JSON.stringify(etf.provenance)}`);

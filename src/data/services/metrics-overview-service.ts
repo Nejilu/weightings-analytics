@@ -1,3 +1,4 @@
+import { holdingsSourceIssues } from "@/domain/holdings-source-issues";
 import "server-only";
 
 import {
@@ -336,6 +337,7 @@ async function buildOverview(
     source: "TradingView Screener + Estimates",
     sourceStatus,
     sourceWarnings: [...sourceWarnings].sort(),
+    holdingsSourceIssues: holdingsSourceIssues(snapshots),
     cacheTtlHours: ttlSeconds / 3_600,
     definitions: [...OVERVIEW_METRIC_DEFINITIONS],
     etfs: snapshots.map((snapshot) => buildEtfMetricsOverview(

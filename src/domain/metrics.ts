@@ -1,3 +1,4 @@
+import type { HoldingsSourceIssue } from "./holdings-source-issues";
 export const METRIC_KEYS = [
   "pe_estimate_window_0",
   "pe_estimate_window_1",
@@ -413,6 +414,7 @@ export interface MetricsOverviewResult {
   source: "TradingView Screener + Estimates";
   sourceStatus: "live" | "cached" | "partial" | "stale";
   sourceWarnings: MetricsOverviewWarning[];
+  holdingsSourceIssues?: HoldingsSourceIssue[];
   cacheTtlHours: number;
   definitions: MetricDefinitionView[];
   etfs: EtfMetricsOverview[];

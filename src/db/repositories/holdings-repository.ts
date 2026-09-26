@@ -22,6 +22,21 @@ import {
 
 type SnapshotRecord = typeof holdingSnapshots.$inferSelect;
 
+function snapshotMetadata(snapshot: SnapshotRecord): Record<string, unknown> {
+  return snapshot.rawMetadataJson && typeof snapshot.rawMetadataJson === "object"
+    ? snapshot.rawMetadataJson as Record<string, unknown> : {};
+}
+
+export function recordSnapshotFailure(
+  snapshot: SnapshotRecord,
+  failure: { code: string; message: string },
+): SnapshotRecord {
+  const rawMetadataJson = { ...snapshotMetadata(snapshot), refreshFailure: failure };
+  getDb().update(holdingSnapshots).set({ sourceStatus: "stale", rawMetadataJson })
+    .where(eq(holdingSnapshots.id, snapshot.id)).run();
+  return { ...snapshot, sourceStatus: "stale", rawMetadataJson };
+}
+
 function identifiersFromJson(value: unknown): {
   exchange?: string;
   cusip?: string;
@@ -118,6 +133,14 @@ export function loadSnapshot(
     asOf: snapshot.asOf,
     fetchedAt: snapshot.fetchedAt,
     sourceStatus,
+    sourceIssues: (() => {
+      const failure = snapshotMetadata(snapshot).refreshFailure;
+      if (sourceStatus !== "stale" || !failure || typeof failure !== "object") return undefined;
+      const value = failure as Record<string, unknown>;
+      return typeof value.code === "string" && typeof value.message === "string"
+        ? [{ ticker: etf.ticker, asOf: snapshot.asOf, code: value.code, message: value.message }]
+        : undefined;
+    })(),
     sourceUrl: snapshot.sourceUrl,
     cacheTtlHours,
     holdings: rows.map((row) => {
@@ -174,12 +197,16 @@ export function persistSnapshot(
       .get();
 
     if (existing) {
+      const metadata = { ...snapshotMetadata(existing) };
+      delete metadata.refreshFailure;
+      const rawMetadataJson = Object.keys(metadata).length ? metadata : null;
       transaction
         .update(holdingSnapshots)
         .set({
           fetchedAt: input.fetchedAt,
           sourceUrl: input.sourceUrl,
           sourceStatus: "live",
+          rawMetadataJson,
           totalWeight,
           rowCount: input.holdings.length,
         })
@@ -188,6 +215,7 @@ export function persistSnapshot(
 
       return {
         ...existing,
+        rawMetadataJson,
         fetchedAt: input.fetchedAt,
         sourceUrl: input.sourceUrl,
         sourceStatus: "live",
