@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail } from "@/domain/local-etf";
 import { mergeCashPosition } from "@/domain/processors/merge-cash-position";
+import { mergePortfolioPosition } from "@/domain/processors/merge-portfolio-position";
 import {
   SUPPORTED_CASH_CURRENCIES,
   type PortfolioCashPosition,
@@ -480,13 +481,6 @@ export function PortfolioAnalytics({
       kind === "etf" ? etfSelection!.ticker : securitySelection!.ticker;
     const name =
       kind === "etf" ? etfSelection!.name : securitySelection!.name;
-    const existing = items.find(
-      (item) => item.kind === kind && item.referenceId === referenceId,
-    );
-    if (existing) {
-      setError(`${ticker} is already in the portfolio. Edit its shares below.`);
-      return;
-    }
     if (!activeQuote || activeQuote.assetId !== referenceId) {
       setError(quoteError ?? "Wait for a current market price before adding this position.");
       return;
@@ -496,9 +490,7 @@ export function PortfolioAnalytics({
     const currentValueUsd = quantity * activeQuote.priceUsd;
 
     setItems((current) =>
-      [
-        ...current,
-        {
+      mergePortfolioPosition(current, {
           id: createItemId(),
           kind,
           referenceId,
@@ -517,8 +509,7 @@ export function PortfolioAnalytics({
           currentValueUsd,
           priceAsOf: activeQuote.asOf,
           priceStatus: activeQuote.sourceStatus,
-        },
-      ],
+        }),
     );
     setError(null);
     if (kind === "security") {
@@ -1111,6 +1102,10 @@ export function PortfolioAnalytics({
               Add position
             </button>
           </div>
+          <p className="muted-copy">
+            Adding an existing instrument adjusts its current shares. Use a negative
+            amount to reduce the position or go short.
+          </p>
           <div className="market-quote-preview" aria-live="polite">
             {activeQuoteLoading ? (
               <span><span className="spinner" /> Loading market price…</span>
@@ -1172,7 +1167,7 @@ export function PortfolioAnalytics({
                     <input
                       aria-label={`${item.ticker} shares`}
                       type="number"
-                      step="0.000001"
+                      step="1"
                       value={item.quantity ?? ""}
                       onChange={(event) => {
                         const value = Number(event.target.value);
