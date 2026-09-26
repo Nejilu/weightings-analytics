@@ -467,7 +467,10 @@ export async function getHoldingsSnapshot(
     );
   }
   const cacheKey = `${databasePath()}::${etf.id}::${options.forceRefresh ? "force" : "cached"}`;
-  const existing = inFlightRefreshes.get(cacheKey);
+  const existing = inFlightRefreshes.get(cacheKey)
+    ?? (!options.forceRefresh
+      ? inFlightRefreshes.get(`${databasePath()}::${etf.id}::force`)
+      : undefined);
   if (existing) return existing;
 
   const refresh = refreshHoldings(etf, options)
