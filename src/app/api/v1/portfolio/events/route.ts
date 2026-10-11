@@ -12,4 +12,4 @@ async function handleGET(request: Request) {
   }
 }
 
-export const GET = withSiteAccess(handleGET, "owner");
+export const GET = withSiteAccess(handleGET, "read");

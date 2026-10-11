@@ -14,6 +14,8 @@ import { getPortfolioEvents, PortfolioEventsRequestError } from "./portfolio-eve
 test("portfolio calendar shares cached dates, refreshes a batch without estimates and retains stale future dates", async () => {
   const originalPath = process.env.DATABASE_PATH;
   const originalMode = process.env.SITE_ACCESS_MODE;
+  const siteConfigKeys = ["SITE_PUBLIC_ORIGIN", "SITE_OWNER_ORIGIN", "CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD", "SITE_OWNER_EMAIL"];
+  const originalSiteConfig = Object.fromEntries(siteConfigKeys.map((key) => [key, process.env[key]]));
   const originalFetch = globalThis.fetch;
   const directory = mkdtempSync(join(tmpdir(), "portfolio-events-test-"));
   try {
@@ -49,6 +51,36 @@ test("portfolio calendar shares cached dates, refreshes a batch without estimate
     assert.equal(top30Response.status, 200);
     assert.equal((await top30Response.json()).data.length, 30);
     assert.equal(calls, 0);
+
+    Object.assign(process.env, {
+      SITE_ACCESS_MODE: "cloudflare",
+      SITE_PUBLIC_ORIGIN: "https://public.example.com",
+      SITE_OWNER_ORIGIN: "https://owner.example.com",
+      CF_ACCESS_TEAM_DOMAIN: "https://test.cloudflareaccess.com",
+      CF_ACCESS_AUD: "test-audience",
+      SITE_OWNER_EMAIL: "owner@example.com",
+    });
+    // Anonymous visitors use the same calendar; dates expose no portfolio amounts.
+    for (const count of [10, 30]) {
+      const params = new URLSearchParams();
+      [...ids, ...extraIds].slice(0, count).forEach((id) => params.append("securityId", id));
+      const publicResponse = await GET(new Request(`https://public.example.com/api/v1/portfolio/events?${params}`, {
+        headers: { host: "public.example.com" },
+      }));
+      assert.equal(publicResponse.status, 200);
+      assert.equal(publicResponse.headers.get("cache-control"), "private, no-store");
+      const publicEvents = (await publicResponse.json()).data;
+      assert.equal(publicEvents.length, count);
+      assert.equal(publicEvents[0].reportDate, dates[1]);
+      assert.ok(publicEvents.every((event: Record<string, unknown>) =>
+        Object.keys(event).every((key) => ["securityId", "ticker", "name", "reportDate", "exchangeTimezone", "capturedAt", "sourceStatus"].includes(key))));
+    }
+    const invalidPublicResponse = await GET(new Request("https://public.example.com/api/v1/portfolio/events", {
+      headers: { host: "public.example.com" },
+    }));
+    assert.equal(invalidPublicResponse.status, 400);
+    assert.equal(calls, 0);
+    process.env.SITE_ACCESS_MODE = "local";
 
     getSqlite().prepare("DELETE FROM metric_observations WHERE metric_definition_id = 'security:upcoming_earnings:v1'").run();
     globalThis.fetch = async (url, init) => {
@@ -88,6 +120,10 @@ test("portfolio calendar shares cached dates, refreshes a batch without estimate
     closeDatabase();
     if (originalPath === undefined) delete process.env.DATABASE_PATH; else process.env.DATABASE_PATH = originalPath;
     if (originalMode === undefined) delete process.env.SITE_ACCESS_MODE; else process.env.SITE_ACCESS_MODE = originalMode;
+    for (const key of siteConfigKeys) {
+      if (originalSiteConfig[key] === undefined) delete process.env[key];
+      else process.env[key] = originalSiteConfig[key];
+    }
     assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep));
     rmSync(directory, { recursive: true, force: true });
   }
