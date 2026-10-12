@@ -25,7 +25,7 @@ export function rankDistortionTablePositions(
 ) {
   const rows = positions.map((position) => ({ ...position, relativeWeight: distortionWeightMultiple(position) }));
   const gap = (position: HoldingsAnalysisPosition) => position.weightDelta === null ? -1 : Math.abs(position.weightDelta);
-  // A ×5 overweight and a ÷5 underweight have the same relative magnitude.
+  // A ×5 overweight and a ×0.2 underweight have the same relative magnitude.
   // Zero portfolio weight is complete underweight; undefined ratios sort last.
   const multiple = (ratio: number | null) => ratio === null ? -1 : ratio === 0 ? Infinity : Math.max(ratio, 1 / ratio);
   return rows.sort((a, b) => {
@@ -65,11 +65,11 @@ export function rankDistortionPositions(
 }
 
 export function relativeDistortionLabel(relativeWeight: number): string {
-  if (relativeWeight === 0) return "0×";
-  const factor = relativeWeight >= 1 ? relativeWeight : 1 / relativeWeight;
-  // Keep very small deviations from rounding to a misleading ×1.00 / ÷1.00.
-  const digits = factor < 1.005 && factor > 1 ? 4 : 2;
-  return `${relativeWeight >= 1 ? "×" : "÷"}${factor.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  if (relativeWeight === 0) return "×0";
+  // Preserve small nonzero ratios and deviations near ×1.00 on both sides.
+  const digits = Math.abs(relativeWeight - 1) < 0.005 && relativeWeight !== 1
+    ? 4 : Math.max(2, Math.min(6, 1 - Math.floor(Math.log10(relativeWeight))));
+  return `×${relativeWeight.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
 export function absoluteDistortionLabel(weightDelta: number): string {

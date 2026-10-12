@@ -10,6 +10,7 @@ test("requests the earnings calendar alongside fundamentals only when opted in",
     const result = await fetchTradingViewMetrics(["NASDAQ:MSFT"], async (_url, init) => {
       calls++;
       const body = JSON.parse(String(init?.body));
+      assert.deepEqual(body.price_conversion, { to_currency: "usd" });
       assert.equal(body.columns.includes("earnings_release_next_date"), includeUpcomingEarnings);
       assert.equal(body.columns.includes("timezone"), includeUpcomingEarnings);
       return Response.json({ data: [{ s: "NASDAQ:MSFT", d: ["MSFT", "Microsoft", "Technology",

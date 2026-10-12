@@ -1,3 +1,35 @@
+.panel.portfolio-dashboard { min-width: 0; padding: 24px; }
+.portfolio-dashboard .panel-heading { align-items: center; flex-wrap: wrap; gap: 16px; }
+.portfolio-dashboard .panel-heading h2 { font-size: 20px; }
+.portfolio-dashboard-controls, .portfolio-dashboard-period { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.portfolio-dashboard-controls select, .portfolio-dashboard-period input { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px; font: inherit; font-size: 11px; min-height: 34px; }
+.portfolio-dashboard-period { justify-content: space-between; margin: 18px 0; }
+.portfolio-dashboard-period label { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; }
+.portfolio-dashboard-chart { height: 300px; min-width: 0; }
+.portfolio-dashboard-chart .recharts-surface:focus:not(:focus-visible),
+.portfolio-history-chart .recharts-surface:focus:not(:focus-visible) { outline: none; }
+.portfolio-dashboard-chart .recharts-surface g[tabindex="-1"]:focus,
+.portfolio-history-chart .recharts-surface g[tabindex="-1"]:focus { outline: none; }
+.portfolio-dashboard-chart .recharts-surface:focus-visible,
+.portfolio-history-chart .recharts-surface:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.portfolio-dashboard-note { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 12px 0 0; }
+.portfolio-dashboard-message { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; min-height: 180px; color: var(--muted); font-size: 12px; }
+.portfolio-dashboard-legend { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); margin-top: 18px; }
+.portfolio-dashboard-legend button { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; text-align: left; background: var(--surface-subtle); border: 1px solid var(--line); border-radius: 6px; padding: 10px; color: var(--ink); cursor: pointer; }
+.portfolio-dashboard-legend button[aria-pressed="false"] { opacity: 0.5; }
+.portfolio-dashboard-legend i { width: 8px; height: 8px; border-radius: 50%; }
+.portfolio-dashboard-legend strong, .portfolio-dashboard-legend b { font-size: 11px; }
+.portfolio-dashboard-legend small { display: block; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.portfolio-dashboard-legend span { min-width: 0; }
+.portfolio-dashboard-legend span small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+.portfolio-dashboard-legend button > small { grid-column: 2 / -1; }
+.portfolio-dashboard-tooltip > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: 12px; }
+@media (max-width: 640px) {
+  .panel.portfolio-dashboard { padding: 18px 14px; }
+  .portfolio-dashboard-chart { height: 250px; }
+  .portfolio-dashboard-period { gap: 10px; }
+  .portfolio-dashboard .segmented-control button { font-size: 11px; }
+}
 .panel.portfolio-history-panel { overflow: hidden; padding: 24px; }
 .portfolio-history-heading h2 { font-size: 20px; letter-spacing: -0.4px; }
 .portfolio-history-heading { gap: 16px; flex-wrap: wrap; }
@@ -3943,6 +3975,18 @@ td.holdings-table-empty {
 .distortion-controls .segmented-control {
   flex-wrap: wrap;
 }
+
+.distortion-controls .distortion-mode-heading {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.distortion-basis-copy { margin: 12px 0 0; }
+.distortion-capitalization-status { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; padding: 20px; }
+.distortion-capitalization-issues { margin-top: 8px; }
+.distortion-capitalization-issues summary { cursor: pointer; }
+.distortion-capitalization-issues ul { max-height: 180px; overflow-y: auto; padding-left: 20px; }
 
 .distortion-top-control {
   display: grid;

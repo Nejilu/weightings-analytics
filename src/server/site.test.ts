@@ -27,6 +27,7 @@ import {
   portfolioCashPositions,
   securities,
   marketPrices,
+  portfolioValueSnapshots,
 } from "@/db/schema";
 import { findEtfById } from "@/db/repositories/catalog-repository";
 import { GET as catalogGET } from "@/app/api/v1/catalog/route";
@@ -48,6 +49,7 @@ import { GET as analysisGET } from "@/app/api/v1/holdings/[ticker]/analysis/rout
 import { GET as compareGET } from "@/app/api/v1/compare/route";
 import { GET as metricsGET } from "@/app/api/v1/metrics/overview/route";
 import { GET as quoteGET } from "@/app/api/v1/prices/quote/route";
+import { GET as dashboardGET } from "@/app/api/v1/portfolio/overview/route";
 import { GET as aiConfigGET } from "@/app/api/v1/ai/config/route";
 import { GET as aiRunsGET, POST as aiRunsPOST } from "@/app/api/v1/ai/runs/route";
 import { GET as aiRunGET, DELETE as aiInterrupt } from "@/app/api/v1/ai/runs/[id]/route";
@@ -488,6 +490,55 @@ test("exact published portfolio amounts are readable only in public mode", async
   const payload = await response.json();
   assert.equal(payload.data.cash[0].amount, 91827.36);
   assert(!JSON.stringify(payload).includes("portfolioId"));
+});
+
+test("portfolio dashboard publishes relative histories, hides private portfolios and limits absolute values to public portfolios", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalMetadata = getDb().select({ metadata: etfs.metadataJson }).from(etfs).where(eq(etfs.id, "test-public")).get()!.metadata;
+  try {
+    globalThis.fetch = async () => { throw new Error("Dashboard must only read saved snapshots"); };
+    for (const visibility of ["private", "weights", "public"] as const) {
+      const base = visibility === "private" ? 123456.77 : visibility === "weights" ? 987654.32 : 100000;
+      getDb().insert(portfolioValueSnapshots).values([0, 1].map((index) => ({
+        portfolioId: `portfolio-${visibility}`, date: `2026-10-0${index + 1}`, capturedAt: `2026-10-0${index + 1}T20:10:00Z`,
+        valueUsd: base * (1 + index * 0.1), valueEur: base / 1.2 * (1 + index * 0.05), eurToUsd: 1.2,
+        quotesAsOf: "2026-10-01", fxAsOf: "2026-10-01", reason: "scheduled" as const,
+      }))).run();
+    }
+    const response = await dashboardGET(request("/api/v1/portfolio/overview"));
+    assert.equal(response.status, 200);
+    const entries = (await response.json()).data;
+    assert.deepEqual(entries.map((entry: { id: string }) => entry.id).sort(), ["test-public", "test-weights"]);
+    const weights = entries.find((entry: { id: string }) => entry.id === "test-weights");
+    assert.equal(weights.snapshots[0].indexUsd, 100);
+    assert.ok(Math.abs(weights.snapshots[1].indexUsd - 110) < 0.000001);
+    assert.equal(weights.snapshots[0].valueUsd, undefined);
+    assert.equal(weights.snapshots[0].valueEur, undefined);
+    assert.equal(entries.find((entry: { id: string }) => entry.id === "test-public").snapshots[0].valueUsd, 100000);
+    assert(!JSON.stringify(entries).includes("987654"));
+    assert(!JSON.stringify(entries).includes("123456"));
+    assert(!JSON.stringify(entries).includes("portfolioId"));
+    assert(response.headers.get("cache-control")?.includes("no-store"));
+    process.env.SITE_ACCESS_MODE = "local";
+    const ownerResponse = await dashboardGET(request("/api/v1/portfolio/overview", "GET", undefined, "localhost:3210"));
+    const ownerEntries = (await ownerResponse.json()).data;
+    assert.equal(ownerEntries.length, 3);
+    assert.equal(ownerEntries.find((entry: { id: string }) => entry.id === "test-weights").snapshots[0].valueUsd, 987654.32);
+    process.env.SITE_ACCESS_MODE = "cloudflare";
+    getDb().update(etfs).set({ visibility: "weights" }).where(eq(etfs.id, "test-public")).run();
+    const reduced = (await (await dashboardGET(request("/api/v1/portfolio/overview"))).json()).data;
+    assert.equal(reduced.find((entry: { id: string }) => entry.id === "test-public").snapshots[0].valueUsd, undefined);
+    getDb().update(etfs).set({ visibility: "private" }).where(eq(etfs.id, "test-public")).run();
+    const hidden = (await (await dashboardGET(request("/api/v1/portfolio/overview"))).json()).data;
+    assert.deepEqual(hidden.map((entry: { id: string }) => entry.id), ["test-weights"]);
+    getDb().update(etfs).set({ visibility: "public", metadataJson: { sourceEtfId: "test-private" } }).where(eq(etfs.id, "test-public")).run();
+    const dependent = (await (await dashboardGET(request("/api/v1/portfolio/overview"))).json()).data;
+    assert.deepEqual(dependent.map((entry: { id: string }) => entry.id), ["test-weights"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.SITE_ACCESS_MODE = "cloudflare";
+    getDb().update(etfs).set({ visibility: "public", metadataJson: originalMetadata ?? null }).where(eq(etfs.id, "test-public")).run();
+  }
 });
 
 test("owner can change visibility without provider calls, immediately invalidating public access", async () => {

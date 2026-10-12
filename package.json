@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx scripts/test-processors.ts && node scripts/audit-tradingview-mappings.test.mjs && npm run test:migrations && node --test scripts/start-standalone-assets.test.mjs && npm run test:ai && npm run test:site && npm run test:holdings && npm run test:stock && npm run test:portfolio-events && npm run test:portfolio-clone && npm run test:portfolio-history",
     "test:stock": "node --conditions=react-server --import tsx --test src/data/services/stock-metrics-service.test.ts src/data/services/adr-premium-service.test.ts src/domain/adr-premium.test.ts src/data/providers/tradingview-chart.test.ts src/components/dashboard/adr-premium-store.test.ts",
-    "test:portfolio-history": "node --conditions=react-server --import tsx --test src/domain/portfolio-history.test.ts src/data/services/portfolio-history-service.test.ts",
+    "test:portfolio-history": "node --conditions=react-server --import tsx --test src/domain/portfolio-history.test.ts src/domain/portfolio-dashboard.test.ts src/data/services/portfolio-history-service.test.ts",
     "test:migrations": "node scripts/test-migrations.mjs && node --import tsx --test src/db/branch-upgrade.test.ts",
     "test:portfolio": "tsx src/domain/processors/analyze-portfolio.test.ts && npm run test:portfolio-clone",
     "test:portfolio-clone": "node --conditions=react-server --import tsx --test src/domain/portfolio-clone.test.ts src/data/services/portfolio-clone-service.test.ts",

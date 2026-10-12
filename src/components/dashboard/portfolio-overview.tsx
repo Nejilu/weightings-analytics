@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import type { EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail, LocalPortfolioEtfDetail } from "@/domain/local-etf";
 import type { FxRate } from "@/domain/portfolio";
+import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
+import { PortfolioDashboard } from "./portfolio-dashboard";
 
 interface PortfolioOverviewProps {
   portfolios: EtfShareClass[];
-  onCreate: () => void;
+  onCreate?: () => void;
+  owner?: boolean;
   onSelect: (id: string, detail?: LocalPortfolioEtfDetail) => void;
 }
 
@@ -100,7 +103,25 @@ function PortfolioCard({
   );
 }
 
-export function PortfolioOverview({ portfolios, onCreate, onSelect }: PortfolioOverviewProps) {
+function PublicPortfolioCard({ etf, entry, onSelect }: { etf: EtfShareClass; entry?: PortfolioDashboardEntry; onSelect: PortfolioOverviewProps["onSelect"] }) {
+  const latest = entry?.snapshots.at(-1);
+  const money = (value: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
+  return <article className="portfolio-card panel"><button className="portfolio-card__open" type="button" onClick={() => onSelect(etf.id)}>
+    <span className="portfolio-card__heading"><span className="portfolio-card__ticker">{etf.ticker}</span><span className="info-chip">{etf.visibility === "public" ? "Public" : "Weights only"}</span></span>
+    <h2>{etf.name}</h2><p className="portfolio-card__description">Published portfolio composition and evolution.</p>
+    <span className="portfolio-card__value"><span>{etf.visibility === "public" ? "Last saved value · USD" : "Relative evolution · USD"}</span>
+      <strong>{etf.visibility === "public" ? latest?.valueUsd !== undefined ? money(latest.valueUsd, "USD") : "No saved value" : latest ? `${latest.indexUsd >= 100 ? "+" : ""}${(latest.indexUsd - 100).toFixed(2)}%` : "No snapshots"}</strong>
+      <small className="portfolio-card__euro-value">{etf.visibility === "public" ? latest?.valueEur !== undefined ? `${money(latest.valueEur, "EUR")} EUR` : "EUR · Unavailable" : "Since first saved snapshot · amounts private"}</small>
+    </span>
+    <span className="portfolio-card__stats"><span>{entry?.positionsCount ?? "—"} positions</span><span>{entry?.cashCount ?? "—"} cash balances</span></span>
+    <span className="portfolio-card__footer"><span>{latest ? `Snapshot ${latest.date}` : "Saved portfolio"}</span><b>View holdings ↗</b></span>
+  </button></article>;
+}
+
+export function PortfolioOverview({ portfolios, onCreate, onSelect, owner = true }: PortfolioOverviewProps) {
+  const [attempt, setAttempt] = useState(0);
+  const key = JSON.stringify([portfolios.map((etf) => [etf.id, etf.visibility]), attempt]);
+  const [dashboard, setDashboard] = useState<{ key: string; data: PortfolioDashboardEntry[]; error: string | null }>({ key: "", data: [], error: null });
   const [eurRate, setEurRate] = useState<{ rateToUsd: number | null; loading: boolean }>({
     rateToUsd: null,
     loading: true,
@@ -108,7 +129,28 @@ export function PortfolioOverview({ portfolios, onCreate, onSelect }: PortfolioO
   const hasPortfolios = portfolios.length > 0;
 
   useEffect(() => {
-    if (!hasPortfolios) return;
+    const controller = new AbortController();
+    let pending = false;
+    async function load() {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch("/api/v1/portfolio/overview", { cache: "no-store", signal: controller.signal });
+        const payload = await response.json() as { data?: PortfolioDashboardEntry[]; error?: string };
+        if (!response.ok || !payload.data) throw new Error(payload.error ?? "Portfolio histories are unavailable.");
+        if (!controller.signal.aborted) setDashboard({ key, data: payload.data, error: null });
+      } catch (cause) {
+        if (!controller.signal.aborted) setDashboard({ key, data: [], error: cause instanceof Error ? cause.message : "Portfolio histories are unavailable." });
+      } finally { pending = false; }
+    }
+    void load();
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, 30_000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [key, attempt]);
+  const entries = dashboard.key === key ? dashboard.data.filter((entry) => portfolios.some((etf) => etf.id === entry.id)) : [];
+
+  useEffect(() => {
+    if (!hasPortfolios || !owner) return;
     const controller = new AbortController();
     void (async () => {
       try {
@@ -127,34 +169,35 @@ export function PortfolioOverview({ portfolios, onCreate, onSelect }: PortfolioO
       }
     })();
     return () => controller.abort();
-  }, [hasPortfolios]);
+  }, [hasPortfolios, owner]);
 
   return (
     <div className="portfolio-workspace" id="portfolio">
       <section className="portfolio-overview-heading">
         <div>
-          <span className="eyebrow">Your investments</span>
+          <span className="eyebrow">{owner ? "Your investments" : "Published portfolios"}</span>
           <h1>Portfolio</h1>
-          <p>Explore your saved portfolios, positions and underlying exposure.</p>
+          <p>{owner ? "Explore your saved portfolios, positions and underlying exposure." : "Compare portfolio evolution and explore published holdings."}</p>
         </div>
-        <button className="primary-button" type="button" onClick={onCreate}>
+        {owner ? <button className="primary-button" type="button" onClick={onCreate}>
           <span aria-hidden="true">＋</span> Create New
-        </button>
+        </button> : null}
       </section>
+      {hasPortfolios ? <PortfolioDashboard entries={entries} owner={owner} loading={dashboard.key !== key} error={dashboard.key === key ? dashboard.error : null} onRetry={() => setAttempt((value) => value + 1)} /> : null}
       <div className="portfolio-overview-label">
-        <h2>Your portfolios</h2>
+        <h2>{owner ? "Your portfolios" : "Published portfolios"}</h2>
         <span>{portfolios.length} saved portfolio{portfolios.length === 1 ? "" : "s"}</span>
       </div>
       {portfolios.length > 0 ? (
         <section className="portfolio-card-grid" aria-label="Saved portfolios">
-          {portfolios.map((etf) => <PortfolioCard key={etf.id} etf={etf} onSelect={onSelect} eurRateToUsd={eurRate.rateToUsd} eurRateLoading={eurRate.loading} />)}
+          {portfolios.map((etf) => owner ? <PortfolioCard key={etf.id} etf={etf} onSelect={onSelect} eurRateToUsd={eurRate.rateToUsd} eurRateLoading={eurRate.loading} /> : <PublicPortfolioCard key={etf.id} etf={etf} entry={entries.find((entry) => entry.id === etf.id)} onSelect={onSelect} />)}
         </section>
       ) : (
         <section className="panel portfolio-overview-empty">
           <span className="portfolio-analysis-empty__icon" aria-hidden="true">◈</span>
-          <h2>Your first portfolio starts here</h2>
-          <p>Create a portfolio to bring your ETF positions, stocks and cash together.</p>
-          <button className="secondary-button" type="button" onClick={onCreate}>＋ Create New</button>
+          <h2>{owner ? "Your first portfolio starts here" : "No portfolios published yet"}</h2>
+          <p>{owner ? "Create a portfolio to bring your ETF positions, stocks and cash together." : "Published portfolios will appear here when shared by the owner."}</p>
+          {owner ? <button className="secondary-button" type="button" onClick={onCreate}>＋ Create New</button> : null}
         </section>
       )}
     </div>

@@ -91,6 +91,7 @@ async function scanBatch(symbols: string[], fetcher: typeof fetch, includeUpcomi
       "User-Agent": "WeightingsAnalytics/0.1 metrics research",
     },
     body: JSON.stringify({
+      price_conversion: { to_currency: "usd" },
       symbols: { tickers: symbols, query: { types: [] } },
       columns: [
         ...IDENTITY_COLUMNS,

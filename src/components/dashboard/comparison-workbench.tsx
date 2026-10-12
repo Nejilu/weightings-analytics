@@ -5,6 +5,7 @@ import { MetricCard } from "./metric-card";
 import { AdrPremiumBadge } from "./adr-premium-badge";
 import { PortfolioValuationPanel, formatPortfolioUsd } from "./portfolio-valuation-panel";
 import { PortfolioEvents } from "./portfolio-events";
+import { PortfolioOverview } from "./portfolio-overview";
 import { portfolioPositionValueUsd } from "@/domain/portfolio-valuation";
 
 import { useEffect, useRef, useMemo, useState, type ReactNode } from "react";
@@ -36,9 +37,12 @@ import type {
   HoldingsAnalysisPosition,
   HoldingsAnalysisResult,
   DistortionMode,
+  DistortionWeightingBasis,
 } from "@/domain/holdings-analysis";
 import { DEFAULT_DISTORTION_TOP_COUNT } from "@/domain/holdings-analysis";
 import { calculateHoldingsDistortion } from "@/domain/processors/calculate-holdings-distortion";
+import { calculateTotalCapDistortion } from "@/domain/processors/calculate-total-cap-distortion";
+import type { CapitalizationReferenceData } from "@/domain/capitalization-reference";
 import {
   rankDistortionPositions,
   rankDistortionTablePositions,
@@ -796,7 +800,7 @@ function PositionRow({
 
 function distortionReading(score: number | null) {
   if (score === null) return "Unavailable";
-  if (score < 2) return "Closely aligned with free float";
+  if (score < 2) return "Closely aligned with reference weights";
   if (score < 10) return "Limited weighting distortion";
   if (score < 25) return "Material weighting distortion";
   return "High weighting distortion";
@@ -849,10 +853,10 @@ function DistortionRankingPanel({ analysis, basis }: {
           <span className="eyebrow">{basis === "absolute" ? "Weight differences" : "Weight ratios"}</span>
           <h2>{basis === "absolute" ? "Absolute weight gaps" : "Relative weight multiples"}</h2>
         </div>
-        <span className="info-chip">{basis === "absolute" ? "Percentage points" : "× / ÷"}</span>
+        <span className="info-chip">{basis === "absolute" ? "Percentage points" : "×"}</span>
       </div>
       <p className="holdings-method-copy">
-        {basis === "absolute" ? "Portfolio weight minus counterfactual weight, ranked by the largest gap on each side." : "Portfolio weight relative to its counterfactual: ×2 means double the weight; ÷2 means half. 0× means the security is not held."}
+        {basis === "absolute" ? "Portfolio weight minus counterfactual weight, ranked by the largest gap on each side." : "Portfolio weight relative to its counterfactual: ×2 means double the weight; ×0.5 means half. ×0 means the security is not held."}
       </p>
       <div className="distortion-direction-grid">
         <DistortionDirectionRanking positions={ranks.overweights} basis={basis} direction="over" />
@@ -873,7 +877,9 @@ function HoldingsDistortionRankings({ analysis }: { analysis: HoldingsAnalysisRe
         <DistortionRankingPanel analysis={analysis} basis="relative" />
       </div>
       <p className="holdings-method-copy distortion-ranking-method">
-        {analysis.distortion.mode === "market-coverage"
+        {analysis.distortion.methodology === "tradingview-total-cap"
+          ? `The index compares ${analysis.distortion.mode === "market-coverage" ? "the positive equity portfolio with the covered ACWI company universe" : analysis.distortion.mode === "top-holdings" ? `the ${analysis.distortion.topCount} largest positive equity companies` : "all positive equity companies"} using total company capitalization in USD. Each covered distribution is normalized to 100%.`
+          : analysis.distortion.mode === "market-coverage"
           ? "The index compares all positive equity positions with the entire ACWI equity universe. ACWI securities absent from the portfolio have zero portfolio weight; portfolio equities outside ACWI have zero benchmark weight. Both equity distributions are normalized to 100%."
           : `The index compares ${analysis.distortion.mode === "top-holdings" ? `the ${analysis.distortion.topCount} largest positive equity positions` : "all positive equity positions"} with ACWI-implied free-float weights for the same covered securities. Each covered distribution is normalized to 100%.`}
         {" "}A score of 0 is aligned; 100 is the theoretical maximum. One point represents 1% of equity weight to reallocate. Cash, non-equity assets and shorts are excluded.
@@ -892,19 +898,71 @@ function HoldingsDistortionRankings({ analysis }: { analysis: HoldingsAnalysisRe
 }
 
 function HoldingsDistortionDetails({ analysis }: { analysis: HoldingsAnalysisResult }) {
+  const [basis, setBasis] = useState<DistortionWeightingBasis>("free-float");
   const [mode, setMode] = useState<DistortionMode>("top-holdings");
   const [topCount, setTopCount] = useState(DEFAULT_DISTORTION_TOP_COUNT);
-  const effectiveCount = Math.min(topCount, analysis.equityHoldingsCount);
+  const [attempt, setAttempt] = useState(0);
+  const universe = mode === "market-coverage" ? "market" : "holdings";
+  const requestKey = `${analysis.etf.id}:${analysis.calculatedAt}:${universe}:${attempt}`;
+  const [capitalizationResult, setCapitalizationResult] = useState<{
+    key: string; data: CapitalizationReferenceData | null; error: string | null;
+  }>({ key: "", data: null, error: null });
+  const capitalizations = capitalizationResult.key === requestKey ? capitalizationResult.data : null;
+  const capitalizationError = capitalizationResult.key === requestKey ? capitalizationResult.error : null;
+  const totalCap = basis === "total-cap";
+  const capitalizationLoading = totalCap && capitalizationResult.key !== requestKey;
+  useEffect(() => {
+    if (!totalCap || capitalizationResult.key === requestKey) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(`/api/v1/holdings/${encodeURIComponent(analysis.etf.id)}/capitalization?universe=${universe}`, { cache: "no-store", signal: controller.signal });
+        const payload = await response.json() as { data?: CapitalizationReferenceData; error?: string };
+        if (!response.ok || !payload.data) throw new Error(payload.error ?? "Total market capitalizations are unavailable.");
+        if (!controller.signal.aborted) setCapitalizationResult({ key: requestKey, data: payload.data, error: null });
+      } catch (error) {
+        if (!controller.signal.aborted) setCapitalizationResult({ key: requestKey, data: null, error: error instanceof Error ? error.message : "Total market capitalizations are unavailable." });
+      }
+    })();
+    return () => controller.abort();
+  }, [totalCap, analysis.etf.id, universe, requestKey, capitalizationResult.key]);
+  const selectionCount = useMemo(() => {
+    if (!totalCap || !capitalizations) return analysis.equityHoldingsCount;
+    const ids = new Map(capitalizations.observations.map((row) => [row.securityId, row.companyId ?? row.securityId]));
+    const weights = new Map<string, number>();
+    for (const position of analysis.positions.filter((p) => !p.isCash && p.assetClass.toLowerCase().includes("equity"))) {
+      const id = ids.get(position.securityId) ?? position.securityId;
+      weights.set(id, (weights.get(id) ?? 0) + position.publishedWeight);
+    }
+    return [...weights.values()].filter((weight) => weight > 0).length;
+  }, [analysis, totalCap, capitalizations]);
+  const effectiveCount = Math.min(topCount, selectionCount);
   const selected = useMemo(() => ({
     ...analysis,
-    ...calculateHoldingsDistortion(analysis.positions, analysis.distortionReferencePositions, analysis.distortion, mode, effectiveCount),
-  }), [analysis, mode, effectiveCount]);
+    ...(totalCap && capitalizations
+      ? calculateTotalCapDistortion(analysis.positions, analysis.distortionReferencePositions, analysis.distortion, capitalizations, mode, effectiveCount)
+      : calculateHoldingsDistortion(analysis.positions, analysis.distortionReferencePositions, analysis.distortion, mode, effectiveCount)),
+  }), [analysis, mode, effectiveCount, totalCap, capitalizations]);
   const { distortion } = selected;
   const market = mode === "market-coverage";
+  const capCoverage = distortion.capitalizationCoverage;
+  const issues = capitalizations?.observations.filter((observation) => observation.status !== "available") ?? [];
+  const captureDates = capitalizations?.observations.filter((observation) => observation.status === "available" && observation.capturedAt)
+    .map((observation) => observation.capturedAt!).sort() ?? [];
   return (
     <>
       <section className="panel distortion-controls" aria-label="Distortion calculation settings">
         <div className="panel-heading">
+          <div><span className="eyebrow">Counterfactual weighting</span><h2>Choose the weighting basis</h2></div>
+          <div className="segmented-control" role="group" aria-label="Counterfactual weighting basis">
+            <button type="button" className={!totalCap ? "is-active" : ""} aria-pressed={!totalCap} onClick={() => setBasis("free-float")}>Free float · ACWI</button>
+            <button type="button" className={totalCap ? "is-active" : ""} aria-pressed={totalCap} onClick={() => setBasis("total-cap")}>Total market cap</button>
+          </div>
+        </div>
+        <p className="holdings-method-copy distortion-basis-copy">{totalCap
+          ? "Experimental · Company-level market capitalizations in USD. Top / All holdings use the selected companies; Market Coverage reweights the ACWI universe. Equivalent share classes and ADRs count once. Missing or suspect values are excluded, never replaced by free-float weights."
+          : "ACWI's published weights provide the free-float proxy. Top / All holdings compare common securities; Market Coverage uses the entire ACWI equity universe."}</p>
+        <div className="panel-heading distortion-mode-heading">
           <div><span className="eyebrow">Reference universe</span><h2>Choose the distortion view</h2></div>
           <div className="segmented-control" role="group" aria-label="Distortion mode">
             {([
@@ -919,12 +977,24 @@ function HoldingsDistortionDetails({ analysis }: { analysis: HoldingsAnalysisRes
         {mode === "top-holdings" ? (
           <div className="distortion-top-control">
             <label htmlFor="distortion-top-count">Largest equity positions <strong>Top {effectiveCount}</strong></label>
-            <input id="distortion-top-count" type="range" min={Math.min(2, Math.max(1, analysis.equityHoldingsCount))} max={Math.max(1, analysis.equityHoldingsCount)} step={1} value={Math.max(1, effectiveCount)} disabled={analysis.equityHoldingsCount < 2} onChange={(event) => setTopCount(Number(event.target.value))} aria-valuetext={`Top ${effectiveCount} equity positions`} aria-describedby="distortion-top-description" />
+            <input id="distortion-top-count" type="range" min={Math.min(2, Math.max(1, selectionCount))} max={Math.max(1, selectionCount)} step={1} value={Math.max(1, effectiveCount)} disabled={selectionCount < 2} onChange={(event) => setTopCount(Number(event.target.value))} aria-valuetext={`Top ${effectiveCount} equity positions`} aria-describedby="distortion-top-description" />
             <small id="distortion-top-description">Top 30 by default · {formatPercent(distortion.selectedWeight, 1)} of published portfolio weight selected · recalculates as you move the slider</small>
           </div>
         ) : null}
       </section>
-      {distortion.coverageStatus !== "complete" ? (
+      {capitalizationLoading ? <section className="panel distortion-capitalization-status" role="status"><span className="spinner" /> Loading total market capitalizations{market ? " for the ACWI universe" : " for the holdings"}…</section>
+        : totalCap && capitalizationError ? <section className="panel distortion-capitalization-status" role="status"><span>{capitalizationError}</span><button type="button" className="secondary-button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></section>
+        : <>
+      {totalCap && capCoverage ? (
+        <div className="alert holdings-distortion-alert">
+          TradingView total-cap coverage: {formatPercent(distortion.coverageWeight, 2)} of selected equity weight{market ? ` · ${formatPercent(capCoverage.referenceWeightCoverage, 2)} of the ACWI reference weight` : ""}.
+          {capCoverage.excludedHoldings > 0 ? ` ${capCoverage.excludedHoldings} selected holding(s) excluded; both distributions are renormalized to the covered universe.` : ""}
+          {!capCoverage.scoreAvailable ? " Score unavailable: requires at least 95% selected-weight coverage and, for Market Coverage, 99% ACWI reference coverage." : capCoverage.excludedHoldings > 0 || capCoverage.missingReferenceHoldings > 0 ? " Partial-universe score." : ""}
+          {captureDates.length ? ` Capitalizations captured ${formatDate(captureDates[0])}${captureDates[0].slice(0, 10) !== captureDates.at(-1)!.slice(0, 10) ? ` – ${formatDate(captureDates.at(-1)!)}` : ""}; ACWI holdings as of ${formatDate(analysis.distortion.referenceAsOf)}.` : ""}
+          {issues.length > 0 ? <details className="distortion-capitalization-issues"><summary>Unavailable or suspect capitalizations ({issues.length})</summary><ul>{issues.map((issue) => <li key={issue.securityId}>{issue.ticker} · {issue.status}</li>)}</ul></details> : null}
+        </div>
+      ) : null}
+      {!totalCap && distortion.coverageStatus !== "complete" ? (
         <div className="alert holdings-distortion-alert">
           ACWI matching coverage is {distortion.coverageWeight.toFixed(1)}%: {distortion.missingHoldings} selected equity holding{distortion.missingHoldings === 1 ? " is" : "s are"} outside the current ACWI universe.
           {market ? " These positions are included with zero benchmark weight. All ACWI securities remain in the benchmark." : " The score uses only common securities, renormalized to 100%."}
@@ -932,12 +1002,13 @@ function HoldingsDistortionDetails({ analysis }: { analysis: HoldingsAnalysisRes
       ) : null}
       <section className="metric-grid" aria-label="Distortion metrics">
         <MetricCard label={market ? "Market Coverage" : "Weight distortion index"} value={distortion.score === null ? "—" : distortion.score.toFixed(1)} detail="1 point = 1% of equity weight to reallocate · 0 to 100" tone={distortion.score !== null && distortion.score < 2 ? "positive" : "left"} />
-        <MetricCard label="ACWI matching coverage" value={formatPercent(distortion.coverageWeight, 1)} detail={`${distortion.coveredHoldings} of ${distortion.eligibleHoldings} selected equity holdings`} tone={distortion.coverageStatus === "complete" ? "positive" : "neutral"} />
-        <MetricCard label={market ? "Full ACWI universe" : "Common equity holdings"} value={`${distortion.referenceHoldings}`} detail={market ? "Every ACWI equity position in the benchmark" : "Positions used in both distributions"} />
-        <MetricCard label="Outside ACWI" value={`${distortion.missingHoldings}`} detail={market ? "Included with zero benchmark weight" : "Equity positions excluded from the score"} tone={distortion.missingHoldings === 0 ? "positive" : "right"} />
+        <MetricCard label={totalCap ? "Capitalization coverage" : "ACWI matching coverage"} value={formatPercent(distortion.coverageWeight, totalCap ? 2 : 1)} detail={`${distortion.coveredHoldings} of ${distortion.eligibleHoldings} selected equity holdings`} tone={distortion.coverageStatus === "complete" ? "positive" : "neutral"} />
+        <MetricCard label={market ? "ACWI reference universe" : totalCap ? "Covered companies" : "Common equity holdings"} value={`${distortion.referenceHoldings}`} detail={totalCap ? market ? `${formatPercent(capCoverage?.referenceWeightCoverage ?? 0, 2)} of ACWI weight covered` : "Weighted by total capitalization in USD" : market ? "Every ACWI equity position in the benchmark" : "Positions used in both distributions"} />
+        <MetricCard label={totalCap && !market ? "Missing capitalizations" : "Outside ACWI"} value={`${distortion.missingHoldings}`} detail={totalCap && !market ? "Selected equity positions excluded from the score" : market ? "Included with zero benchmark weight" : "Equity positions excluded from the score"} tone={distortion.missingHoldings === 0 ? "positive" : "right"} />
       </section>
-      <HoldingsDistortionRankings analysis={selected} />
+      {!totalCap || capCoverage?.scoreAvailable ? <HoldingsDistortionRankings analysis={selected} /> : null}
       <DistortionPositionsTable analysis={selected} />
+      </>}
     </>
   );
 }
@@ -1085,7 +1156,7 @@ function DistortionPositionsTable({
   const [query, setQuery] = useState("");
   const [ranking, setRanking] = useState<DistortionTableRanking>("weight");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const viewKey = `${analysis.calculatedAt}:${analysis.distortion.mode}:${analysis.distortion.topCount}:${ranking}`;
+  const viewKey = `${analysis.calculatedAt}:${analysis.distortion.methodology}:${analysis.distortion.mode}:${analysis.distortion.topCount}:${ranking}`;
   const rows = useMemo(
     () => rankDistortionTablePositions(analysis.positions, ranking),
     [analysis.positions, ranking],
@@ -1102,7 +1173,7 @@ function DistortionPositionsTable({
       <div className="panel-heading panel-heading--table">
         <div>
           <span className="eyebrow">Security-level analysis</span>
-          <h2>{analysis.etf.ticker} {analysis.distortion.mode === "market-coverage" ? "and full ACWI universe" : "holdings and counterfactual weights"}</h2>
+          <h2>{analysis.etf.ticker} {analysis.distortion.mode === "market-coverage" ? analysis.distortion.methodology === "tradingview-total-cap" ? "and ACWI company universe" : "and full ACWI universe" : "holdings and counterfactual weights"}</h2>
         </div>
         <div className="segmented-control distortion-table-ranking" role="group" aria-label="Rank holdings">
           <button
@@ -1132,7 +1203,7 @@ function DistortionPositionsTable({
         </div>
       </div>
       {ranking === "relative" ? (
-        <p className="distortion-table-ranking-note">Largest relative departures first, on either side: ×5 and ÷5 have the same magnitude. 0× means not held; undefined multiples sort last.</p>
+        <p className="distortion-table-ranking-note">Largest relative departures first, on either side: ×5 and ×0.2 have the same magnitude. ×0 means not held; undefined multiples sort last.</p>
       ) : null}
       <HoldingsTableSearch
         query={query}
@@ -1148,7 +1219,7 @@ function DistortionPositionsTable({
               <th>Security</th>
               <th>Published weight</th>
               <th>{analysis.distortion.mode === "market-coverage" ? "Equity portfolio weight" : "Selected covered weight"}</th>
-              <th>ACWI-implied weight</th>
+              <th>{analysis.distortion.methodology === "tradingview-total-cap" ? "Total-cap implied weight" : "ACWI-implied weight"}</th>
               <th>Delta</th>
               <th>Weight multiple</th>
               <th>Score contribution</th>
@@ -1175,7 +1246,7 @@ function DistortionPositionsTable({
                 <td>
                   {position.weightDelta === null ? (
                     <span className="reading">
-                      {position.distortionStatus === "non-equity" ? "Non-equity" : "Not in ACWI"}
+                      {position.distortionStatus === "missing-capitalization" ? "Missing market cap" : analysis.distortion.methodology === "tradingview-total-cap" ? "Insufficient coverage" : position.distortionStatus === "non-equity" ? "Non-equity" : "Not in ACWI"}
                     </span>
                   ) : (
                     <span className={position.weightDelta >= 0 ? "distortion-over" : "distortion-under"}>
@@ -1185,7 +1256,7 @@ function DistortionPositionsTable({
                 </td>
                 <td>
                   {position.relativeWeight === null ? (
-                    <span title={position.counterfactualWeight === 0 ? "No ACWI-implied weight; the multiple is undefined." : "No comparable counterfactual weight."}>—</span>
+                    <span title={position.counterfactualWeight === 0 ? "No benchmark weight; the multiple is undefined." : "No comparable counterfactual weight."}>—</span>
                   ) : (
                     <span className={position.relativeWeight > 1 ? "distortion-over" : position.relativeWeight < 1 ? "distortion-under" : undefined}>
                       {relativeDistortionLabel(position.relativeWeight)}
@@ -1557,7 +1628,8 @@ export function ComparisonWorkbench({
     };
   }, [owner, ownerOrigin]);
 
-  const loadHoldingsAnalysis = async (forceRefresh = false) => {
+  const loadHoldingsAnalysis = async (forceRefresh = false, selectedPortfolioId?: string) => {
+    const selectedId = selectedPortfolioId ?? leftEtfId;
     const startedRevision = revision.current;
     setLoading(true);
     setError(null);
@@ -1567,10 +1639,10 @@ export function ComparisonWorkbench({
     setComparison(null);
     try {
       const analysisRequest = fetch(
-        `/api/v1/holdings/${encodeURIComponent(leftEtfId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
+        `/api/v1/holdings/${encodeURIComponent(selectedId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
         { cache: "no-cache" },
       );
-      const comparisonRequest = comparisonMode && holdingsView === "holdings"
+      const comparisonRequest = !selectedPortfolioId && comparisonMode && holdingsView === "holdings"
         ? fetch(
             comparisonApiUrl(
               leftEtfId,
@@ -1722,7 +1794,6 @@ export function ComparisonWorkbench({
             <span className="nav-icon">◎</span>
             Holdings
           </button>
-          {owner && <>
           <button
             className={`nav-item${workspaceView === "portfolio" ? " nav-item--active" : ""}`}
             type="button"
@@ -1732,7 +1803,7 @@ export function ComparisonWorkbench({
             <span className="nav-icon">Σ</span>
             Portfolio
           </button>
-          <button
+          {owner ? <button
             className={`nav-item${workspaceView === "creator" ? " nav-item--active" : ""}`}
             type="button"
             aria-pressed={workspaceView === "creator"}
@@ -1740,8 +1811,7 @@ export function ComparisonWorkbench({
           >
             <span className="nav-icon">+</span>
             ETF Creator
-          </button>
-          </>}
+          </button> : null}
           <button
             className={`nav-item${workspaceView === "metrics" ? " nav-item--active" : ""}`}
             type="button"
@@ -1798,7 +1868,7 @@ export function ComparisonWorkbench({
             >
               <i />
               {workspaceView === "ai" ? "Codex research" : workspaceView === "portfolio"
-                ? "Local portfolio"
+                ? owner ? "Local portfolio" : "Published portfolios"
                 : workspaceView === "creator"
                   ? "Selected ETF universe"
                 : workspaceView === "metrics"
@@ -1831,13 +1901,13 @@ export function ComparisonWorkbench({
             >
               Portfolio
             </button>
-            <button
+            {owner ? <button
               type="button"
               className={workspaceView === "creator" ? "is-active" : ""}
               onClick={() => setWorkspaceView("creator")}
             >
               ETF Creator
-            </button>
+            </button> : null}
             <button
               type="button"
               className={workspaceView === "metrics" ? "is-active" : ""}
@@ -2165,11 +2235,17 @@ export function ComparisonWorkbench({
                 </section>
               ) : null}
             </div>
-          ) : workspaceView === "portfolio" && owner ? (
+          ) : workspaceView === "portfolio" ? owner ? (
             <PortfolioAnalytics
               catalog={availableCatalog}
               publicationEnabled={siteMode === "web"}
               onCatalogChanged={refreshCatalog}
+            />
+          ) : (
+            <PortfolioOverview
+              owner={false}
+              portfolios={availableCatalog.flatMap((group) => group.variants).filter((etf) => etf.fundType === "portfolio")}
+              onSelect={(id) => { setLeftEtfId(id); setComparisonMode(false); setHoldingsView("holdings"); setWorkspaceView("compare"); void loadHoldingsAnalysis(false, id); }}
             />
           ) : workspaceView === "creator" && owner ? (
             <EtfCreator

@@ -27,11 +27,31 @@ and creating reusable ETFs from iShares source universes.
   the full-ACWI Market Coverage score.
   Distortion details separates overweights and underweights in two parallel
   rankings: percentage-point gaps and relative weight multiples (double is
-  ×2, half is ÷2). Unheld ACWI securities display 0×; positions with no ACWI
+  ×2, half is ×0.5). Unheld ACWI securities display ×0; positions with no ACWI
   weight appear only in the absolute ranking because their ratio is undefined.
+  An optional **Total market cap** basis in Distortion details uses TradingView
+  company-level capitalization explicitly converted to USD. Top / All holdings
+  weight the selected companies, including those outside ACWI; Market Coverage
+  uses the ACWI equity universe reweighted by total cap. Known equivalent listings
+  and additional share classes with matching issuer metadata and agreeing caps
+  are grouped; company capitalizations are counted once. This basis is experimental:
+  invalid, missing, stale or conflicting caps are excluded, never replaced by ACWI
+  free-float weights. Coverage uses published portfolio weights and, for the full
+  reference, original ACWI weights; it is not a claim about unknown missing caps.
+  Partial distributions are renormalized. Scores require 95% selected-weight
+  coverage and, for Market Coverage, 99% ACWI-weight coverage. Capture dates and
+  exclusions are visible in the panel; the default Holdings overview stays on
+  the ACWI free-float basis.
+  Reproduce the live currency/listing checks and ETF comparisons with
+  `node --conditions=react-server --import tsx scripts/audit-total-cap-distortion.ts`.
+  The JSON report defaults to the ignored `reports/` directory.
 - Build long/short portfolios from ETFs and direct equities, including cash or
   borrowing in multiple currencies, then inspect gross or NAV exposure.
 - Save portfolios as local ETFs or create rule-based, free-float-weighted ETFs.
+- Compare saved portfolio histories on the Portfolio overview in USD or EUR,
+  using absolute values or relative change from a selectable start date.
+  Visitors can compare public and weights-only portfolios in relative mode;
+  only fully public portfolios expose amounts. Private portfolios stay hidden.
 - Initialize portfolios from snapshot copies of up to ten portfolios or ETFs:
   choose a budget in a supported cash currency and allocate percentages to each
   source. The clone merges underlying securities into fixed share quantities,
@@ -267,6 +287,14 @@ and is included in normal database backups. The owner-only endpoint is
 `GET /api/v1/portfolio/history?portfolioId=...`; change recording with `PATCH`
 and a JSON body such as `{"enabled": false}`. Run `npm run test:portfolio-history`
 to verify scheduling, persistence, catch-up and retry behavior.
+
+The Portfolio overview reads saved histories through
+`GET /api/v1/portfolio/overview`. It does not initiate valuation captures.
+Public responses omit private portfolios and remove currency amounts from
+weights-only histories on the server. Relative curves use each portfolio's first
+saved observation on or after the chosen start date; their baseline dates remain
+visible when histories start on different days. Changing visibility applies to
+the overview immediately, including dependencies on private funds.
 
 ## Architecture
 

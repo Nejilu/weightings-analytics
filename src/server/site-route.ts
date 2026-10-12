@@ -2,6 +2,7 @@ import { AccessError, getSiteAccess, requireOwner } from "./site-access";
 import {
   publicationCatalog,
   publicAnalysis,
+  publicPortfolioDashboard,
   requirePublicEtf,
   siteCatalog,
 } from "./public-data";
@@ -10,6 +11,7 @@ import {
   invalidateSiteResults,
   takeBudget,
 } from "./site-runtime";
+import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
 
 export type RoutePolicy =
   | "owner"
@@ -19,6 +21,7 @@ export type RoutePolicy =
   | "metrics"
   | "quote"
   | "read"
+  | "portfolio-overview"
   | "published-portfolio";
 
 function referencesFor(request: Request, policy: RoutePolicy): string[] {
@@ -177,6 +180,8 @@ export function withSiteAccess<Args extends unknown[]>(
           ? { data: siteCatalog(false, catalog), revision: catalogRevision() }
           : policy === "published-portfolio"
             ? payload
+            : policy === "portfolio-overview"
+              ? { data: publicPortfolioDashboard((payload as { data: PortfolioDashboardEntry[] }).data, catalog) }
             : publicAnalysis(payload, catalog),
         { status: response.status, headers: outputHeaders },
       );

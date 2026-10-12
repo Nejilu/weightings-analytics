@@ -2,6 +2,7 @@ import type { HoldingsSourceIssue } from "./holdings-source-issues";
 import type { DataStatus, EtfShareClass, Holding } from "./etf";
 
 export type DistortionMode = "top-holdings" | "all-holdings" | "market-coverage";
+export type DistortionWeightingBasis = "free-float" | "total-cap";
 export const DEFAULT_DISTORTION_TOP_COUNT = 30;
 export type DistortionReferencePosition = Pick<Holding,
   "securityId" | "ticker" | "name" | "sector" | "assetClass" | "country" | "weight"
@@ -16,6 +17,7 @@ export type DistortionPositionStatus =
   | "covered"
   | "not-in-acwi"
   | "not-held"
+  | "missing-capitalization"
   | "non-equity";
 
 export interface HoldingsAnalysisPosition {
@@ -57,7 +59,13 @@ export interface HoldingsDistortionAnalysis {
   referenceEtfId: string;
   referenceTicker: string;
   referenceAsOf: string;
-  methodology: "acwi-free-float-proxy";
+  methodology: "acwi-free-float-proxy" | "tradingview-total-cap";
+  capitalizationCoverage?: {
+    referenceWeightCoverage: number;
+    missingReferenceHoldings: number;
+    excludedHoldings: number;
+    scoreAvailable: boolean;
+  };
 }
 
 export interface HoldingsAnalysisResult {

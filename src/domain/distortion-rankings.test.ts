@@ -39,12 +39,14 @@ test("zero benchmark weights stay in absolute ranks while unheld ACWI securities
   assert.equal(relative.underweights[0].relativeWeight, 0);
 });
 
-test("relative labels express multiplication, division and absence without infinities", () => {
+test("relative labels always express multiplication, including underweights and absence", () => {
   assert.equal(relativeDistortionLabel(2), "×2.00");
-  assert.equal(relativeDistortionLabel(0.5), "÷2.00");
-  assert.equal(relativeDistortionLabel(0.2), "÷5.00");
-  assert.equal(relativeDistortionLabel(0), "0×");
+  assert.equal(relativeDistortionLabel(0.5), "×0.50");
+  assert.equal(relativeDistortionLabel(0.2), "×0.20");
+  assert.equal(relativeDistortionLabel(0), "×0");
   assert.equal(relativeDistortionLabel(1.001), "×1.0010");
+  assert.equal(relativeDistortionLabel(0.999), "×0.9990");
+  assert.equal(relativeDistortionLabel(0.0034), "×0.0034");
   assert.equal(absoluteDistortionLabel(1.5), "+1.50 pp");
   assert.equal(absoluteDistortionLabel(-0.2), "-0.20 pp");
   assert.equal(absoluteDistortionLabel(0.0034), "+0.0034 pp");
@@ -68,11 +70,11 @@ test("the table defaults to ETF weight and provides distinct delta and symmetric
   assert.deepEqual(positions, original);
 });
 
-test("table multiples rank division and multiplication by the same factor equally and keep zero-weight ties deterministic", () => {
+test("table multiples rank symmetric overweights and underweights equally and keep zero-weight ties deterministic", () => {
   const positions = [position("DOUBLE", 10, 5), position("HALF", 5, 10),
     position("UNHELD_SMALL", 0, 1), position("UNHELD_BIG", 0, 2), position("CLOSER", 10, 8)];
   const rows = rankDistortionTablePositions(positions, "relative");
   assert.deepEqual(rows.map((p) => p.ticker), ["UNHELD_BIG", "UNHELD_SMALL", "DOUBLE", "HALF", "CLOSER"]);
   assert.equal(relativeDistortionLabel(rows[2].relativeWeight!), "×2.00");
-  assert.equal(relativeDistortionLabel(rows[3].relativeWeight!), "÷2.00");
+  assert.equal(relativeDistortionLabel(rows[3].relativeWeight!), "×0.50");
 });

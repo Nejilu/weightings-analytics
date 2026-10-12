@@ -3,6 +3,7 @@ import { getDb } from "@/db/client";
 import { etfs, portfolioItems } from "@/db/schema";
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { PortfolioHoldingsValuation } from "@/domain/portfolio-valuation";
+import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
 import { AccessError } from "./site-access";
 
 export function publicationCatalog() {
@@ -70,6 +71,21 @@ export function publicationCatalog() {
 }
 
 type PublicationCatalog = ReturnType<typeof publicationCatalog>;
+
+export function publicPortfolioDashboard(entries: PortfolioDashboardEntry[], catalog: PublicationCatalog): PortfolioDashboardEntry[] {
+  return entries.flatMap((entry) => {
+    const etf = catalog.byId.get(entry.id);
+    if (!etf || etf.fundType !== "portfolio" || !catalog.visible(etf.id)) return [];
+    return [{
+      id: etf.id, ticker: etf.ticker, name: etf.name, visibility: etf.visibility!,
+      positionsCount: entry.positionsCount, cashCount: entry.cashCount,
+      snapshots: entry.snapshots.map((point) => ({
+        date: point.date, indexUsd: point.indexUsd, indexEur: point.indexEur,
+        ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
+      })),
+    }];
+  });
+}
 
 export function requirePublicEtf(
   catalog: PublicationCatalog,
