@@ -12,6 +12,7 @@ import {
   loadPortfolioById,
   replaceDefaultPortfolio,
   saveDefaultPortfolioAsEtf,
+  savePortfolioRecordAsEtf,
   type StoredPortfolio,
 } from "@/db/repositories/portfolio-repository";
 import type { EtfShareClass } from "@/domain/etf";
@@ -418,6 +419,8 @@ interface SavePortfolioEtfDraft {
   ticker: string;
   name: string;
   description?: string;
+  items?: PortfolioItemDraft[];
+  cashPositions?: PortfolioCashDraft[];
 }
 
 export interface UpdatePortfolioEtfDraft extends SavePortfolioEtfDraft {
@@ -542,10 +545,30 @@ export async function savePortfolioAsEtf(
     const { ticker, name, customDescription } =
       validatePortfolioEtfIdentity(draft);
 
-    const stored = loadDefaultPortfolio();
-    const valuedPortfolio = await valueStoredPortfolio(stored, {});
-    const portfolio = { ...stored, ...valuedPortfolio };
-    if (stored.items.some((item) => !item.quantity)) {
+    let stored: StoredPortfolio;
+    let portfolio: StoredPortfolio;
+    if (draft.items !== undefined) {
+      if (!Array.isArray(draft.items) || (draft.cashPositions !== undefined && !Array.isArray(draft.cashPositions))) {
+        throw new PortfolioRequestError("Portfolio positions must be arrays.");
+      }
+      validateDrafts(draft.items);
+      const cashPositions = validateCashDrafts(draft.cashPositions ?? []);
+      const cash = await valueCashPositions(cashPositions, {});
+      const cashValueUsd = cash.reduce((sum, position) => sum + (position.valueUsd ?? 0), 0);
+      const items = await resolveDrafts(draft.items, cashValueUsd, {});
+      const nav = items.reduce((sum, item) => sum + (item.currentValueUsd ?? 0), cashValueUsd);
+      if (!Number.isFinite(nav) || nav <= 0) {
+        throw new PortfolioRequestError("Net portfolio value must be positive.");
+      }
+      stored = { id: "portfolio-preview", name, baseCurrency: "USD", updatedAt: "", items, cashPositions };
+      portfolio = stored;
+    } else {
+      if (draft.cashPositions !== undefined) throw new PortfolioRequestError("The portfolio items array is required.");
+      stored = loadDefaultPortfolio();
+      const valuedPortfolio = await valueStoredPortfolio(stored, {});
+      portfolio = { ...stored, ...valuedPortfolio };
+    }
+    if (draft.items === undefined && stored.items.some((item) => !item.quantity)) {
       anchorPortfolioQuantities(stored.id, portfolio.items);
     }
     if (portfolio.items.length === 0 && portfolio.cashPositions.length === 0) {
@@ -575,13 +598,16 @@ export async function savePortfolioAsEtf(
       portfolio.cashPositions,
     );
 
-    return saveDefaultPortfolioAsEtf({
+    const identity = {
       visibility: draft.visibility,
       ticker,
       name,
       description,
       editableDescription: customDescription,
-    });
+    };
+    return draft.items === undefined
+      ? saveDefaultPortfolioAsEtf(identity)
+      : savePortfolioRecordAsEtf(identity, portfolio);
   } catch (error) {
     if (error instanceof PortfolioRequestError) throw error;
     throw new PortfolioUnavailableError(error);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 
 import type {
   DataStatus,
@@ -181,8 +181,14 @@ export function persistSnapshot(
     (sum, holding) => sum + holding.weight,
     0,
   );
+  if (!input.holdings.length || !Number.isFinite(totalWeight) || !Number.isFinite(Date.parse(input.fetchedAt)) ||
+      input.holdings.some((holding) => !holding.securityId || !Number.isFinite(holding.weight))) {
+    throw new Error("Invalid holdings composition; the previous cache is preserved.");
+  }
 
   return db.transaction((transaction) => {
+    const latest = findLatestSnapshot(input.etf.id);
+    if (latest && Date.parse(latest.fetchedAt) > Date.parse(input.fetchedAt)) return latest;
     const existing = transaction
       .select()
       .from(holdingSnapshots)
@@ -213,6 +219,9 @@ export function persistSnapshot(
         .where(eq(holdingSnapshots.id, existing.id))
         .run();
 
+      transaction.delete(holdingSnapshots).where(and(
+        eq(holdingSnapshots.etfId, input.etf.id), ne(holdingSnapshots.id, existing.id),
+      )).run();
       return {
         ...existing,
         rawMetadataJson,
@@ -301,6 +310,9 @@ export function persistSnapshot(
         .run();
     }
 
+    transaction.delete(holdingSnapshots).where(and(
+      eq(holdingSnapshots.etfId, input.etf.id), ne(holdingSnapshots.id, id),
+    )).run();
     return record;
   });
 }

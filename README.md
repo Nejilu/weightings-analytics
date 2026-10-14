@@ -60,6 +60,9 @@ and creating reusable ETFs from iShares source universes.
 - Inspect supported iShares/BlackRock ETFs and funds, and persist validated
   official holdings snapshots.
 - Enrich constituents with TradingView fundamentals and consensus EPS series.
+- Refresh data caches by replacing their last successful values, without keeping
+  daily metric or ETF-composition archives. Portfolio charts and dividend
+  entitlement/payment records retain their required history.
 - Aggregate valuation, earnings, quality, size, income, and risk metrics with
   explicit data coverage and source freshness.
 - Research ETFs and portfolios with Codex through T3: templates, model and
@@ -208,8 +211,9 @@ share class. The endpoints are:
 - `GET /api/v1/holdings/:ticker`
 - `GET /api/v1/holdings/:ticker/analysis`
 - `GET /api/v1/compare?left=IVV&right=ACWI`
-- `GET|PUT /api/v1/portfolio`
-- `POST /api/v1/portfolio/save-as-etf`
+- `GET|PUT /api/v1/portfolio` (legacy workspace draft; publishing consumes it)
+- `POST /api/v1/portfolio` (owner-only composition preview; no portfolio write)
+- `POST /api/v1/portfolio/save-as-etf` (direct creation from positions and cash)
 - `POST /api/v1/portfolio/clone` (owner-only allocation preview; no portfolio write)
 - `GET /api/v1/securities/search?q=AAPL`
 - `GET /api/v1/prices/quote?kind=etf&referenceId=ivv-us`
@@ -296,6 +300,15 @@ saved observation on or after the chosen start date; their baseline dates remain
 visible when histories start on different days. Changing visibility applies to
 the overview immediately, including dependencies on private funds.
 
+Visitors open the same read-only Portfolio detail layout from the overview.
+`GET /api/v1/portfolio/published/{etfId}` and its `/history` subroute validate
+current publication visibility and dependencies. Fully public portfolios expose
+current amounts with USD/EUR conversion and the second-currency equivalent;
+weights-only portfolios expose allocations and relative history, omitting exact
+amounts, share quantities and editor metadata in the server response. Private
+portfolios remain unavailable. Creation, editing, dividend payments and recording
+settings remain owner-only.
+
 ## Architecture
 
 ```text
@@ -316,5 +329,5 @@ and metric contracts that must remain stable. That file is the detailed technica
 reference.
 
 No demonstration holdings dataset is included. Each installation builds its
-own local history from official source files. Data is indicative and does not
+own local cache from official source files. Data is indicative and does not
 constitute investment advice.

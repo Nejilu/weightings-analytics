@@ -4,6 +4,8 @@ import {
   PortfolioRequestError,
   PortfolioUnavailableError,
   savePortfolioAsEtf,
+  type PortfolioItemDraft,
+  type PortfolioCashDraft,
 } from "@/data/services/portfolio-service";
 
 function errorResponse(error: unknown): Response {
@@ -38,6 +40,8 @@ async function handlePOST(request: Request) {
       ticker?: string;
       name?: string;
       description?: string;
+      items?: PortfolioItemDraft[];
+      cashPositions?: PortfolioCashDraft[];
     };
     if (
       !payload ||
@@ -58,6 +62,8 @@ async function handlePOST(request: Request) {
       ticker: payload.ticker,
       name: payload.name,
       description: payload.description,
+      items: payload.items,
+      cashPositions: payload.cashPositions,
     });
     return Response.json(
       { data: etf },

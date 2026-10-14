@@ -5,7 +5,8 @@ import { MetricCard } from "./metric-card";
 import { AdrPremiumBadge } from "./adr-premium-badge";
 import { PortfolioValuationPanel, formatPortfolioUsd } from "./portfolio-valuation-panel";
 import { PortfolioEvents } from "./portfolio-events";
-import { PortfolioOverview } from "./portfolio-overview";
+import { PortfolioDividendsPanel } from "./portfolio-dividends";
+import { SettingsPanel } from "./settings-panel";
 import { portfolioPositionValueUsd } from "@/domain/portfolio-valuation";
 
 import { useEffect, useRef, useMemo, useState, type ReactNode } from "react";
@@ -1527,7 +1528,7 @@ export function ComparisonWorkbench({
   const revision = useRef(catalogRevision);
   const [resultRevision, setResultRevision] = useState(catalogRevision);
   const [workspaceView, setWorkspaceView] = useState<
-    "compare" | "portfolio" | "creator" | "metrics" | "ai"
+    "compare" | "portfolio" | "creator" | "metrics" | "ai" | "settings"
   >("compare");
   const [leftEtfId, setLeftEtfId] = useState("ivv-us");
   const [rightEtfId, setRightEtfId] = useState("acwi-us");
@@ -1628,15 +1629,17 @@ export function ComparisonWorkbench({
     };
   }, [owner, ownerOrigin]);
 
-  const loadHoldingsAnalysis = async (forceRefresh = false, selectedPortfolioId?: string) => {
+  const loadHoldingsAnalysis = async (forceRefresh = false, selectedPortfolioId?: string, background = false) => {
     const selectedId = selectedPortfolioId ?? leftEtfId;
     const startedRevision = revision.current;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
     setUnavailable([]);
-    setAnalysis(null);
-    setRightAnalysis(null);
-    setComparison(null);
+    if (!background) {
+      setAnalysis(null);
+      setRightAnalysis(null);
+      setComparison(null);
+    }
     try {
       const analysisRequest = fetch(
         `/api/v1/holdings/${encodeURIComponent(selectedId)}/analysis${forceRefresh ? "?refresh=true" : ""}`,
@@ -1822,6 +1825,7 @@ export function ComparisonWorkbench({
             Metrics
           </button>
           {owner ? <button className={`nav-item${workspaceView === "ai" ? " nav-item--active" : ""}`} type="button" aria-pressed={workspaceView === "ai"} onClick={() => setWorkspaceView("ai")}><span className="nav-icon">✦</span>AI analysis</button> : null}
+          {owner ? <button className={`nav-item${workspaceView === "settings" ? " nav-item--active" : ""}`} type="button" aria-pressed={workspaceView === "settings"} onClick={() => setWorkspaceView("settings")}><span className="nav-icon" aria-hidden="true">⚙</span>Settings</button> : null}
         </nav>
         <div className="sidebar-card">
           <span className="live-pulse" />
@@ -1850,12 +1854,12 @@ export function ComparisonWorkbench({
                 ? "Portfolio"
                 : workspaceView === "creator"
                   ? "ETF Creator"
-                  : workspaceView === "ai" ? "AI analysis" : "Metrics overview"}
+                  : workspaceView === "settings" ? "Settings" : workspaceView === "ai" ? "AI analysis" : "Metrics overview"}
           </div>
           <div className="topbar-actions">
             <span
               className={`source-badge ${
-                workspaceView === "portfolio" || workspaceView === "creator" || workspaceView === "ai"
+                workspaceView === "portfolio" || workspaceView === "creator" || workspaceView === "ai" || workspaceView === "settings"
                   ? ""
                   : workspaceView === "metrics"
                     ? ""
@@ -1867,7 +1871,7 @@ export function ComparisonWorkbench({
               }`}
             >
               <i />
-              {workspaceView === "ai" ? "Codex research" : workspaceView === "portfolio"
+              {workspaceView === "settings" ? "Workspace preferences" : workspaceView === "ai" ? "Codex research" : workspaceView === "portfolio"
                 ? owner ? "Local portfolio" : "Published portfolios"
                 : workspaceView === "creator"
                   ? "Selected ETF universe"
@@ -1916,6 +1920,7 @@ export function ComparisonWorkbench({
               Metrics
             </button>
             {owner ? <button type="button" className={workspaceView === "ai" ? "is-active" : ""} onClick={() => setWorkspaceView("ai")}>AI analysis</button> : null}
+            {owner ? <button type="button" className={workspaceView === "settings" ? "is-active" : ""} onClick={() => setWorkspaceView("settings")}>Settings</button> : null}
           </div>
           {workspaceView === "compare" ? (
             <div className="holdings-overview">
@@ -2117,6 +2122,7 @@ export function ComparisonWorkbench({
                             <HoldingsOverviewTable analysis={holdingsDisplayAnalysis ?? analysis} weightView={holdingsWeightView} />
                             <aside className="portfolio-events-sidebar" aria-label="Earnings calendar sidebar">
                               <PortfolioEvents key={analysis.etf.id} holdings={analysis} />
+                              {owner && analysis.etf.fundType === "portfolio" && analysis.etf.portfolioId ? <PortfolioDividendsPanel key={`dividends:${analysis.etf.id}`} portfolioId={analysis.etf.portfolioId} cashBalances={analysis.portfolioValuation?.cash} onPayment={async () => { await loadHoldingsAnalysis(false, analysis.etf.id, true); }} /> : null}
                             </aside>
                           </div>
                         </>
@@ -2235,17 +2241,13 @@ export function ComparisonWorkbench({
                 </section>
               ) : null}
             </div>
-          ) : workspaceView === "portfolio" ? owner ? (
+          ) : workspaceView === "portfolio" ? (
             <PortfolioAnalytics
+              key={owner ? "owner" : resultRevision}
+              owner={owner}
               catalog={availableCatalog}
               publicationEnabled={siteMode === "web"}
               onCatalogChanged={refreshCatalog}
-            />
-          ) : (
-            <PortfolioOverview
-              owner={false}
-              portfolios={availableCatalog.flatMap((group) => group.variants).filter((etf) => etf.fundType === "portfolio")}
-              onSelect={(id) => { setLeftEtfId(id); setComparisonMode(false); setHoldingsView("holdings"); setWorkspaceView("compare"); void loadHoldingsAnalysis(false, id); }}
             />
           ) : workspaceView === "creator" && owner ? (
             <EtfCreator
@@ -2262,6 +2264,7 @@ export function ComparisonWorkbench({
           ) : null}
 
           {owner && workspaceView === "ai" ? <AiAnalysisPanel catalog={availableCatalog} initialEtfId={leftEtfId} /> : null}
+          {owner && workspaceView === "settings" ? <SettingsPanel /> : null}
 
           {siteMode === "web" && owner && (workspaceView === "compare" || workspaceView === "metrics") && <PublicationManager catalog={availableCatalog} onChanged={refreshCatalog} />}
           <footer className="disclaimer">

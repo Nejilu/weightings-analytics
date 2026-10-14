@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { ensureLocalDatabase } from "../bootstrap";
-import { closeDatabase } from "../client";
+import { closeDatabase, getSqlite } from "../client";
 import {
   loadDefaultPortfolio,
   loadPortfolioById,
@@ -20,6 +20,9 @@ test("persists signed positions and multi-currency cash in saved portfolios", ()
     process.env.DATABASE_PATH = join(directory, "portfolio.sqlite");
     closeDatabase();
     ensureLocalDatabase();
+
+    assert.deepEqual(loadDefaultPortfolio().items, []);
+    assert.equal(loadPortfolioById("default-portfolio"), undefined);
 
     replaceDefaultPortfolio(
       [
@@ -56,6 +59,15 @@ test("persists signed positions and multi-currency cash in saved portfolios", ()
     const cloned = loadPortfolioById(savedEtf.portfolioId ?? "");
     assert.equal(cloned?.items[0].quantity, -2);
     assert.deepEqual(cloned?.cashPositions, stored.cashPositions);
+    assert.equal(loadPortfolioById("default-portfolio"), undefined);
+    assert.deepEqual(getSqlite().prepare("SELECT count(*) AS count FROM portfolios").get(), { count: 1 });
+    assert.deepEqual(loadDefaultPortfolio().items, []);
+    assert.equal(loadPortfolioById("default-portfolio"), undefined);
+
+    replaceDefaultPortfolio(stored.items, stored.cashPositions);
+    assert.throws(() => saveDefaultPortfolioAsEtf({ ticker: "SIGN", name: "Duplicate", description: "" }));
+    assert.deepEqual(loadDefaultPortfolio().cashPositions, stored.cashPositions);
+    assert.deepEqual(getSqlite().prepare("SELECT count(*) AS count FROM portfolios").get(), { count: 2 });
   } finally {
     closeDatabase();
     if (originalPath === undefined) delete process.env.DATABASE_PATH;

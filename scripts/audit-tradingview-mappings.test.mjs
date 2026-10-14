@@ -53,6 +53,21 @@ function fixture({ valid }) {
   return sqlite;
 }
 
+test("accepts listing price caches while detecting missing underlying securities", () => {
+  const sqlite = fixture({ valid: true });
+  try {
+    sqlite.prepare("INSERT INTO market_prices VALUES (?, ?)").run("security", "listing:security-1:GOOD");
+    sqlite.prepare("INSERT INTO securities (id, primary_ticker, name, asset_class, country) VALUES (?, ?, ?, ?, ?)").run("CUSIP:VALID", "SECOND", "Second company", "Equity", "United States");
+    sqlite.prepare("INSERT INTO market_prices VALUES (?, ?)").run("security", "listing:CUSIP:VALID:SECOND");
+    assert.equal(auditDatabase(sqlite, "fixture").identity.orphanReferences, 0);
+    sqlite.prepare("INSERT INTO market_prices VALUES (?, ?)").run("security", "listing:missing:MISSING");
+    sqlite.prepare("INSERT INTO market_prices VALUES (?, ?)").run("security", "missing-direct");
+    assert.equal(auditDatabase(sqlite, "fixture").identity.orphanReferences, 2);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("audits current ETF coverage and accepts a fully identified mapping", () => {
   const sqlite = fixture({ valid: true });
   try {

@@ -4,6 +4,8 @@ import { etfs, portfolioItems } from "@/db/schema";
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { PortfolioHoldingsValuation } from "@/domain/portfolio-valuation";
 import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
+import type { LocalPortfolioEtfDetail } from "@/domain/local-etf";
+import type { PortfolioHistory } from "@/domain/portfolio-history";
 import { AccessError } from "./site-access";
 
 export function publicationCatalog() {
@@ -71,6 +73,52 @@ export function publicationCatalog() {
 }
 
 type PublicationCatalog = ReturnType<typeof publicationCatalog>;
+
+export function publicPortfolioDetail(detail: LocalPortfolioEtfDetail, catalog: PublicationCatalog) {
+  const etf = requirePublicEtf(catalog, detail.etf.id);
+  if (etf.fundType !== "portfolio" || detail.kind !== "portfolio") throw new AccessError(404, "Portfolio unavailable.");
+  const showAmounts = etf.visibility === "public";
+  const record = detail.portfolio;
+  return {
+    kind: "portfolio", etf: publicEtf(etf), editableDescription: "Published portfolio composition.",
+    portfolio: {
+      id: etf.id, name: etf.name, baseCurrency: "USD", updatedAt: record.updatedAt,
+      amountsVisible: showAmounts,
+      items: record.items.map((item, index) => ({
+        id: `published-item-${index}`, kind: item.kind, referenceId: item.referenceId,
+        ticker: item.ticker, name: item.name, allocationWeight: item.allocationWeight,
+        ...(showAmounts ? { quantity: item.quantity, currentValueUsd: item.currentValueUsd, currentPriceUsd: item.currentPriceUsd } : {}),
+      })),
+      cashPositions: record.cashPositions.map((cash) => ({
+        currency: cash.currency, weight: cash.weight,
+        ...(showAmounts ? { amount: cash.amount, valueUsd: cash.valueUsd, fxToUsd: cash.fxToUsd } : {}),
+      })),
+      analysis: record.analysis ? {
+        ...publicAnalysis(record.analysis, catalog) as object,
+        ...(showAmounts ? { totalMarketValueUsd: record.analysis.totalMarketValueUsd } : {}),
+        positions: record.analysis.positions.map((position) => ({
+          ...position, contributions: position.contributions.map((contribution) => ({
+            ticker: contribution.ticker, kind: contribution.kind, weight: contribution.weight,
+            itemId: `source:${contribution.kind}:${contribution.ticker}`,
+          })),
+        })),
+      } : null,
+      ...(record.analysisError ? { analysisError: "Portfolio analysis is temporarily unavailable." } : {}),
+      ...(record.priceError ? { priceError: "Portfolio prices are temporarily unavailable." } : {}),
+    },
+  };
+}
+
+export function publicPortfolioHistory(history: PortfolioHistory, reference: string, catalog: PublicationCatalog) {
+  const etf = requirePublicEtf(catalog, reference);
+  if (etf.fundType !== "portfolio") throw new AccessError(404, "Portfolio unavailable.");
+  const base = history.snapshots[0];
+  return { enabled: history.enabled, lastError: null, lastAttemptAt: null, snapshots: history.snapshots.map((point) => ({
+    date: point.date, capturedAt: point.capturedAt, reason: point.reason,
+    indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
+    ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
+  })) };
+}
 
 export function publicPortfolioDashboard(entries: PortfolioDashboardEntry[], catalog: PublicationCatalog): PortfolioDashboardEntry[] {
   return entries.flatMap((entry) => {

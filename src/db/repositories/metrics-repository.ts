@@ -333,6 +333,9 @@ export function saveEstimateSeriesBatch(
   capturedAt: string,
 ): void {
   if (inputs.length === 0) return;
+  if (inputs.some((input) => !isValidEstimateSeries(input.series))) {
+    throw new Error("Invalid estimate series; the previous cache is preserved.");
+  }
   const asOf = capturedAt.slice(0, 10);
   const db = getDb();
   db.transaction((transaction) => {
@@ -354,14 +357,15 @@ export function saveEstimateSeriesBatch(
             metricObservations.metricDefinitionId,
             metricObservations.entityType,
             metricObservations.entityId,
-            metricObservations.asOf,
           ],
           set: {
+            asOf: sql`excluded.as_of`,
             valueText: sql`excluded.value_text`,
             valueJson: sql`excluded.value_json`,
             source: sql`excluded.source`,
             capturedAt: sql`excluded.captured_at`,
           },
+          setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
         })
         .run();
     }
@@ -543,14 +547,15 @@ export function saveSecurityMetricsBatch(
             metricObservations.metricDefinitionId,
             metricObservations.entityType,
             metricObservations.entityId,
-            metricObservations.asOf,
           ],
           set: {
+            asOf: sql`excluded.as_of`,
             valueNumber: sql`excluded.value_number`,
             valueText: sql`excluded.value_text`,
             source: sql`excluded.source`,
             capturedAt: sql`excluded.captured_at`,
           },
+          setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
         })
         .run();
     }
@@ -570,6 +575,10 @@ export function saveDerivedSecurityMetricsBatch(
   inputs: DerivedSecurityMetricsInput[],
 ): void {
   if (inputs.length === 0) return;
+  if (inputs.some((input) => DERIVED_METRIC_KEYS.some((key) =>
+    input.values[key] !== undefined && !Number.isFinite(input.values[key])))) {
+    throw new Error("Invalid derived metrics; the previous cache is preserved.");
+  }
   const db = getDb();
   const rows = inputs.flatMap((input) => DERIVED_METRIC_KEYS.map((key) => ({
     id: randomUUID(),
@@ -591,14 +600,15 @@ export function saveDerivedSecurityMetricsBatch(
             metricObservations.metricDefinitionId,
             metricObservations.entityType,
             metricObservations.entityId,
-            metricObservations.asOf,
           ],
           set: {
+            asOf: sql`excluded.as_of`,
             valueNumber: sql`excluded.value_number`,
             valueText: sql`excluded.value_text`,
             source: sql`excluded.source`,
             capturedAt: sql`excluded.captured_at`,
           },
+          setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
         })
         .run();
     }

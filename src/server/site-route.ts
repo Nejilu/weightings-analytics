@@ -3,6 +3,8 @@ import {
   publicationCatalog,
   publicAnalysis,
   publicPortfolioDashboard,
+  publicPortfolioDetail,
+  publicPortfolioHistory,
   requirePublicEtf,
   siteCatalog,
 } from "./public-data";
@@ -12,6 +14,8 @@ import {
   takeBudget,
 } from "./site-runtime";
 import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
+import type { LocalPortfolioEtfDetail } from "@/domain/local-etf";
+import type { PortfolioHistory } from "@/domain/portfolio-history";
 
 export type RoutePolicy =
   | "owner"
@@ -22,10 +26,13 @@ export type RoutePolicy =
   | "quote"
   | "read"
   | "portfolio-overview"
+  | "portfolio-detail"
+  | "portfolio-public-history"
   | "published-portfolio";
 
 function referencesFor(request: Request, policy: RoutePolicy): string[] {
   const url = new URL(request.url);
+  if (policy === "portfolio-detail" || policy === "portfolio-public-history") return [decodeURIComponent(url.pathname.split("/")[5] ?? "")];
   if (policy === "holdings" || policy === "published-portfolio") {
     return [decodeURIComponent(url.pathname.split("/")[4] ?? "")];
   }
@@ -67,6 +74,7 @@ export function withSiteAccess<Args extends unknown[]>(
           const catalog = publicationCatalog();
           for (const reference of references) {
             const etf = requirePublicEtf(catalog, reference);
+            if ((policy === "portfolio-detail" || policy === "portfolio-public-history") && etf.fundType !== "portfolio") throw new AccessError(404, "Portfolio unavailable.");
             if (policy === "quote" && etf.fundType === "portfolio")
               throw new AccessError(404, "Quote unavailable.");
             if (
@@ -182,6 +190,10 @@ export function withSiteAccess<Args extends unknown[]>(
             ? payload
             : policy === "portfolio-overview"
               ? { data: publicPortfolioDashboard((payload as { data: PortfolioDashboardEntry[] }).data, catalog) }
+            : policy === "portfolio-detail"
+              ? { data: publicPortfolioDetail((payload as { data: LocalPortfolioEtfDetail }).data, catalog) }
+            : policy === "portfolio-public-history"
+              ? { data: publicPortfolioHistory((payload as { data: PortfolioHistory }).data, references[0], catalog) }
             : publicAnalysis(payload, catalog),
         { status: response.status, headers: outputHeaders },
       );

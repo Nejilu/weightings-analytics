@@ -33,7 +33,7 @@ function AllocationList({ entries }: { entries: Array<{ label: string; weight: n
 export function PortfolioAllocationPanels({ positions, includeCash, formatValue }: {
   positions: AllocationPosition[];
   includeCash: boolean;
-  formatValue: (valueUsd: number) => string;
+  formatValue?: (valueUsd: number) => string;
 }) {
   const [grouping, setGrouping] = useState<"country" | "continent">("country");
   const allocations = useMemo(() => {
@@ -63,7 +63,7 @@ export function PortfolioAllocationPanels({ positions, includeCash, formatValue 
         {top.map((position) => <div key={position.id} className={position.weight < 0 ? "is-negative" : undefined}>
           <div><strong>{position.ticker}</strong><span title={position.name}>{position.name}</span></div>
           <div aria-hidden="true"><i style={{ width: `${Math.abs(position.weight) / maximum * 100}%`, background: position.weight < 0 ? "var(--negative)" : undefined }} /></div>
-          <strong>{percent(position.weight)}<span>{formatValue(position.valueUsd)}</span></strong>
+          <strong>{percent(position.weight)}{formatValue ? <span>{formatValue(position.valueUsd)}</span> : null}</strong>
         </div>)}
       </div>
     </article>

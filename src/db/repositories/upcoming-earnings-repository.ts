@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { UpcomingEarningsObservation } from "@/domain/upcoming-earnings";
 import { getDb } from "../client";
 import { metricDefinitions, metricObservations } from "../schema";
@@ -34,6 +34,14 @@ export function saveUpcomingEarningsBatch(
   capturedAt: string,
 ): void {
   if (!inputs.length) return;
+  for (const { observation } of inputs) {
+    if (typeof observation.providerSymbol !== "string" || !observation.providerSymbol.trim() ||
+        !(observation.reportDate === null || (typeof observation.reportDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(observation.reportDate))) ||
+        !(observation.exchangeTimezone === null || typeof observation.exchangeTimezone === "string")) {
+      throw new Error("Invalid earnings observation; the previous cache is preserved.");
+    }
+    new Intl.DateTimeFormat("en-US", { timeZone: observation.exchangeTimezone ?? "UTC" });
+  }
   getDb().transaction((transaction) => {
     transaction.insert(metricDefinitions).values({
       id: DEFINITION_ID, key: "upcoming_earnings", name: "Next earnings report date",
@@ -47,8 +55,9 @@ export function saveUpcomingEarningsBatch(
         asOf: capturedAt.slice(0, 10), valueText: input.observation.providerSymbol,
         valueJson: input.observation, source: "tradingview-screener", capturedAt,
       }).onConflictDoUpdate({
-        target: [metricObservations.metricDefinitionId, metricObservations.entityType, metricObservations.entityId, metricObservations.asOf],
-        set: { valueText: sql`excluded.value_text`, valueJson: sql`excluded.value_json`, capturedAt: sql`excluded.captured_at` },
+        target: [metricObservations.metricDefinitionId, metricObservations.entityType, metricObservations.entityId],
+        set: { asOf: sql`excluded.as_of`, valueText: sql`excluded.value_text`, valueJson: sql`excluded.value_json`, capturedAt: sql`excluded.captured_at` },
+        setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
       }).run();
     }
   });

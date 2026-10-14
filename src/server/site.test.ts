@@ -49,6 +49,10 @@ import { GET as analysisGET } from "@/app/api/v1/holdings/[ticker]/analysis/rout
 import { GET as compareGET } from "@/app/api/v1/compare/route";
 import { GET as metricsGET } from "@/app/api/v1/metrics/overview/route";
 import { GET as quoteGET } from "@/app/api/v1/prices/quote/route";
+import { GET as fxGET } from "@/app/api/v1/prices/fx/route";
+import { GET as publicDetailGET } from "@/app/api/v1/portfolio/published/[etfId]/route";
+import { GET as publicHistoryGET } from "@/app/api/v1/portfolio/published/[etfId]/history/route";
+import { persistFxRate } from "@/db/repositories/market-price-repository";
 import { GET as dashboardGET } from "@/app/api/v1/portfolio/overview/route";
 import { GET as aiConfigGET } from "@/app/api/v1/ai/config/route";
 import { GET as aiRunsGET, POST as aiRunsPOST } from "@/app/api/v1/ai/runs/route";
@@ -470,6 +474,18 @@ test("Analysis publishes valuation only for fully public portfolios using curren
   }
 });
 
+test("visitors can read the exchange rates used to convert public portfolio amounts", async () => {
+  const now = new Date().toISOString();
+  persistFxRate({ currency: "EUR", providerSymbol: "EURUSD=X", rateToUsd: 1.25, asOf: now, fetchedAt: now, sourceStatus: "cached" });
+  const response = await fxGET(request("/api/v1/prices/fx?currency=EUR"));
+  assert.equal(response.status, 200);
+  const rate = (await response.json()).data;
+  assert.equal(rate.rateToUsd, 1.25);
+  assert.equal(1000 / rate.rateToUsd, 800);
+  assert.equal((await fxGET(request("/api/v1/prices/fx?currency=USD"))).status, 200);
+  assert.equal((await fxGET(request("/api/v1/prices/fx?currency=invalid"))).status, 400);
+});
+
 test("exact published portfolio amounts are readable only in public mode", async () => {
   for (const mode of ["private", "weights"]) {
     assert.equal(
@@ -539,6 +555,56 @@ test("portfolio dashboard publishes relative histories, hides private portfolios
     process.env.SITE_ACCESS_MODE = "cloudflare";
     getDb().update(etfs).set({ visibility: "public", metadataJson: originalMetadata ?? null }).where(eq(etfs.id, "test-public")).run();
   }
+});
+
+test("visitors can open the Portfolio detail with amounts only for fully public portfolios", async () => {
+  for (const mode of ["public", "weights"] as const) {
+    const path = `/api/v1/portfolio/published/test-${mode}`;
+    const response = await publicDetailGET(request(path), ctx(`test-${mode}`));
+    assert.equal(response.status, 200);
+    const data = (await response.json()).data;
+    assert.equal(data.kind, "portfolio");
+    assert.equal(data.portfolio.amountsVisible, mode === "public");
+    assert.equal(data.portfolio.id, `test-${mode}`);
+    assert.equal(data.portfolio.cashPositions[0].weight, 100);
+    assert.equal(data.portfolio.cashPositions[0].amount, mode === "public" ? 91827.36 : undefined);
+    assert.equal(data.portfolio.analysis.totalMarketValueUsd, mode === "public" ? 91827.36 : undefined);
+    assert(!JSON.stringify(data).includes("Secret:"));
+    assert(!JSON.stringify(data).includes(`portfolio-${mode}`));
+    if (mode === "weights") assert(!JSON.stringify(data).includes("91827"));
+    const historyResponse = await publicHistoryGET(request(`${path}/history`), ctx(`test-${mode}`));
+    assert.equal(historyResponse.status, 200);
+    const history = (await historyResponse.json()).data;
+    assert.equal(history.snapshots[0].indexUsd, 100);
+    assert.equal(history.snapshots[0].valueUsd, mode === "public" ? 100000 : undefined);
+    assert.equal(history.lastError, null);
+    if (mode === "weights") assert(!JSON.stringify(history).includes("987654"));
+  }
+  assert.equal((await publicDetailGET(request("/api/v1/portfolio/published/test-private"), ctx("test-private"))).status, 404);
+  assert.equal((await publicHistoryGET(request("/api/v1/portfolio/published/test-private/history"), ctx("test-private"))).status, 404);
+  assert.equal((await publicDetailGET(request("/api/v1/portfolio/published/ivv-us"), ctx("ivv-us"))).status, 404);
+});
+
+test("weights-only Portfolio details omit share quantities and original investment metadata", async () => {
+  const etf = findEtfById("test-weights")!;
+  const handler = withSiteAccess(async () => Response.json({ data: {
+    kind: "portfolio", etf, editableDescription: "secret description with exact investment",
+    portfolio: {
+      id: "secret-editor-id", name: "Weights", baseCurrency: "USD", updatedAt: "2026-10-14",
+      items: [{ id: "secret-item-id", kind: "security", referenceId: "stock", ticker: "STK", name: "Stock", allocationWeight: -5, quantity: -9876, inputAmount: 12345, initialPriceUsd: 999, currentValueUsd: -98765 }],
+      cashPositions: [{ currency: "USD", amount: 54321, weight: 20, valueUsd: 54321 }],
+      analysis: { totalMarketValueUsd: 987654, grossExposureWeight: 5, positions: [{ securityId: "stock", ticker: "STK", name: "Stock", weight: -5, contributions: [{ itemId: "secret-item-id", ticker: "STK", kind: "security", weight: -5 }] }] },
+    },
+  } }), "portfolio-detail");
+  const response = await handler(request("/api/v1/portfolio/published/test-weights"));
+  assert.equal(response.status, 200);
+  const data = (await response.json()).data;
+  assert.equal(data.portfolio.items[0].allocationWeight, -5);
+  assert.equal(data.portfolio.items[0].quantity, undefined);
+  assert.equal(data.portfolio.items[0].currentValueUsd, undefined);
+  assert.equal(data.portfolio.analysis.positions[0].contributions[0].weight, -5);
+  const text = JSON.stringify(data);
+  for (const secret of ["secret-", "inputAmount", "initialPriceUsd", "9876", "54321", "quantity", "valueUsd"]) assert(!text.includes(secret), secret);
 });
 
 test("owner can change visibility without provider calls, immediately invalidating public access", async () => {

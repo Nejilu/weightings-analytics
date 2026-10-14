@@ -11,7 +11,10 @@ import {
   holdingSnapshots,
   holdings,
   marketPrices,
+  metricObservations,
   portfolioItems,
+  portfolioSecurityBalances,
+  portfolioDividendPayments,
   portfolios,
   securities,
 } from "./schema";
@@ -128,10 +131,34 @@ export function seedCatalog(): void {
           ) AND NOT EXISTS (
             SELECT 1 FROM ${portfolioItems}
             WHERE ${portfolioItems.securityId} = ${securities.id}
+          ) AND NOT EXISTS (
+            SELECT 1 FROM ${portfolioSecurityBalances}
+            WHERE ${portfolioSecurityBalances.securityId} = ${securities.id}
+          ) AND NOT EXISTS (
+            SELECT 1 FROM ${portfolioDividendPayments}
+            WHERE ${portfolioDividendPayments.securityId} = ${securities.id}
+          ) AND NOT EXISTS (
+            SELECT 1 FROM ${etfs}
+            WHERE ${etfs.fundType} = 'custom'
+              AND instr(COALESCE(${etfs.metadataJson}, ''), '"' || ${securities.id} || '"') > 0
           )`,
         ),
       )
       .run();
+
+    // Catalogue cleanup must also remove caches whose security no longer
+    // exists. Listing prices use a compound key rather than the security ID.
+    transaction.delete(metricObservations).where(and(
+      eq(metricObservations.entityType, "security"),
+      sql`NOT EXISTS (SELECT 1 FROM ${securities} WHERE ${securities.id} = ${metricObservations.entityId})`,
+    )).run();
+    transaction.delete(marketPrices).where(and(
+      eq(marketPrices.assetType, "security"),
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${securities} WHERE ${securities.id} = ${marketPrices.assetId}
+          OR substr(${marketPrices.assetId}, 1, length(${securities.id}) + 9) = 'listing:' || ${securities.id} || ':'
+      )`,
+    )).run();
 
     for (const security of SUPPORTED_INDIVIDUAL_SECURITIES) {
       const values = {

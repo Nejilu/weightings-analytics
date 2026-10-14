@@ -316,7 +316,11 @@ function canonicalIdentityAudit(sqlite, snapshots) {
       LEFT JOIN securities AS security ON security.id = item.security_id
       WHERE item.asset_type = 'security' AND security.id IS NULL`,
     `SELECT COUNT(*) AS count FROM market_prices AS item
-      LEFT JOIN securities AS security ON security.id = item.asset_id
+      LEFT JOIN securities AS security ON security.id = item.asset_id OR (
+        item.asset_id LIKE 'listing:%'
+        AND substr(item.asset_id, 1, length(security.id) + 9) = 'listing:' || security.id || ':'
+        AND length(item.asset_id) > length(security.id) + 9
+      )
       WHERE item.asset_type = 'security' AND security.id IS NULL`,
     `SELECT COUNT(*) AS count FROM metric_observations AS item
       LEFT JOIN securities AS security ON security.id = item.entity_id

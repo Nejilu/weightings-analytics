@@ -4,6 +4,7 @@ import {
   PortfolioRequestError,
   PortfolioUnavailableError,
   savePortfolio,
+  previewPortfolio,
 } from "@/data/services/portfolio-service";
 import type {
   PortfolioAssetKind,
@@ -61,7 +62,7 @@ async function handleGET(request: Request) {
   }
 }
 
-async function handlePUT(request: Request) {
+async function handlePUT(request: Request, preview = false) {
   try {
     const forceRefresh = new URL(request.url).searchParams.get("refresh") === "true";
     const payload = (await request.json()) as {
@@ -85,7 +86,7 @@ async function handlePUT(request: Request) {
       );
     }
 
-    const portfolio = await savePortfolio(
+    const portfolio = await (preview ? previewPortfolio : savePortfolio)(
       payload.items,
       payload.cashPositions ?? [],
       { forceRefresh },
@@ -101,4 +102,6 @@ async function handlePUT(request: Request) {
 
 export const GET = withSiteAccess(handleGET, "owner");
 
-export const PUT = withSiteAccess(handlePUT, "owner");
+export const PUT = withSiteAccess((request) => handlePUT(request), "owner");
+
+export const POST = withSiteAccess((request) => handlePUT(request, true), "owner");

@@ -96,6 +96,12 @@ function mergeSecurity(
   const target = selectSecurity.get(targetId) as StoredSecurityRow | undefined;
   if (!source || !target) return false;
 
+  // Do not collapse two independently confirmed payments for the same event:
+  // their audit records and cash credits must remain intact.
+  if (sqlite.prepare(`SELECT 1 FROM portfolio_dividend_payments source
+    JOIN portfolio_dividend_payments target ON target.portfolio_id = source.portfolio_id AND target.ex_date = source.ex_date
+    WHERE source.security_id = ? AND target.security_id = ? LIMIT 1`).get(sourceId, targetId)) return false;
+
   sqlite.prepare(`
     UPDATE securities SET
       isin = COALESCE(isin, ?),
@@ -256,7 +262,6 @@ function mergeSecurity(
       SELECT 1 FROM metric_observations AS source
       WHERE source.entity_type = 'security' AND source.entity_id = ?
         AND source.metric_definition_id = target.metric_definition_id
-        AND source.as_of = target.as_of
         AND source.captured_at > target.captured_at
     )
   `).run(targetId, sourceId);
@@ -266,7 +271,6 @@ function mergeSecurity(
         SELECT 1 FROM metric_observations AS target
         WHERE target.entity_type = 'security' AND target.entity_id = ?
           AND target.metric_definition_id = metric_observations.metric_definition_id
-          AND target.as_of = metric_observations.as_of
       )
   `).run(sourceId, targetId);
   sqlite.prepare(`
@@ -274,6 +278,28 @@ function mergeSecurity(
     WHERE entity_type = 'security' AND entity_id = ?
   `).run(targetId, sourceId);
 
+  sqlite.prepare(`DELETE FROM security_dividend_observations WHERE security_id = ? AND EXISTS
+    (SELECT 1 FROM security_dividend_observations WHERE security_id = ?)`).run(sourceId, targetId);
+  sqlite.prepare("UPDATE security_dividend_observations SET security_id = ? WHERE security_id = ?").run(targetId, sourceId);
+  // When both identities had balance histories, interleaving their quantities
+  // would invent past ownership. Require confirmation until a new balance is
+  // recorded from the merged current composition.
+  sqlite.prepare(`UPDATE portfolio_security_balances SET quantity = NULL
+    WHERE security_id IN (?, ?) AND portfolio_id IN (
+      SELECT portfolio_id FROM portfolio_security_balances WHERE security_id = ?
+      INTERSECT SELECT portfolio_id FROM portfolio_security_balances WHERE security_id = ?
+    )`).run(sourceId, targetId, sourceId, targetId);
+  sqlite.prepare("UPDATE portfolio_security_balances SET security_id = ? WHERE security_id = ?").run(targetId, sourceId);
+  sqlite.prepare("UPDATE portfolio_dividend_payments SET security_id = ?, value_json = json_set(value_json, '$.securityId', ?) WHERE security_id = ?").run(targetId, targetId, sourceId);
+  const settingsRow = sqlite.prepare("SELECT value_json AS value FROM application_settings WHERE key = 'dividends'").get() as { value: string } | undefined;
+  if (settingsRow) {
+    const settings = JSON.parse(settingsRow.value) as { securityRates: Record<string, number> };
+    if (Object.hasOwn(settings.securityRates, sourceId)) {
+      if (!Object.hasOwn(settings.securityRates, targetId)) settings.securityRates[targetId] = settings.securityRates[sourceId];
+      delete settings.securityRates[sourceId];
+      sqlite.prepare("UPDATE application_settings SET value_json = ? WHERE key = 'dividends'").run(JSON.stringify(settings));
+    }
+  }
   sqlite.prepare("DELETE FROM securities WHERE id = ?").run(sourceId);
   return true;
 }

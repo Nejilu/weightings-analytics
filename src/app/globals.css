@@ -1736,7 +1736,52 @@ tbody tr:hover {
   gap: 14px;
   grid-template-columns: minmax(0, 1fr) 280px;
 }
-.portfolio-events-sidebar { min-width: 0; }
+.portfolio-events-sidebar { min-width: 0; display: grid; align-content: start; gap: 18px; }
+.portfolio-dividends-panel .segmented-control { display: flex; flex-wrap: wrap; margin: 12px 0; }
+.portfolio-dividends-panel .segmented-control button { font-size: 10px; padding: 6px 8px; }
+.dividend-event-list { list-style: none; margin: 12px 0; padding: 0; max-height: 430px; overflow-y: auto; }
+.dividend-event-list li { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.dividend-row-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; }
+.dividend-row-heading > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dividend-event-list small, .dividend-stock-name { font-size: 10px; line-height: 1.5; color: var(--muted); }
+.dividend-stock-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dividend-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 4px 0 0; font-size: 10px; }
+.dividend-dates dt { color: var(--muted); }
+.dividend-dates dd { margin: 3px 0 0; font-variant-numeric: tabular-nums; }
+.dividend-adjust-button { justify-self: end; border: 0; padding: 2px 0; background: none; color: var(--muted); font-size: 10px; cursor: pointer; }
+.dividend-adjust-button:hover { color: var(--ink); }
+.dividend-payment-form { border-top: 1px solid var(--line); padding-top: 14px; font-size: 11px; }
+.dividend-payment-form p { font-size: 10px; color: var(--muted); line-height: 1.6; }
+.dividend-form-fields { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+.dividend-form-fields label, .settings-panel label { display: grid; gap: 6px; font-size: 11px; color: var(--muted); }
+.dividend-form-fields input, .dividend-form-fields select, .settings-panel input { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px; width: 100%; min-width: 0; }
+.dividend-form-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.dividend-form-actions button { font-size: 10px; }
+.settings-panel { max-width: 1100px; margin: 20px auto; padding: 28px; }
+.settings-panel h1 { margin: 0; }
+.settings-panel h2 { margin-top: 28px; font-size: 17px; }
+.settings-section { margin-top: 24px; border: 1px solid var(--line); border-radius: 8px; }
+.settings-section > summary { cursor: pointer; padding: 16px 18px; }
+.settings-section > summary > h2 { display: inline; margin: 0; }
+.settings-section > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 8px; }
+.settings-section-content { padding: 0 18px 18px; }
+.settings-panel p { color: var(--muted); line-height: 1.7; font-size: 13px; }
+.settings-search { max-width: 420px; margin: 18px 0; }
+.settings-rate-list { max-height: 520px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 0 16px; }
+.settings-rate-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 24px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.settings-rate-row:last-child { border: 0; }
+.settings-rate-row > div { display: grid; gap: 5px; }
+.settings-rate-row strong { font-size: 13px; }
+.settings-rate-row span, .settings-rate-row small, .settings-rate-row a { font-size: 11px; line-height: 1.5; }
+.settings-rate-row span, .settings-rate-row small { color: var(--muted); }
+.settings-stock-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: center; gap: 16px; margin: 14px 0; font-size: 12px; }
+.settings-stock-options { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+@media (max-width: 600px) {
+  .settings-panel { padding: 18px; }
+  .settings-rate-row { gap: 12px; grid-template-columns: minmax(0, 1fr) 85px; }
+  .settings-stock-row { grid-template-columns: minmax(0, 1fr) 85px; gap: 10px; }
+  .settings-stock-row > button { grid-column: 1 / -1; justify-self: start; }
+}
 .portfolio-events-sidebar--standalone { justify-self: end; width: min(100%, 280px); }
 .portfolio-events-panel { min-width: 0; padding: 16px; }
 .portfolio-events-panel .panel-heading { gap: 8px; }
@@ -1904,6 +1949,9 @@ tbody tr:hover {
 .portfolio-lookthrough-panel .contribution-list { gap: 5px; min-width: 0; }
 .portfolio-lookthrough-panel .contribution-list span { font-size: 8px; line-height: 1.4; padding: 4px 6px; }
 .portfolio-composition-actions { display: grid; gap: 12px; margin-top: 16px; }
+.portfolio-lookthrough-panel--weights .synthetic-ranking__header,
+.portfolio-lookthrough-panel--weights .synthetic-ranking__row { grid-template-columns: 24px minmax(140px, 1.2fr) minmax(145px, 1fr) 100px; }
+.portfolio-lookthrough-panel--weights .synthetic-ranking__header span:nth-child(3) { text-align: left; }
 .portfolio-composition-actions:empty { display: none; }
 .portfolio-composition-actions .position-table-toggle,
 .portfolio-composition-collapse { margin-top: 0; }
@@ -1969,6 +2017,10 @@ tbody tr:hover {
   max-width: 620px;
 }
 
+.portfolio-total-equivalent { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+.portfolio-total .portfolio-total-equivalent { font-size: 12px; }
+.portfolio-valuation-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.portfolio-valuation-panel .panel-heading { flex-wrap: wrap; gap: 16px; }
 .portfolio-total {
   align-items: flex-end;
   display: flex;
@@ -6444,11 +6496,6 @@ td.holdings-table-empty {
 .visibility-control small { line-height: 1.5; }
 .site-access-links { display: grid; gap: 0.8rem; padding: 1rem; }
 .site-access-links a { color: inherit; font-size: 0.85rem; }
-.published-portfolio { padding: 1.5rem; margin-top: 1rem; }
-.published-portfolio .table-scroll { overflow-x: auto; }
-.published-portfolio table { width: 100%; border-collapse: collapse; }
-.published-portfolio th, .published-portfolio td { padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
-.published-portfolio th:first-child, .published-portfolio td:first-child { text-align: left; }
 
 .publication-settings { padding: 1.25rem; margin: 1rem 0; }
 .publication-settings summary { cursor: pointer; font-weight: 600; }

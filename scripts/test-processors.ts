@@ -37,5 +37,6 @@ import "../src/db/repositories/local-etf-repository.test";
 import "../src/db/repositories/portfolio-repository.test";
 import "../src/db/bootstrap.test";
 import "../src/db/migrate.test";
+import "../src/db/cache-retention.test";
 import "../src/app/api/v1/metrics/overview/etag.test";
 import "../src/app/api/v1/metrics/overview/contract.test";

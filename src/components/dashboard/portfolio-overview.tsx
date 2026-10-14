@@ -114,7 +114,7 @@ function PublicPortfolioCard({ etf, entry, onSelect }: { etf: EtfShareClass; ent
       <small className="portfolio-card__euro-value">{etf.visibility === "public" ? latest?.valueEur !== undefined ? `${money(latest.valueEur, "EUR")} EUR` : "EUR · Unavailable" : "Since first saved snapshot · amounts private"}</small>
     </span>
     <span className="portfolio-card__stats"><span>{entry?.positionsCount ?? "—"} positions</span><span>{entry?.cashCount ?? "—"} cash balances</span></span>
-    <span className="portfolio-card__footer"><span>{latest ? `Snapshot ${latest.date}` : "Saved portfolio"}</span><b>View holdings ↗</b></span>
+    <span className="portfolio-card__footer"><span>{latest ? `Snapshot ${latest.date}` : "Saved portfolio"}</span><b>View portfolio ↗</b></span>
   </button></article>;
 }
 

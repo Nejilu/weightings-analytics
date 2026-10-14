@@ -57,6 +57,11 @@ cache hit must be fresh, plausible, and use the current normalization version.
 After expiry, providers are requested with `no-store`. If refresh fails, the
 latest snapshot is used as stale fallback only if its row count is plausible;
 an absent or implausible snapshot can therefore lead to `503`.
+Only the latest successful composition is retained for each ETF; replacing it
+removes the previous snapshot and its holdings in the same transaction. Invalid
+downloads and failed writes leave the previous composition available. This cache
+does not supply the portfolio value history. Custom ETF selections are retained
+in their definitions rather than inferred from superseded source snapshots.
 
 ## Portfolios, local ETFs, and display identity
 
@@ -97,6 +102,67 @@ The Holdings geography card groups existing analysis positions by country by
 default, with a continent toggle. It does not fetch a separate geography dataset.
 Creating a new portfolio clears the interface draft immediately; loading a saved
 ETF is a separate action.
+Portfolio previews (`POST /api/v1/portfolio`) do not persist a draft. Creation
+posts positions and cash directly to `POST /api/v1/portfolio/save-as-etf`, which
+stores only the named portfolio. Legacy `PUT /api/v1/portfolio` remains available
+for existing clients; publishing that draft consumes it in the same transaction.
+Reading an absent legacy draft does not create an empty portfolio in SQLite.
+
+## Direct-stock dividends and settings
+
+The owner-only Settings tab persists dividend withholding overrides in SQLite.
+Stock overrides take precedence over country overrides, then documented country
+defaults for ordinary dividends paid to non-resident individuals before treaty
+relief. US defaults to 30%, Taiwan to 21%. Conditional rules (Australia, Brazil,
+China, India) and unverified countries require configuration before net estimates are
+shown. Source links and exceptions are embedded in `dividend-withholding.ts`.
+The mapped issuer country is used, never the ADR ISIN prefix or listing venue.
+
+The Yahoo adapter requests two years of chart dividends and splits, plus
+`calendarEvents`. It uses the same listing symbol as portfolio valuation. Only
+currently held direct stocks trigger requests; ETFs and their constituents do
+not. Observations are shared across portfolios with a 24-hour TTL, deduplicated
+in-flight requests, provider concurrency of two and a 15-minute failure backoff.
+The scheduler checks hourly while the server runs. Sold stocks retain cached
+events; a recorded entitlement awaiting payment can still refresh until settled.
+Confirmed absence differs from transport
+failure; failed refreshes retain compatible observations as stale.
+
+Chart event dates use the exchange timezone. Announced calendar dates preserve
+their UTC date-only representation. Payment dates and amounts are not inferred
+from annual dividend rates; Yahoo does not supply record dates. Historical
+amounts are restored to their pre-split share units. Payment currency is only
+inferred from the listing. Known ex-date/payment-date pairs are persisted across
+calendar rollovers so a new announcement cannot erase a pending payment date.
+
+`portfolio_security_balances` records quantities and listing symbols transactionally
+when compositions change, including zero after disposal. Migration establishes
+today's baseline without fabricating earlier ownership. Eligible quantity comes
+from the latest compatible balance before the ex-date in the exchange timezone.
+Same-day acquisitions, unknown prior ownership and a changed listing cannot
+establish an automatic entitlement. This is a balance history, not a historical trade ledger.
+Stock splits and backdated ownership corrections are not automatically posted.
+
+The dividend calendar appears below earnings in owner portfolio views only.
+It shows the stock, amount per share, ex-date and payment date, with upcoming,
+recent and received views. Payments are recorded automatically on or after the
+known payment date, using observed gross amounts, recorded eligible shares and
+the configured withholding rate. Unknown dates, amounts, entitlement, rates or
+unsupported cash currencies remain unposted; the application does not invent
+missing values or retroactively credit dividends predating ownership tracking.
+Received amounts are estimates from Yahoo and configured rates, not broker
+reconciliation; for example TSM's Yahoo gross can differ from Citi's final amount.
+Fees default to zero. An optional Adjust action updates the received payment
+and its cash delta atomically without requiring routine confirmation.
+A unique portfolio/security/ex-date constraint prevents double credit,
+including after a provider mapping change. Payment and cash are written in one
+transaction; subsequent settings or provider changes never rewrite recorded payments.
+
+Automatic credits enter NAV through the existing cash valuation and future
+snapshots. This version does not accrue unpaid dividend receivables or rewrite
+historical snapshots. The existing charts remain value evolution including
+external flows, not a flow-adjusted total-return calculation. Short dividend
+obligations require separate treatment and cannot be recorded as long income.
 
 ## Provider mappings
 
@@ -117,6 +183,20 @@ derived values until matching observations arrive.
 
 ## Fundamentals and consensus estimates
 
+Metric observations keep one current row per security and indicator, including
+source fundamentals, derived estimate ratios, EPS series, and upcoming earnings.
+A successful refresh replaces that row even on a different day; older responses
+cannot overwrite newer captures. The observation date is freshness metadata, not
+a history key. Invalid inputs or failed refreshes preserve the previous usable
+cache. A confirmed absence is still masked in results, and derived invalidation
+markers prevent incompatible values from being shown.
+
+Migration 0019 removes superseded daily observations and source compositions
+while preserving the newest usable data. Portfolio value snapshots, ownership
+balances needed for dividend entitlements, and recorded payments are retained.
+Catalogue cleanup removes caches of removed securities while keeping securities
+referenced by current holdings, portfolios, dividend records, or custom selections.
+
 TradingView Screener fields are requested in grouped batches. A field missing
 from a successful response creates a temporary, field-level negative-cache
 entry, hides any older value for the current result, and lowers coverage. A
@@ -130,8 +210,10 @@ provider symbol. Reported or reconstructed EPS values are never substituted.
 
 The bounded in-memory negative cache has separate instances for Screener fields
 and EPS series. SQLite table `provider_negative_cache` persists only confirmed
-absences across restarts. Entries expire, are pruned during bootstrap, and are
-deleted when data becomes available again. Transport failures are never stored
+absences across restarts. Expired entries are ignored on lookup and pruned before
+the first cache hydration for a database in each metrics-service process. There
+is no periodic purge; expired rows may remain stored until the next hydration.
+Entries are deleted when data becomes available again. Transport failures are never stored
 as absences.
 
 ## Metrics Overview source status

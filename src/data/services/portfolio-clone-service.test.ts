@@ -16,6 +16,8 @@ import type { PortfolioItem } from "@/domain/portfolio";
 import { clonePortfolio } from "./portfolio-clone-service";
 import { previewPortfolio, savePortfolio, savePortfolioAsEtf } from "./portfolio-service";
 import { POST } from "@/app/api/v1/portfolio/clone/route";
+import { POST as previewPOST, GET as portfolioGET } from "@/app/api/v1/portfolio/route";
+import { POST as createPOST } from "@/app/api/v1/portfolio/save-as-etf/route";
 import { PortfolioCloneRequestError } from "@/domain/portfolio-clone";
 
 test("clones ETF and portfolio weights in EUR without saving or linking sources; saved quantities remain independent", async () => {
@@ -66,6 +68,28 @@ test("clones ETF and portfolio weights in EUR without saving or linking sources;
     const response = await POST(new Request("http://localhost/api/v1/portfolio/clone", { method: "POST", headers, body: JSON.stringify({ ...draft, sources: [{ sourceId: etf.id, allocation: 100 }] }) }));
     assert.equal(response.status, 200);
     assert.equal((await response.json()).data.portfolio.items.length, 2);
+    const countBeforePreview = getSqlite().prepare("SELECT count(*) AS count FROM portfolios").get();
+    assert.equal((await portfolioGET(new Request("http://localhost/api/v1/portfolio", { headers }))).status, 200);
+    const previewResponse = await previewPOST(new Request("http://localhost/api/v1/portfolio", {
+      method: "POST", headers, body: JSON.stringify({ items: drafts, cashPositions: result.portfolio.cashPositions }),
+    }));
+    assert.equal(previewResponse.status, 200);
+    assert.deepEqual(getSqlite().prepare("SELECT count(*) AS count FROM portfolios").get(), countBeforePreview);
+    const directResponse = await createPOST(new Request("http://localhost/api/v1/portfolio/save-as-etf", {
+      method: "POST", headers, body: JSON.stringify({ ticker: "DIRECT", name: "Direct creation", items: drafts, cashPositions: result.portfolio.cashPositions }),
+    }));
+    assert.equal(directResponse.status, 201);
+    const direct = (await directResponse.json()).data;
+    assert.deepEqual(loadPortfolioById(direct.portfolioId)!.items.map(item => item.quantity), quantities);
+    assert.equal(loadPortfolioById("default-portfolio"), undefined);
+    const invalidCreate = await createPOST(new Request("http://localhost/api/v1/portfolio/save-as-etf", {
+      method: "POST", headers, body: JSON.stringify({ ticker: "INVALID", name: "Invalid creation", items: {} }),
+    }));
+    assert.equal(invalidCreate.status, 400);
+    const negativeCash = await createPOST(new Request("http://localhost/api/v1/portfolio/save-as-etf", {
+      method: "POST", headers, body: JSON.stringify({ ticker: "BORROW", name: "Negative cash", items: [], cashPositions: [{ currency: "USD", amount: -100 }] }),
+    }));
+    assert.equal(negativeCash.status, 400);
     // An entirely cash allocation is valid and can be saved as a portfolio.
     const cash = await previewPortfolio([], [{ currency: "EUR", amount: 10_000 }]);
     assert.equal(cash.analysis!.totalMarketValueUsd, 12_000);

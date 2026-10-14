@@ -7,6 +7,7 @@ import type { PortfolioCashPosition, PortfolioItem } from "@/domain/portfolio";
 import { securityQuoteAlias } from "@/domain/security-equivalence";
 
 import { getDb } from "../client";
+import { recordPortfolioSecurityBalances } from "./dividend-repository";
 import {
   benchmarks,
   etfs,
@@ -120,21 +121,14 @@ function loadPortfolio(id: string): StoredPortfolio | undefined {
 }
 
 export function loadDefaultPortfolio(): StoredPortfolio {
-  const db = getDb();
-  db.insert(portfolios)
-    .values({
-      id: DEFAULT_PORTFOLIO_ID,
-      name: "My portfolio",
-      baseCurrency: "USD",
-    })
-    .onConflictDoNothing()
-    .run();
-
-  const portfolio = loadPortfolio(DEFAULT_PORTFOLIO_ID);
-  if (!portfolio) {
-    throw new Error("Unable to initialise the portfolio.");
-  }
-  return portfolio;
+  return loadPortfolio(DEFAULT_PORTFOLIO_ID) ?? {
+    id: DEFAULT_PORTFOLIO_ID,
+    name: "My portfolio",
+    baseCurrency: "USD",
+    updatedAt: "",
+    items: [],
+    cashPositions: [],
+  };
 }
 
 export function loadPortfolioById(id: string): StoredPortfolio | undefined {
@@ -170,6 +164,7 @@ export function anchorPortfolioQuantities(
         )
         .run();
     }
+    recordPortfolioSecurityBalances(portfolioId);
   });
 }
 
@@ -237,6 +232,7 @@ export function replaceDefaultPortfolio(
         )
         .run();
     }
+    recordPortfolioSecurityBalances(DEFAULT_PORTFOLIO_ID);
   });
 }
 
@@ -251,8 +247,22 @@ interface SavePortfolioAsEtfInput {
 export function saveDefaultPortfolioAsEtf(
   input: SavePortfolioAsEtfInput,
 ): EtfShareClass {
+  return getDb().transaction(() => {
+    const source = loadPortfolio(DEFAULT_PORTFOLIO_ID);
+    if (!source || (!source.items.length && !source.cashPositions.length)) {
+      throw new Error("Add positions or cash before saving the portfolio.");
+    }
+    const saved = savePortfolioRecordAsEtf(input, source);
+    getDb().delete(portfolios).where(eq(portfolios.id, DEFAULT_PORTFOLIO_ID)).run();
+    return saved;
+  });
+}
+
+export function savePortfolioRecordAsEtf(
+  input: SavePortfolioAsEtfInput,
+  source: StoredPortfolio,
+): EtfShareClass {
   const db = getDb();
-  const source = loadDefaultPortfolio();
   const portfolioId = `saved-portfolio-${randomUUID()}`;
   const etfId = `portfolio-etf-${randomUUID()}`;
   const localIsin = `LOCAL-${randomUUID()}`;
@@ -357,6 +367,7 @@ export function saveDefaultPortfolioAsEtf(
         updatedAt: now,
       })
       .run();
+    recordPortfolioSecurityBalances(portfolioId, now);
   });
 
   return {

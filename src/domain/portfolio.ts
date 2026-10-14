@@ -157,6 +157,7 @@ export interface PortfolioAnalysis {
 }
 
 export interface PortfolioRecord {
+  amountsVisible?: boolean;
   id: string;
   name: string;
   baseCurrency: string;

@@ -202,6 +202,44 @@ export const portfolios = sqliteTable("portfolios", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const applicationSettings = sqliteTable("application_settings", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const securityDividendObservations = sqliteTable("security_dividend_observations", {
+  securityId: text("security_id").primaryKey().references(() => securities.id, { onDelete: "cascade" }),
+  providerSymbol: text("provider_symbol").notNull(),
+  valueJson: text("value_json").notNull(),
+  capturedAt: text("captured_at").notNull(),
+  retryAfter: text("retry_after"),
+});
+
+export const portfolioDividendTracking = sqliteTable("portfolio_dividend_tracking", {
+  portfolioId: text("portfolio_id").primaryKey().references(() => portfolios.id, { onDelete: "cascade" }),
+  startedAt: text("started_at").notNull(),
+});
+
+export const portfolioSecurityBalances = sqliteTable("portfolio_security_balances", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
+  securityId: text("security_id").notNull().references(() => securities.id),
+  effectiveAt: text("effective_at").notNull(),
+  quantity: real("quantity"),
+  providerSymbol: text("provider_symbol"),
+}, (table) => [index("portfolio_security_balances_lookup_idx").on(table.portfolioId, table.securityId, table.effectiveAt)]);
+
+export const portfolioDividendPayments = sqliteTable("portfolio_dividend_payments", {
+  id: text("id").primaryKey(),
+  portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
+  securityId: text("security_id").notNull().references(() => securities.id),
+  providerSymbol: text("provider_symbol").notNull(),
+  exDate: text("ex_date").notNull(),
+  valueJson: text("value_json").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [uniqueIndex("portfolio_dividend_payment_event_uq").on(table.portfolioId, table.securityId, table.exDate)]);
+
 export const portfolioHistorySettings = sqliteTable("portfolio_history_settings", {
   portfolioId: text("portfolio_id").primaryKey().references(() => portfolios.id, { onDelete: "cascade" }),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
@@ -343,7 +381,6 @@ export const metricObservations = sqliteTable(
       table.metricDefinitionId,
       table.entityType,
       table.entityId,
-      table.asOf,
     ),
     index("metric_observations_entity_idx").on(table.entityType, table.entityId),
     index("metric_observations_latest_idx").on(

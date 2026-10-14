@@ -14,6 +14,7 @@ import type { Holding } from "@/domain/etf";
 import type { PortfolioCashPosition, PortfolioItem } from "@/domain/portfolio";
 
 import { getDb } from "../client";
+import { recordPortfolioSecurityBalances } from "./dividend-repository";
 import {
   benchmarks,
   etfs,
@@ -23,6 +24,8 @@ import {
   metricObservations,
   portfolioCashPositions,
   portfolioItems,
+  portfolioSecurityBalances,
+  portfolioDividendPayments,
   portfolios,
   securities,
 } from "../schema";
@@ -526,6 +529,7 @@ export function replacePortfolioEtfRecord(
       })
       .where(eq(etfs.id, input.id))
       .run();
+    recordPortfolioSecurityBalances(input.portfolioId, now);
   });
 
   return findEtfById(input.id);
@@ -642,6 +646,14 @@ export function deleteLocalEtfRecord(id: string): boolean {
                   AND NOT EXISTS (
                     SELECT 1 FROM ${portfolioItems}
                     WHERE ${portfolioItems.securityId} = ${securities.id}
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM ${portfolioSecurityBalances}
+                    WHERE ${portfolioSecurityBalances.securityId} = ${securities.id}
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM ${portfolioDividendPayments}
+                    WHERE ${portfolioDividendPayments.securityId} = ${securities.id}
                   )
                 `,
               ),

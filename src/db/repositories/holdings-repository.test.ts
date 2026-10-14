@@ -12,9 +12,40 @@ import { ensureLocalDatabase } from "../bootstrap";
 import { closeDatabase, getSqlite } from "../client";
 import { findEtfById } from "./catalog-repository";
 import {
+  findLatestSnapshot,
   loadSnapshot,
   persistSnapshot,
 } from "./holdings-repository";
+
+test("replaces a holdings cache across days and rolls back failed replacements", () => {
+  const originalPath = process.env.DATABASE_PATH;
+  const directory = mkdtempSync(join(tmpdir(), "holdings-current-cache-"));
+  try {
+    process.env.DATABASE_PATH = join(directory, "test.sqlite");
+    closeDatabase();
+    ensureLocalDatabase();
+    const etf = findEtfById("qtop-us")!;
+    const holding = { securityId: "CURRENT-TEST", ticker: "CURRENT", name: "Current holding", sector: "Technology", country: "United States", assetClass: "Equity", weight: 100 };
+    const first = persistSnapshot({ etf, asOf: "2026-10-01", fetchedAt: "2026-10-01T00:00:00Z", sourceUrl: "test", sourceHash: "first", holdings: [holding] });
+    const second = persistSnapshot({ etf, asOf: "2026-10-02", fetchedAt: "2026-10-02T00:00:00Z", sourceUrl: "test", sourceHash: "second", holdings: [holding] });
+    assert.deepEqual(getSqlite().prepare("SELECT id FROM holding_snapshots WHERE etf_id=?").all(etf.id), [{ id: second.id }]);
+    assert.deepEqual(getSqlite().prepare("SELECT count(*) AS n FROM holdings WHERE snapshot_id=?").get(first.id), { n: 0 });
+    assert.throws(() => persistSnapshot({ etf, asOf: "2026-10-03", fetchedAt: "2026-10-03T00:00:00Z", sourceUrl: "test", sourceHash: "invalid", holdings: [] }), /Invalid holdings/);
+    assert.throws(() => persistSnapshot({ etf, asOf: "2026-10-03", fetchedAt: "invalid", sourceUrl: "test", sourceHash: "bad-date", holdings: [holding] }), /Invalid holdings/);
+    getSqlite().exec("CREATE TEMP TRIGGER fail_holdings_write BEFORE INSERT ON holdings BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END");
+    assert.throws(() => persistSnapshot({ etf, asOf: "2026-10-03", fetchedAt: "2026-10-03T00:00:00Z", sourceUrl: "test", sourceHash: "failed", holdings: [holding] }), /simulated write failure/);
+    getSqlite().exec("DROP TRIGGER fail_holdings_write");
+    assert.equal(findLatestSnapshot(etf.id)?.id, second.id);
+    const lateResponse = persistSnapshot({ etf, asOf: "2026-10-01", fetchedAt: "2026-10-01T01:00:00Z", sourceUrl: "test", sourceHash: "late", holdings: [holding] });
+    assert.equal(lateResponse.id, second.id);
+    assert.equal(loadSnapshot(etf, second, "stale", 24).holdings.length, 1);
+  } finally {
+    closeDatabase();
+    if (originalPath === undefined) delete process.env.DATABASE_PATH;
+    else process.env.DATABASE_PATH = originalPath;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("reconciles source fallback IDs into one canonical security across every consumer", () => {
   const originalPath = process.env.DATABASE_PATH;
@@ -88,6 +119,14 @@ test("reconciles source fallback IDs into one canonical security across every co
       ) VALUES ('identity-test-position', 'default-portfolio', 'security', ?, 100)
     `).run(legacyId);
 
+    sqlite.prepare(`INSERT INTO security_dividend_observations (security_id, provider_symbol, value_json, captured_at)
+      VALUES (?, 'AAPL', '{"providerSymbol":"AAPL"}', '2026-08-01T00:00:00Z')`).run(legacyId);
+    sqlite.prepare(`INSERT INTO portfolio_security_balances (portfolio_id, security_id, effective_at, quantity, provider_symbol)
+      VALUES ('default-portfolio', ?, '2026-08-01T00:00:00Z', 100, 'AAPL')`).run(legacyId);
+    sqlite.prepare(`INSERT INTO portfolio_dividend_payments (id, portfolio_id, security_id, provider_symbol, ex_date, value_json, created_at)
+      VALUES ('identity-dividend', 'default-portfolio', ?, 'AAPL', '2026-07-01', ?, '2026-08-01T00:00:00Z')`).run(legacyId, JSON.stringify({ securityId: legacyId, netAmount: 10 }));
+    sqlite.prepare(`INSERT INTO application_settings (key, value_json, updated_at) VALUES ('dividends', ?, '2026-08-01T00:00:00Z')`).run(JSON.stringify({ countryRates: {}, securityRates: { [legacyId]: 15 } }));
+
     const canonicalSnapshot = persistSnapshot({
       etf: ivv,
       asOf: "2026-07-31",
@@ -116,13 +155,15 @@ test("reconciles source fallback IDs into one canonical security across every co
         .get() as { count: number }).count,
       1,
     );
-    for (const table of ["holdings", "security_provider_symbols", "portfolio_items"]) {
+    for (const table of ["holdings", "security_provider_symbols", "portfolio_items", "security_dividend_observations", "portfolio_security_balances", "portfolio_dividend_payments"]) {
       assert.equal(
         (sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE security_id = ?`)
           .get(legacyId) as { count: number }).count,
         0,
       );
     }
+    assert.equal(JSON.parse((sqlite.prepare("SELECT value_json FROM portfolio_dividend_payments WHERE id = 'identity-dividend'").get() as { value_json: string }).value_json).securityId, canonicalId);
+    assert.equal(JSON.parse((sqlite.prepare("SELECT value_json FROM application_settings WHERE key = 'dividends'").get() as { value_json: string }).value_json).securityRates[canonicalId], 15);
     assert.equal(
       (sqlite.prepare(`SELECT entity_id AS id FROM metric_observations
         WHERE id = 'identity-test-observation'`).get() as { id: string }).id,

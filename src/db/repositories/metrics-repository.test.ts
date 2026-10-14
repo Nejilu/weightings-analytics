@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { loadUpcomingEarnings, saveUpcomingEarningsBatch } from "./upcoming-earnings-repository";
 
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "weightings-analytics-metrics-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
@@ -95,17 +96,9 @@ test("persists metric batches and keeps definitions idempotent", () => {
       { securityId: "security:test", series: makeSeries("NASDAQ:TEST", 100) },
       { securityId: "security:test-2", series: makeSeries("NASDAQ:TEST2", 120) },
     ], "2026-08-01T00:00:00.000Z");
-    db.insert(schema.metricObservations).values({
-      id: "malformed-estimate-observation",
-      metricDefinitionId: "security:eps_estimate_series:v1",
-      entityType: "security",
-      entityId: "security:test",
-      asOf: "2026-08-03",
-      valueText: "NASDAQ:TEST",
-      valueJson: { points: [] },
-      source: "test",
-      capturedAt: "2026-08-03T00:00:00.000Z",
-    }).run();
+    assert.throws(() => repository.saveEstimateSeriesBatch([
+      { securityId: "security:test", series: { ...makeSeries("NASDAQ:TEST", 100), points: [] } },
+    ], "2026-08-03T00:00:00.000Z"), /Invalid estimate series/);
     repository.saveDerivedSecurityMetricsBatch([
       {
         securityId: "security:test",
@@ -158,6 +151,14 @@ test("persists metric batches and keeps definitions idempotent", () => {
     assert.equal(latestMetrics?.sourceCapturedAtByKey.get("beta_1y"), "2026-08-01T00:00:00.000Z");
     assert.equal(latestMetrics?.sourceProviderSymbolByKey.get("beta_1y"), "NASDAQ:TEST");
     assert.equal(latestMetrics?.capturedAt, "2026-08-02T00:00:00.000Z");
+    assert.equal(db.select().from(schema.metricObservations).all().filter((row) =>
+      row.entityId === "security:test" && row.metricDefinitionId === "security:price_to_book:v1").length, 1);
+    repository.saveSecurityMetricsBatch([{ securityId: "security:test", providerSymbol: "NASDAQ:TEST", values: { price_to_book: 99 } }], "2026-07-01T00:00:00.000Z");
+    repository.saveSecurityMetricsBatch([{ securityId: "security:test", providerSymbol: "NASDAQ:TEST", values: { price_to_book: NaN } }], "2026-08-04T00:00:00.000Z");
+    assert.equal(repository.loadLatestSecurityMetrics(["security:test"]).get("security:test")?.values.price_to_book, 2.8);
+    repository.saveEstimateSeriesBatch([{ securityId: "security:test", series: makeSeries("NASDAQ:TEST", 110) }], "2026-08-02T00:00:00.000Z");
+    repository.saveEstimateSeriesBatch([{ securityId: "security:test", series: makeSeries("NASDAQ:TEST", 999) }], "2026-07-01T00:00:00.000Z");
+    assert.equal(repository.loadLatestEstimateSeries(["security:test"]).get("security:test")?.series.price, 110);
     assert.equal(db.select().from(schema.metricDefinitions).all()
       .some((definition) => definition.id === "security:pe_ttm:v1"), true);
     assert.equal(db.select().from(schema.metricObservations).all()
@@ -174,6 +175,15 @@ test("persists metric batches and keeps definitions idempotent", () => {
     const invalidated = repository.loadLatestSecurityMetrics(["security:test"]).get("security:test");
     assert.equal(invalidated?.values.pe_estimate_window_0, undefined);
     assert.equal(invalidated?.values.pe_estimate_window_4, 22);
+    assert.throws(() => repository.saveDerivedSecurityMetricsBatch([{ securityId: "security:test", providerSymbol: "NASDAQ:TEST", values: { pe_estimate_window_4: Infinity }, capturedAt: "2026-08-04T00:00:00.000Z" }]), /Invalid derived metrics/);
+    assert.equal(repository.loadLatestSecurityMetrics(["security:test"]).get("security:test")?.values.pe_estimate_window_4, 22);
+    const earnings = { providerSymbol: "NASDAQ:TEST", reportDate: "2026-08-20", exchangeTimezone: "UTC" };
+    saveUpcomingEarningsBatch([{ securityId: "security:test", observation: earnings }], "2026-08-01T00:00:00.000Z");
+    saveUpcomingEarningsBatch([{ securityId: "security:test", observation: { ...earnings, reportDate: "2026-08-25" } }], "2026-08-02T00:00:00.000Z");
+    saveUpcomingEarningsBatch([{ securityId: "security:test", observation: earnings }], "2026-07-01T00:00:00.000Z");
+    assert.throws(() => saveUpcomingEarningsBatch([{ securityId: "security:test", observation: { ...earnings, exchangeTimezone: "INVALID" } }], "2026-08-04T00:00:00.000Z"));
+    assert.equal(loadUpcomingEarnings(["security:test"]).get("security:test")?.reportDate, "2026-08-25");
+    assert.equal(db.select().from(schema.metricObservations).all().filter(row => row.metricDefinitionId === "security:upcoming_earnings:v1").length, 1);
 
     const now = Date.parse("2026-08-04T00:00:00.000Z");
     repository.saveProviderNegativeCacheBatch([
