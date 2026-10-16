@@ -1,4 +1,5 @@
 import type { Holding } from "@/domain/etf";
+import { samsungGdrForSecurity } from "@/domain/samsung-securities";
 
 type SymbolInput = Pick<
   Holding,
@@ -81,6 +82,8 @@ export interface TradingViewSymbolCandidate {
 }
 
 function depositaryPrefix(input: SymbolInput): string | undefined {
+  // London's International Order Book uses LSIN in the TradingView screener.
+  if (samsungGdrForSecurity(input)) return "LSIN";
   const ticker = input.ticker.toLocaleUpperCase("en-US");
   const name = input.name.toLocaleLowerCase("en-US");
   const prefix = DEPOSITARY_RECEIPT_PREFIXES[ticker];
@@ -111,6 +114,10 @@ function prefixes(input: SymbolInput): string[] {
 }
 
 function normalizedTicker(input: SymbolInput, prefix: string): string {
+  if (prefix === "LSIN") {
+    const samsungGdr = samsungGdrForSecurity(input);
+    if (samsungGdr) return samsungGdr.ticker;
+  }
   let ticker = input.ticker.trim().replace(/\s+/g, "_");
   const name = input.name.toLocaleLowerCase("en-US");
   if (ticker === "BRKB" && name.includes("berkshire")) ticker = "BRK.B";

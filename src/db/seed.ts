@@ -5,6 +5,7 @@ import { SUPPORTED_INDIVIDUAL_SECURITIES } from "../data/supported-individual-se
 import { getDb } from "./client";
 import { migrateCustomEtfDefinitions } from "./repositories/local-etf-repository";
 import { reconcilePersistedSecurityIdentities } from "./security-identity-repository";
+import { seedSupportedIndividualSecurities } from "./supported-securities";
 import {
   benchmarks,
   etfs,
@@ -160,35 +161,7 @@ export function seedCatalog(): void {
       )`,
     )).run();
 
-    for (const security of SUPPORTED_INDIVIDUAL_SECURITIES) {
-      const values = {
-        id: security.securityId,
-        isin: security.isin ?? null,
-        primaryTicker: security.ticker,
-        name: security.name,
-        assetClass: security.assetClass,
-        sector: security.sector,
-        country: security.country,
-        currency: security.currency,
-        identifiersJson: {
-          exchange: security.exchange,
-          ...(security.cusip ? { cusip: security.cusip } : {}),
-          ...(security.sedol ? { sedol: security.sedol } : {}),
-          ...(security.adrPremiumPairId ? { adrPremiumPairId: security.adrPremiumPairId } : {}),
-        },
-      };
-      transaction
-        .insert(securities)
-        .values(values)
-        .onConflictDoUpdate({
-          target: securities.id,
-          set: {
-            ...values,
-            updatedAt: sql`CURRENT_TIMESTAMP`,
-          },
-        })
-        .run();
-    }
+    seedSupportedIndividualSecurities(transaction);
 
     for (const benchmark of ETF_CATALOG) {
       transaction

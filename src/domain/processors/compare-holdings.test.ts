@@ -46,6 +46,17 @@ function holding(
   };
 }
 
+test("Samsung's local shares and GDRs have the same combined economic exposure", () => {
+  const result = compareHoldings(
+    snapshot("LOCAL", [holding("KR7005930003", "005930", 70), holding("KR7005931001", "005935", 30)]),
+    snapshot("GDR", [holding("US7960508882", "SMSN", 60), holding("US7960502018", "SMSD", 40)]),
+  );
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].leftWeight, 100);
+  assert.equal(result.positions[0].rightWeight, 100);
+  assert.equal(result.positions[0].overlapWeight, 100);
+});
+
 test("comparisons and implicit weights retain the actual ADR component of a merged issuer", () => {
   const adr = { ...holding("US8740391003", "TSM", 80), name: "Taiwan Semiconductor ADR" };
   const local = { ...holding("TW0002330008", "2330", 20), name: "Taiwan Semiconductor Manufacturing" };

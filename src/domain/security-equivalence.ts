@@ -1,5 +1,6 @@
 import type { Holding } from "./etf";
 import { adrPairForListing } from "./adr-premium";
+import { SAMSUNG_GDRS, samsungGdrForSecurity } from "./samsung-securities";
 
 type SecurityDescriptor = Pick<Holding, "securityId" | "ticker" | "name">;
 type QuoteDescriptor = Pick<Holding, "ticker" | "name">;
@@ -19,9 +20,18 @@ export interface SecurityQuoteAlias {
   providerSymbol: string;
   instrumentType: "ADR" | "GDR";
   underlyingTicker: string;
+  underlyingSharesPerReceipt?: number;
 }
 
 const ECONOMIC_GROUPS: EconomicSecurityGroup[] = [
+  {
+    key: "samsung-electronics",
+    displayTicker: "005930 / 005935 / SMSN / SMSD",
+    displayName: "SAMSUNG ELECTRONICS",
+    tickers: ["005930", "005930.KS", "005935", "005935.KS",
+      ...SAMSUNG_GDRS.flatMap((gdr) => [...gdr.tickerAliases])],
+    nameIncludes: ["SAMSUNG ELECTRONICS"],
+  },
   {
     key: "alphabet",
     displayTicker: "GOOG / GOOGL",
@@ -84,6 +94,16 @@ export function economicSecurityIdentity(
 export function securityQuoteAlias(
   security: QuoteDescriptor,
 ): SecurityQuoteAlias | undefined {
+  const samsungGdr = samsungGdrForSecurity(security);
+  if (samsungGdr) {
+    return {
+      displayTicker: samsungGdr.ticker,
+      providerSymbol: samsungGdr.yahooSymbol,
+      instrumentType: "GDR",
+      underlyingTicker: samsungGdr.underlyingTicker,
+      underlyingSharesPerReceipt: samsungGdr.underlyingSharesPerReceipt,
+    };
+  }
   if (normalized(security.ticker) === "SKHY") {
     return {
       displayTicker: "SKHY",
@@ -118,8 +138,9 @@ export function securityListingQuoteSymbol(
 ): string | undefined {
   const ticker = normalized(preferredTicker);
   if (!ticker || ticker === "—") return undefined;
+  const samsungGdr = samsungGdrForSecurity({ ticker });
+  if (samsungGdr) return samsungGdr.yahooSymbol;
   if (ticker === "HY9H") return "HY9H.F";
-  if (ticker === "SMSN") return "SMSN.IL";
   if (/\.(?:T|KS|KQ|TW|TWO|HK|SS|SZ|SR|NS|BO|SI|IL|F)$/.test(ticker)) {
     return ticker;
   }

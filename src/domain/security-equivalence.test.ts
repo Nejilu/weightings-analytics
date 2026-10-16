@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Holding } from "./etf";
+import { SAMSUNG_GDRS } from "./samsung-securities";
 import {
   mergeEquivalentHoldings,
   securityListingQuoteSymbol,
@@ -53,6 +54,40 @@ test("maps Asian primary listings to explicit Yahoo depositary symbols", () => {
       underlyingTicker: "000660",
     },
   );
+});
+
+test("Samsung keeps local share prices distinct from its 25-share GDR prices", () => {
+  for (const gdr of SAMSUNG_GDRS) {
+    for (const ticker of gdr.tickerAliases) {
+      const security = { ticker, name: gdr.name, country: "Korea (South)" };
+      assert.deepEqual(securityQuoteAlias(security), {
+        displayTicker: gdr.ticker, providerSymbol: gdr.yahooSymbol, instrumentType: "GDR",
+        underlyingTicker: gdr.underlyingTicker, underlyingSharesPerReceipt: 25,
+      });
+      assert.equal(securityListingQuoteSymbol(security), gdr.yahooSymbol);
+    }
+    const local = { ticker: gdr.underlyingTicker, name: "SAMSUNG ELECTRONICS", country: "Korea (South)" };
+    assert.equal(securityQuoteAlias(local), undefined);
+    assert.equal(securityListingQuoteSymbol(local), `${gdr.underlyingTicker}.KS`);
+  }
+});
+
+test("Samsung's four instruments sum monetary exposure without scaling GDR weights by 25", () => {
+  const source = [
+    holding("KR7005930003", "005930", "SAMSUNG ELECTRONICS LTD", 40),
+    holding("KR7005931001", "005935", "SAMSUNG ELECTRONICS NON VOTING PRE", 20),
+    ...SAMSUNG_GDRS.map((gdr) => holding(gdr.isin, gdr.ticker, gdr.name, 10)),
+    holding("KR7006400006", "006400", "SAMSUNG SDI LTD", 20),
+  ].map((row) => ({ ...row, marketValue: row.weight * 100 }));
+  const before = structuredClone(source);
+  const merged = mergeEquivalentHoldings(source);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].securityId, "economic:samsung-electronics");
+  assert.equal(merged[0].ticker, "005930 / 005935 / SMSN / SMSD");
+  assert.equal(merged[0].weight, 80);
+  assert.equal(merged[0].marketValue, 8000);
+  assert.equal(merged[1].securityId, "KR7006400006");
+  assert.deepEqual(source, before);
 });
 
 test("builds explicit Yahoo symbols for dominant local Asian listings", () => {

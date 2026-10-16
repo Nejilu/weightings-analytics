@@ -28,6 +28,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/db-seed.ts",
+    "db:sync-samsung": "tsx scripts/sync-samsung-securities.ts",
     "db:setup": "tsx scripts/db-setup.ts",
     "db:stats": "tsx scripts/db-stats.ts",
     "db:audit-mappings": "node scripts/audit-tradingview-mappings.mjs",

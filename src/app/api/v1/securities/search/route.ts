@@ -4,7 +4,8 @@ import {
   HoldingsUnavailableError,
 } from "@/data/services/holdings-service";
 import { SUPPORTED_INDIVIDUAL_SECURITIES } from "@/data/supported-individual-securities";
-import { securityQuoteAlias } from "@/domain/security-equivalence";
+import { economicSecurityIdentity, securityQuoteAlias } from "@/domain/security-equivalence";
+import { securitySearchIssuerWeights } from "@/domain/security-search";
 
 const MAX_RESULTS = 12;
 
@@ -31,10 +32,13 @@ async function handleGET(request: Request) {
       }
     }
 
-    const matches = [...searchUniverse.values()]
+    const holdings = [...searchUniverse.values()];
+    const issuerWeights = securitySearchIssuerWeights(holdings);
+    const matches = holdings
       .map((holding) => ({
         holding,
         alias: securityQuoteAlias(holding),
+        issuerWeight: issuerWeights.get(economicSecurityIdentity(holding).securityId) ?? holding.weight,
       }))
       .filter(({ holding, alias }) => {
         if (equityOnly && !holding.assetClass.toLowerCase().includes("equity")) return false;
@@ -67,6 +71,7 @@ async function handleGET(request: Request) {
         };
         return (
           score(left) - score(right) ||
+          right.issuerWeight - left.issuerWeight ||
           right.holding.weight - left.holding.weight
         );
       })
@@ -80,6 +85,7 @@ async function handleGET(request: Request) {
         quoteSymbol: alias?.providerSymbol,
         instrumentType: alias?.instrumentType,
         underlyingTicker: alias?.underlyingTicker,
+        underlyingSharesPerReceipt: alias?.underlyingSharesPerReceipt,
       }));
 
     return Response.json(

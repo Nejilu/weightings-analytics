@@ -78,6 +78,18 @@ exposures. Display IDs such as `economic:*` must never replace canonical IDs in
 provider mappings, prices, persisted holdings, or constituent metrics. Grouped
 rows retain a canonical quote candidate and its listing ticker.
 
+Samsung Electronics groups its Korean ordinary (`005930`) and preferred
+(`005935`) shares with the London Regulation S GDRs `SMSN` and `SMSD` for
+display only. Each GDR represents 25 shares of its corresponding Korean class;
+weights and monetary exposures are already valued and must not be multiplied
+by 25 during grouping. Each instrument keeps its own ISIN and price. The GDRs
+are seeded as supported individual securities even without an ETF holding.
+TradingView uses `LSIN:SMSN` / `LSIN:SMSD`, and Yahoo uses `SMSN.IL` / `SMSD.IL`.
+The former Luxembourg ticker `SMSEL` resolves to the same preferred GDR as
+`SMSD`. Run `npm run db:sync-samsung` to verify both GDR ISINs, USD currencies
+and receipt types against TradingView before saving their resolved mappings.
+The separate institutional 144A line `BC94` is not added to the selector.
+
 Classic Holdings analysis includes a read-only portfolio valuation: total NAV
 in USD, actual instruments with amounts and share quantities, and explicit cash
 balances. Underlying dollar exposures use the original signed NAV weights,

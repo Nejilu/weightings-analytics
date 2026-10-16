@@ -8,6 +8,7 @@ import {
   analyzePortfolioForDisplay,
 } from "./analyze-portfolio";
 import { valuePortfolioPositions } from "./value-portfolio";
+import { SAMSUNG_GDRS } from "../samsung-securities";
 
 const apple: PortfolioSecurity = {
   securityId: "US0378331005",
@@ -36,6 +37,29 @@ const snapshot = {
     { ...microsoft, weight: 40 },
   ],
 } as HoldingsSnapshot;
+
+test("Samsung display combines local shares and GDRs while canonical instruments and the dominant quote remain distinct", () => {
+  const securities: PortfolioSecurity[] = [
+    { ...apple, securityId: "KR7005930003", ticker: "005930", name: "SAMSUNG ELECTRONICS LTD" },
+    { ...apple, securityId: "KR7005931001", ticker: "005935", name: "SAMSUNG ELECTRONICS PREFERRED" },
+    ...SAMSUNG_GDRS.map((gdr) => ({ ...apple, securityId: gdr.isin, ticker: gdr.ticker, name: gdr.name })),
+  ];
+  const items: PortfolioItem[] = securities.map((security, i) => ({
+    id: security.securityId, kind: "security", referenceId: security.securityId,
+    ticker: security.ticker, name: security.name, allocationWeight: [20, 10, 50, 20][i],
+  }));
+  const input = { items, etfSnapshots: new Map(), directSecurities: new Map(securities.map((security) => [security.securityId, security])) };
+  const canonical = analyzePortfolio(input);
+  assert.equal(canonical.positions.length, 4);
+  assert.deepEqual(new Set(canonical.positions.map((position) => position.securityId)), new Set(securities.map((security) => security.securityId)));
+  const displayed = analyzePortfolioForDisplay(input);
+  assert.equal(displayed.positions.length, 1);
+  assert.equal(displayed.positions[0].securityId, "economic:samsung-electronics");
+  assert.equal(displayed.positions[0].weight, 100);
+  assert.equal(displayed.positions[0].quoteSecurityId, "US7960508882");
+  assert.equal(displayed.positions[0].quoteTicker, "SMSN");
+  assert.equal(displayed.positions[0].contributions.length, 4);
+});
 
 test("SKHY carries its ADR premium but a GDR price override does not", () => {
   const security: PortfolioSecurity = { ...apple, securityId: "US78392B2060", ticker: "SKHY",

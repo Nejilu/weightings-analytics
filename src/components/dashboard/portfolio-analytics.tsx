@@ -52,6 +52,7 @@ interface SecuritySearchResult {
   quoteSymbol?: string;
   instrumentType?: "ADR" | "GDR";
   underlyingTicker?: string;
+  underlyingSharesPerReceipt?: number;
 }
 
 interface CompositionRow {
@@ -1072,7 +1073,9 @@ export function PortfolioAnalytics({
                         <span>{security.name}</span>
                         <small>
                           {security.instrumentType && security.quoteSymbol
-                            ? `${security.instrumentType} · Yahoo ${security.quoteSymbol} · underlying ${security.underlyingTicker}`
+                            ? security.underlyingSharesPerReceipt
+                              ? `${security.instrumentType} · ${security.underlyingSharesPerReceipt} × ${security.underlyingTicker} · USD`
+                              : `${security.instrumentType} · Yahoo ${security.quoteSymbol} · underlying ${security.underlyingTicker}`
                             : security.sector}
                         </small>
                       </button>

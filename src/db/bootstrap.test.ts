@@ -15,6 +15,40 @@ import {
   findSecuritiesByIds,
 } from "./repositories/catalog-repository";
 import { etfs } from "./schema";
+import { SAMSUNG_GDRS } from "@/domain/samsung-securities";
+import { seedSupportedIndividualSecurities } from "./supported-securities";
+
+test("catalog setup seeds two distinct Samsung GDRs and persists their 25-share ratios", () => {
+  const originalPath = process.env.DATABASE_PATH;
+  const directory = mkdtempSync(join(tmpdir(), "samsung-gdr-catalog-"));
+  try {
+    process.env.DATABASE_PATH = join(directory, "test.sqlite");
+    closeDatabase();
+    ensureLocalDatabase();
+    seedCatalog();
+    getSqlite().exec("INSERT INTO securities (id, name) VALUES ('UNRELATED:KEEP', 'Unrelated security')");
+    getDb().transaction((transaction) => seedSupportedIndividualSecurities(transaction));
+    assert.equal(findSecuritiesByIds(["UNRELATED:KEEP"]).size, 1);
+    const rows = getSqlite().prepare("SELECT id, currency, identifiers_json FROM securities WHERE id IN (?, ?) ORDER BY id")
+      .all(...SAMSUNG_GDRS.map((gdr) => gdr.isin)) as Array<{ id: string; currency: string; identifiers_json: string }>;
+    assert.equal(rows.length, 2);
+    for (const gdr of SAMSUNG_GDRS) {
+      assert.equal(findSecuritiesByIds([gdr.isin]).get(gdr.isin)?.ticker, gdr.ticker);
+      const row = rows.find((candidate) => candidate.id === gdr.isin)!;
+      assert.equal(row.currency, "USD");
+      assert.deepEqual(JSON.parse(row.identifiers_json).depositaryReceipt, {
+        underlyingSecurityId: gdr.underlyingSecurityId,
+        underlyingTicker: gdr.underlyingTicker,
+        underlyingSharesPerReceipt: 25,
+      });
+    }
+  } finally {
+    closeDatabase();
+    if (originalPath === undefined) delete process.env.DATABASE_PATH;
+    else process.env.DATABASE_PATH = originalPath;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("catalog cleanup retains saved selections and removes caches of removed securities", () => {
   const originalPath = process.env.DATABASE_PATH;

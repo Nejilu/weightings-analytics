@@ -1,9 +1,15 @@
 import type { Holding } from "@/domain/etf";
+import { SAMSUNG_GDRS } from "@/domain/samsung-securities";
 
 export interface SupportedIndividualSecurity
   extends Omit<Holding, "weight" | "marketValue"> {
   currency: string;
   exchange: string;
+  depositaryReceipt?: {
+    underlyingSecurityId: string;
+    underlyingTicker: string;
+    underlyingSharesPerReceipt: number;
+  };
 }
 
 /**
@@ -11,6 +17,23 @@ export interface SupportedIndividualSecurity
  * are not present in the current ACWI holdings snapshot.
  */
 export const SUPPORTED_INDIVIDUAL_SECURITIES: readonly SupportedIndividualSecurity[] = [
+  ...SAMSUNG_GDRS.map((gdr) => ({
+    securityId: gdr.isin,
+    isin: gdr.isin,
+    ticker: gdr.ticker,
+    name: gdr.name,
+    sector: "Information Technology",
+    assetClass: "Equity",
+    country: "Korea (South)",
+    currency: "USD",
+    exchange: "London Stock Exchange",
+    cusip: gdr.isin.slice(2, 11),
+    depositaryReceipt: {
+      underlyingSecurityId: gdr.underlyingSecurityId,
+      underlyingTicker: gdr.underlyingTicker,
+      underlyingSharesPerReceipt: gdr.underlyingSharesPerReceipt,
+    },
+  })),
   {
     // Citi sponsored Nasdaq ADR, distinct from the HY9H GDR.
     // https://depositaryreceipts.citi.com/adr/guides/pgm_d.aspx?cusip=78392B206&pageId=15&subpageid=105

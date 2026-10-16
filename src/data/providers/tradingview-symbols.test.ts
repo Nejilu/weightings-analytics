@@ -15,6 +15,18 @@ test("uses the exact iShares listing exchange when it is available", () => {
   }), ["NASDAQ:AAPL"]);
 });
 
+test("Samsung GDRs use the verified LSIN order book, including the former SMSEL ticker", () => {
+  for (const [ticker, symbol] of [["SMSN", "LSIN:SMSN"], ["SMSN.IL", "LSIN:SMSN"],
+    ["SMSD", "LSIN:SMSD"], ["SMSD.IL", "LSIN:SMSD"], ["SMSEL", "LSIN:SMSD"]]) {
+    for (const exchange of [undefined, "London Stock Exchange", "Luxembourg Stock Exchange"]) {
+      assert.deepEqual(tradingViewSymbolCandidateDetails({ ticker, name: "SAMSUNG ELECTRONICS GDR",
+        country: "Korea (South)", exchange }), [{ symbol, provenance: "confirmed_alias" }]);
+    }
+  }
+  assert.deepEqual(tradingViewSymbolCandidates({ ticker: "005935", name: "SAMSUNG ELECTRONICS PREFERRED",
+    country: "Korea (South)", exchange: "Korea Exchange (Stock Market)" }), ["KRX:005935"]);
+});
+
 test("prioritizes Euronext over the generic NYSE substring", () => {
   assert.deepEqual(tradingViewSymbolCandidates({
     ticker: "ABI",
