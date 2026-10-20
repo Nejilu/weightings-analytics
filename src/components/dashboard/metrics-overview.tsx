@@ -33,6 +33,7 @@ import type {
 import { EtfSearch } from "./etf-search";
 import { ManualRefreshButton } from "./manual-refresh-button";
 import { StockMetricsPanel } from "./stock-metrics-panel";
+import { readJsonLines } from "@/domain/json-lines";
 import { METRIC_GROUPS, CONSENSUS_OPTIONS, SOURCE_WARNING_LABELS, formatMetric, formatDelta, formatNumber, formatDate, formatDateTime, formatCaptureWindow } from "./metrics-presentation";
 
 interface MetricsOverviewProps {
@@ -572,6 +573,7 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
   const defaultId = allEtfs[0]?.id ?? "";
   const [selectedIds, setSelectedIds] = useState(() => [...new Set(initialEtfIds.filter((id) => allEtfs.some((etf) => etf.id === id)))].slice(0, 4));
   const [result, setResult] = useState<MetricsOverviewResult | null>(null);
+  const [consensusReady, setConsensusReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consensusHorizon, setConsensusHorizon] = useState<ConsensusHorizon>("4q");
@@ -617,15 +619,29 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
     setLoading(true);
     setError(null);
     setResult(null);
+    setConsensusReady(false);
     try {
-      const response = await fetch(`/api/v1/metrics/overview?etfs=${encodeURIComponent(uniqueIds.join(","))}${forceRefresh ? "&refresh=true" : ""}`, {
+      const response = await fetch(`/api/v1/metrics/overview?stream=true&etfs=${encodeURIComponent(uniqueIds.join(","))}${forceRefresh ? "&refresh=true" : ""}`, {
         cache: "no-cache",
         signal: controller.signal,
       });
-      const payload = await response.json() as { data?: MetricsOverviewResult; error?: string };
-      if (!response.ok || !payload.data) throw new Error(payload.error ?? "TradingView metrics are unavailable.");
-      if (requestController.current !== controller) return;
-      setResult(payload.data);
+      if (!response.ok || !response.body) {
+        const payload = await response.json() as { error?: string };
+        throw new Error(payload.error ?? "TradingView metrics are unavailable.");
+      }
+      let complete = false;
+      for await (const event of readJsonLines(response.body)) {
+        if (requestController.current !== controller) return;
+        const payload = event as { data?: MetricsOverviewResult; error?: string; phase?: string };
+        if (payload.error) throw new Error(payload.error);
+        if (!payload.data || !["fundamentals", "complete"].includes(payload.phase ?? "")) {
+          throw new Error("Invalid metrics response.");
+        }
+        setResult(payload.data);
+        complete = payload.phase === "complete";
+        setConsensusReady(complete);
+      }
+      if (!complete) throw new Error("Metrics loading was interrupted. Please retry.");
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") return;
       if (requestController.current !== controller) return;
@@ -688,10 +704,13 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
             ) : null}
           </section>
 
-          <ConsensusHorizonControl value={consensusHorizon} onChange={setConsensusHorizon} />
-
-          <ValuationPathChart result={result} horizon={consensusHorizon} />
-          <ComponentBubbleChart result={result} />
+          {consensusReady ? <>
+            <ConsensusHorizonControl value={consensusHorizon} onChange={setConsensusHorizon} />
+            <ValuationPathChart result={result} horizon={consensusHorizon} />
+            <ComponentBubbleChart result={result} />
+          </> : loading ? <section className="metrics-loading metrics-loading--partial panel" role="status">
+            <span className="spinner" /><strong>Fundamentals ready · Loading EPS consensus…</strong>
+          </section> : null}
 
           <section className="metrics-groups-panel panel">
             <div className="panel-heading">

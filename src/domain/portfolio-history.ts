@@ -3,6 +3,7 @@ export const PORTFOLIO_HISTORY_CLOSE_MINUTES = 16 * 60 + 10;
 export const PORTFOLIO_HISTORY_RETRY_MS = 5 * 60_000;
 
 export interface PortfolioValueSnapshot {
+  invested?: import("./portfolio-invested-return").InvestedSnapshot | null;
   date: string;
   capturedAt: string;
   valueUsd: number;

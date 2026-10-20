@@ -5549,6 +5549,18 @@ td.holdings-table-empty {
   font-size: 12px;
 }
 
+.metrics-loading--partial {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 16px 20px;
+}
+
+.metrics-loading--partial .spinner {
+  border-color: color-mix(in srgb, var(--purple) 25%, transparent);
+  border-top-color: var(--purple);
+  flex-shrink: 0;
+}
+
 .metrics-empty p {
   color: var(--muted);
   font-size: 9px;

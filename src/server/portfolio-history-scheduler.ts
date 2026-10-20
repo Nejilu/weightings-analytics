@@ -1,13 +1,31 @@
 import "server-only";
 import { captureDuePortfolios } from "@/data/services/portfolio-history-service";
 import { refreshPortfolioDividends } from "@/data/services/portfolio-dividends-service";
+import { refreshPortfolioMetricsIfDue } from "@/data/services/portfolio-metrics-refresh-service";
 
 const scheduler = globalThis as typeof globalThis & {
   __portfolioHistoryScheduler?: ReturnType<typeof setTimeout>;
   __portfolioDividendScheduler?: ReturnType<typeof setTimeout>;
+  __portfolioMetricsScheduler?: ReturnType<typeof setTimeout>;
 };
 
 export function startPortfolioHistoryScheduler() {
+  if (process.env.PORTFOLIO_METRICS_DAILY_REFRESH !== "false" && !scheduler.__portfolioMetricsScheduler) {
+    const metrics = async () => {
+      try {
+        const result = await refreshPortfolioMetricsIfDue();
+        if (result?.errors.length) console.warn("Daily portfolio metrics refresh incomplete.", result.errors);
+      } catch (error) { console.error("Daily portfolio metrics refresh failed.", error); }
+      finally {
+        scheduler.__portfolioMetricsScheduler = setTimeout(() => void metrics(), 15 * 60_000);
+        scheduler.__portfolioMetricsScheduler.unref();
+      }
+    };
+    // Leave startup quotes/history time to settle. The durable day claim
+    // prevents a restart or a failed provider from triggering a daily scan again.
+    scheduler.__portfolioMetricsScheduler = setTimeout(() => void metrics(), 90_000);
+    scheduler.__portfolioMetricsScheduler.unref();
+  }
   if (!scheduler.__portfolioDividendScheduler) {
     const dividends = async () => {
       try { await refreshPortfolioDividends(); }

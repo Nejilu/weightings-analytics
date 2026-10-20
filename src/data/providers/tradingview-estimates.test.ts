@@ -171,7 +171,7 @@ test("does not negative-cache estimate symbols from a failed partial batch", asy
   }
 });
 
-test("uses four estimate batches concurrently by default", async () => {
+test("uses five estimate batches concurrently by default", async () => {
   const previousBatchSize = process.env.TRADINGVIEW_ESTIMATES_BATCH_SIZE;
   const previousConcurrency = process.env.TRADINGVIEW_ESTIMATES_CONCURRENCY;
   process.env.TRADINGVIEW_ESTIMATES_BATCH_SIZE = "25";
@@ -179,7 +179,7 @@ test("uses four estimate batches concurrently by default", async () => {
   let activeBatches = 0;
   let maximumActiveBatches = 0;
   try {
-    const symbols = Array.from({ length: 100 }, (_, index) =>
+    const symbols = Array.from({ length: 125 }, (_, index) =>
       `NASDAQ:CONCURRENCY${String(index).padStart(3, "0")}`,
     );
     const result = await fetchTradingViewEstimateSeriesDetailed(symbols, async (batch) => {
@@ -190,10 +190,10 @@ test("uses four estimate batches concurrently by default", async () => {
       return batch.map((symbol) => validSeries(symbol));
     });
     assert.equal(result.series.length, symbols.length);
-    assert.equal(maximumActiveBatches, 4);
-    assert.equal(result.batchCount, 4);
-    assert.equal(result.completedBatchCount, 4);
-    assert.equal(result.nonEmptyBatchCount, 4);
+    assert.equal(maximumActiveBatches, 5);
+    assert.equal(result.batchCount, 5);
+    assert.equal(result.completedBatchCount, 5);
+    assert.equal(result.nonEmptyBatchCount, 5);
     assert.equal(result.failedBatchCount, 0);
   } finally {
     if (previousBatchSize === undefined) delete process.env.TRADINGVIEW_ESTIMATES_BATCH_SIZE;

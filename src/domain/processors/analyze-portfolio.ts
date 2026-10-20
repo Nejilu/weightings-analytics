@@ -60,6 +60,7 @@ function addPosition(
 
   const existing = positions.get(identity.securityId);
   if (existing) {
+    if (!existing.exchange && security.exchange) existing.exchange = security.exchange;
     if (adrPair) existing.adrPremiumPairId = adrPair.id;
     existing.weight += weight;
     const source = existing.contributions.find(
@@ -158,6 +159,7 @@ function analyzePortfolioWithIdentity({
           sector: holding.sector,
           assetClass: holding.assetClass,
           country: holding.country,
+          ...(holding.exchange ? { exchange: holding.exchange } : {}),
           ...(holding.adrPremiumPairId ? { adrPremiumPairId: holding.adrPremiumPairId } : {}),
         },
         weight,

@@ -14,6 +14,29 @@ async function handleGET(request: Request) {
     ?.split(",")
     .map((reference) => reference.trim())
     .filter(Boolean) ?? [];
+  if (url.searchParams.get("stream") === "true") {
+    const encoder = new TextEncoder();
+    let open = true;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const send = (value: unknown) => {
+          if (open) controller.enqueue(encoder.encode(JSON.stringify(value) + "\n"));
+        };
+        void getMetricsOverview(references, { forceRefresh,
+          onFundamentals: (data) => send({ phase: "fundamentals", data }),
+        }).then((data) => send({ phase: "complete", data })).catch((error: unknown) => {
+          send({ error: error instanceof Error ? error.message : "Metrics are unavailable." });
+        }).finally(() => {
+          if (open) { open = false; controller.close(); }
+        });
+      },
+      cancel() { open = false; },
+    });
+    return new Response(body, { headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+    } });
+  }
   try {
     const result = await getMetricsOverview(references, { forceRefresh });
     if (forceRefresh) {

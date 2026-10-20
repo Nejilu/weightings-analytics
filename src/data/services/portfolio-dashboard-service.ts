@@ -4,6 +4,7 @@ import { loadPortfolioHistory } from "@/db/repositories/portfolio-history-reposi
 import { loadPortfolioById } from "@/db/repositories/portfolio-repository";
 import { getCatalog } from "./catalog-service";
 import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
+import { investedIndices } from "@/domain/portfolio-invested-return";
 
 // Reads saved observations only; the existing scheduler owns snapshot capture.
 export function getPortfolioDashboard(): PortfolioDashboardEntry[] {
@@ -20,6 +21,7 @@ export function getPortfolioDashboard(): PortfolioDashboardEntry[] {
       positionsCount: stored.items.length, cashCount: stored.cashPositions.length,
       snapshots: snapshots.map((point) => ({
         date: point.date, valueUsd: point.valueUsd, valueEur: point.valueEur,
+        ...investedIndices(point.invested),
         indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
       })),
     }];

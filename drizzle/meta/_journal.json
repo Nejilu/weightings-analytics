@@ -141,6 +141,13 @@
       "when": 1791938665976,
       "tag": "0019_outstanding_supreme_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1792494704404,
+      "tag": "0020_elite_inertia",
+      "breakpoints": true
     }
   ]
 }

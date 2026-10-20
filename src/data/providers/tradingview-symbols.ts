@@ -120,7 +120,7 @@ function normalizedTicker(input: SymbolInput, prefix: string): string {
   }
   let ticker = input.ticker.trim().replace(/\s+/g, "_");
   const name = input.name.toLocaleLowerCase("en-US");
-  if (ticker === "BRKB" && name.includes("berkshire")) ticker = "BRK.B";
+  if (/^BRK[._ -]?B$/i.test(input.ticker.trim()) && name.includes("berkshire")) ticker = "BRK.B";
   if (ticker === "GMEXICOB" && name.includes("grupo mexico")) ticker = "GMEXICO/B";
   if (prefix === "BIST") ticker = ticker.replace(/\.E$/i, "");
   if (prefix === "NSE") ticker = ticker.replace(/-/g, "_");
@@ -128,7 +128,7 @@ function normalizedTicker(input: SymbolInput, prefix: string): string {
   if (prefix === "MYX" && ticker === "SWB") ticker = "SUNWAY";
   if (prefix === "PSECZ" && ticker === "BAAKOMB") ticker = "KOMB";
   if (prefix === "NYSE" && ticker === "HEIA" && name.includes("heico")) ticker = "HEI.A";
-  if (prefix === "NYSE" && ticker === "BFB" && name.includes("brown forman")) ticker = "BF.B";
+  if (prefix === "NYSE" && /^BF[._ -]?B$/i.test(input.ticker.trim()) && name.includes("brown forman")) ticker = "BF.B";
   if (prefix === "TSX" && /^\d+D$/.test(ticker) && name.includes("constellation software")) ticker = "CSU";
   return ticker;
 }

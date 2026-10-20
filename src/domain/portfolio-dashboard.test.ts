@@ -52,3 +52,16 @@ test("calendar presets clamp month ends and leap days", () => {
   assert.equal(portfolioPeriodStart({ preset: "1M" }, "2023-01-01", "2024-03-31"), "2024-02-29");
   assert.equal(portfolioPeriodStart({ preset: "1Y" }, "2023-01-01", "2024-02-29"), "2023-02-28");
 });
+
+test("invested comparison uses its own USD/EUR indices and never bridges unavailable history", () => {
+  const active = { ...entry, snapshots: entry.snapshots.map((p, i) => ({ ...p, investedIndexUsd: [100, 110, 121][i], investedIndexEur: [100, 120, 132][i], investedSegment: "2026-10-01" })) };
+  const result = dashboardSeries([active], "relative", "USD", "2026-10-02", "invested")[0];
+  assert.equal(result.baselineDate, "2026-10-03");
+  assert.ok(Math.abs(result.points[1].value - 10) < 1e-9);
+  assert.deepEqual(dashboardSeries([active], "absolute", "USD", "", "invested"), []);
+  assert.deepEqual(dashboardSeries([entry], "relative", "USD", "", "invested"), []);
+  const restarted = { ...active, snapshots: [...active.snapshots, { date: "2026-10-06", indexUsd: 150, indexEur: 150 }] };
+  assert.equal(dashboardSeries([restarted], "relative", "USD", "", "invested")[0].points.at(-1)!.date, "2026-10-05");
+  restarted.snapshots.push({ date: "2026-10-07", indexUsd: 160, indexEur: 160, investedIndexUsd: 100, investedIndexEur: 100, investedSegment: "2026-10-07" });
+  assert.deepEqual(dashboardSeries([restarted], "relative", "EUR", "", "invested")[0].points, [{ date: "2026-10-07", value: 0 }]);
+});

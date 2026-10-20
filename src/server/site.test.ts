@@ -394,6 +394,42 @@ test("direct IDs and tickers cannot access hidden holdings, analyses, comparison
   }
 });
 
+test("projects every metrics stream event and sanitizes provider errors for visitors", async () => {
+  const encoder = new TextEncoder();
+  const handler = withSiteAccess(() => new Response(new ReadableStream<Uint8Array>({ start(controller) {
+    for (const frame of [{ phase: "fundamentals", data: { quantity: 99, marketValue: 12345, coverageWeight: 95 } },
+      { error: "private database path and provider internals" }]) {
+      controller.enqueue(encoder.encode(JSON.stringify(frame) + "\n"));
+    }
+    controller.close();
+  } }), { headers: { "Content-Type": "application/x-ndjson" } }), "metrics");
+  const response = await handler(request("/api/v1/metrics/overview?stream=true&etfs=ivv-us"));
+  assert.equal(response.status, 200);
+  const frames = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(frames, [
+    { phase: "fundamentals", data: { coverageWeight: 95 } },
+    { error: "Data temporarily unavailable. Please retry." },
+  ]);
+  const hidden = await handler(request("/api/v1/metrics/overview?stream=true&etfs=test-private"));
+  assert.equal(hidden.status, 404);
+});
+
+test("stops metrics streams when publication changes before the next event", async () => {
+  const encoder = new TextEncoder();
+  let send!: ReadableStreamDefaultController<Uint8Array>;
+  const handler = withSiteAccess(() => new Response(new ReadableStream<Uint8Array>({ start(controller) { send = controller; } }),
+    { headers: { "Content-Type": "application/x-ndjson" } }), "metrics");
+  const response = await handler(request("/api/v1/metrics/overview?stream=true&etfs=ivv-us"));
+  const reader = response.body!.getReader();
+  send.enqueue(encoder.encode('{"phase":"fundamentals","data":{"coverageWeight":95}}\n'));
+  assert.match(new TextDecoder().decode((await reader.read()).value), /fundamentals/);
+  invalidateSiteResults();
+  send.enqueue(encoder.encode('{"phase":"complete","data":{"mustNotAppear":true}}\n'));
+  assert.deepEqual(JSON.parse(new TextDecoder().decode((await reader.read()).value)),
+    { error: "Data temporarily unavailable. Please retry." });
+  assert.equal((await reader.read()).done, true);
+});
+
 test("weights projections remove exact amounts and stale embedded metadata without changing canonical data", async () => {
   const etf = findEtfById("test-weights")!;
   const source = {
@@ -519,6 +555,8 @@ test("portfolio dashboard publishes relative histories, hides private portfolios
         portfolioId: `portfolio-${visibility}`, date: `2026-10-0${index + 1}`, capturedAt: `2026-10-0${index + 1}T20:10:00Z`,
         valueUsd: base * (1 + index * 0.1), valueEur: base / 1.2 * (1 + index * 0.05), eurToUsd: 1.2,
         quotesAsOf: "2026-10-01", fxAsOf: "2026-10-01", reason: "scheduled" as const,
+        invested: { indexUsd: 100 + index * 8, indexEur: 100 + index * 4, segment: "2026-10-01", grossExposureUsd: 765432.1,
+          positions: [{ kind: "security" as const, referenceId: "secret-security", ticker: "SECRET", quantity: 54321, priceUsd: 14, exposureMultiplier: 1 }] },
       }))).run();
     }
     const response = await dashboardGET(request("/api/v1/portfolio/overview"));
@@ -530,6 +568,12 @@ test("portfolio dashboard publishes relative histories, hides private portfolios
     assert.ok(Math.abs(weights.snapshots[1].indexUsd - 110) < 0.000001);
     assert.equal(weights.snapshots[0].valueUsd, undefined);
     assert.equal(weights.snapshots[0].valueEur, undefined);
+    assert.equal(weights.snapshots[1].investedIndexUsd, 108);
+    assert.equal(weights.snapshots[1].investedIndexEur, 104);
+    assert.equal(weights.snapshots[0].investedSegment, "2026-10-01");
+    assert(!JSON.stringify(entries).includes("secret-security"));
+    assert(!JSON.stringify(entries).includes("765432"));
+    assert(!JSON.stringify(entries).includes("quantity"));
     assert.equal(entries.find((entry: { id: string }) => entry.id === "test-public").snapshots[0].valueUsd, 100000);
     assert(!JSON.stringify(entries).includes("987654"));
     assert(!JSON.stringify(entries).includes("123456"));
@@ -577,6 +621,11 @@ test("visitors can open the Portfolio detail with amounts only for fully public 
     const history = (await historyResponse.json()).data;
     assert.equal(history.snapshots[0].indexUsd, 100);
     assert.equal(history.snapshots[0].valueUsd, mode === "public" ? 100000 : undefined);
+    assert.equal(history.snapshots[1].investedIndexUsd, 108);
+    assert.equal(history.snapshots[1].investedIndexEur, 104);
+    assert(!JSON.stringify(history).includes("secret-security"));
+    assert(!JSON.stringify(history).includes("grossExposureUsd"));
+    assert(!JSON.stringify(history).includes("quantity"));
     assert.equal(history.lastError, null);
     if (mode === "weights") assert(!JSON.stringify(history).includes("987654"));
   }

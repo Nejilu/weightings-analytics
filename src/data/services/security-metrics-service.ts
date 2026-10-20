@@ -6,6 +6,7 @@ import {
   type MetricCaptureWindow,
   type MetricsOverviewWarning,
   type SecurityMetricValues,
+  type MetricsOverviewResult,
 } from "@/domain/metrics";
 import { ensureLocalDatabase } from "@/db/bootstrap";
 import { databasePath } from "@/db/client";
@@ -20,12 +21,10 @@ import {
 } from "@/db/repositories/metrics-repository";
 import {
   prepareScreenerRefresh,
-  refreshScreenerMetrics,
   ScreenerRefreshUnavailableError,
   compatibleCachedSourceValues,
 } from "./metrics-overview-screener";
 import {
-  refreshEstimateSeries,
   EstimatesRefreshUnavailableError,
 } from "./metrics-overview-estimates";
 import {
@@ -45,6 +44,7 @@ import {
 import type { Holding } from "@/domain/etf";
 import { loadUpcomingEarnings } from "@/db/repositories/upcoming-earnings-repository";
 import { upcomingEarningsAreFresh } from "@/domain/upcoming-earnings";
+import { refreshMetricSources } from "./metrics-source-refresh";
 
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
 let hydratedNegativeCachePath: string | undefined;
@@ -52,6 +52,11 @@ let hydratedNegativeCachePath: string | undefined;
 export interface MetricsRefreshOptions {
   forceRefresh?: boolean;
 }
+
+export type SecurityMetricsSnapshot = Omit<MetricsOverviewResult, "etfs" | "holdingsSourceIssues"> & {
+  metricsBySecurity: Map<string, SecurityMetricValues>;
+  resolvedSecurityIds: Set<string>;
+};
 
 function cacheTtlSeconds(): number {
   const configured = Number(process.env.TRADINGVIEW_METRICS_TTL_SECONDS);
@@ -133,7 +138,10 @@ export async function providerOrUnavailable<T>(
 
 export async function retrieveSecurityMetrics(
   holdings: Holding[],
-  options: MetricsRefreshOptions & { includeUpcomingEarnings?: boolean } = {},
+  options: MetricsRefreshOptions & {
+    includeUpcomingEarnings?: boolean;
+    onFundamentals?: (snapshot: SecurityMetricsSnapshot) => void;
+  } = {},
   holdingsAreStale = false,
 ) {
   try {
@@ -165,8 +173,8 @@ export async function retrieveSecurityMetrics(
     additionalRefreshSecurityIds: earningsRefreshIds,
   });
   if (screenerPlan.hasUnresolvedCandidates) sourceWarnings.add("mapping-unresolved");
-  const screenerResult = await providerOrUnavailable(
-    () => refreshScreenerMetrics({
+  const { screenerResult, estimateResult: estimateRefreshResult } = await providerOrUnavailable(
+    () => refreshMetricSources({
       holdings,
       includeUpcomingEarnings: options.includeUpcomingEarnings,
       needsRefresh: screenerPlan.needsRefresh,
@@ -178,22 +186,45 @@ export async function retrieveSecurityMetrics(
       securityIds,
       missingSourceMetricTtlMs: missingSourceMetricTtl,
       sourceMetricCoverageGaps: screenerPlan.sourceMetricCoverageGaps,
-    }),
-    (error) => error instanceof ScreenerRefreshUnavailableError,
-  );
-  providerSymbols = screenerResult.providerSymbols;
-  cachedMetrics = screenerResult.cachedMetrics;
-
-  const estimateRefreshResult = await providerOrUnavailable(
-    () => refreshEstimateSeries({
+    }, {
       holdings,
       providerSymbols,
       securityIds,
       ttlSeconds: refreshTtlSeconds,
       missingEstimateTtlMs,
-    }),
-    (error) => error instanceof EstimatesRefreshUnavailableError,
+    }, undefined, options.onFundamentals ? (screen) => {
+      const metricsBySecurity = new Map<string, SecurityMetricValues>();
+      const resolvedSecurityIds = new Set<string>();
+      const path = databasePath();
+      for (const holding of holdings) {
+        const symbol = resolvedProviderSymbol(screen.providerSymbols.get(holding.securityId));
+        if (!symbol) continue;
+        resolvedSecurityIds.add(holding.securityId);
+        const cached = screen.cachedMetrics.get(holding.securityId);
+        if (!cached) continue;
+        const values = compatibleCachedSourceValues(cached, symbol, path);
+        for (const key of DERIVED_METRIC_KEYS) delete values[key];
+        metricsBySecurity.set(holding.securityId, { securityId: holding.securityId,
+          providerSymbol: symbol, values,
+          capturedAtByKey: Object.fromEntries([...cached.sourceCapturedAtByKey]
+            .filter(([key]) => values[key] !== undefined)) });
+      }
+      options.onFundamentals!({ calculatedAt: new Date().toISOString(),
+        fundamentalsCaptureWindow: captureWindow([...metricsBySecurity.values()]
+          .flatMap((metric) => Object.values(metric.capturedAtByKey ?? {}))),
+        estimatesCaptureWindow: null, source: "TradingView Screener + Estimates",
+        sourceStatus: metricsSourceStatus(holdingsAreStale || screen.hasStaleSource,
+          screenerPlan.hasUnresolvedCandidates || screen.hasPartialCoverage, screen.hasLiveSource),
+        sourceWarnings: [...new Set([...sourceWarnings, ...screen.warnings])].sort(),
+        cacheTtlHours: ttlSeconds / 3_600,
+        definitions: OVERVIEW_METRIC_DEFINITIONS.filter((definition) =>
+          !DERIVED_METRIC_KEYS.includes(definition.key as typeof DERIVED_METRIC_KEYS[number])),
+        metricsBySecurity, resolvedSecurityIds });
+    } : undefined),
+    (error) => error instanceof ScreenerRefreshUnavailableError || error instanceof EstimatesRefreshUnavailableError,
   );
+  providerSymbols = screenerResult.providerSymbols;
+  cachedMetrics = screenerResult.cachedMetrics;
   const cachedEstimateSeries = estimateRefreshResult.cachedEstimateSeries;
   const providerRefreshes = [screenerResult, estimateRefreshResult];
   for (const refresh of providerRefreshes) {

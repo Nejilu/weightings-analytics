@@ -106,21 +106,7 @@ async function buildPortfolioEtfSnapshot(
   if (!portfolio || portfolio.items.length === 0) {
     throw new Error(`Portfolio definition for ${etf.ticker} is empty.`);
   }
-  const cashPositions = await valueCashPositions(portfolio.cashPositions, options);
-  const cashValueUsd = cashPositions.reduce(
-    (sum, position) => sum + (position.valueUsd ?? 0),
-    0,
-  );
-  const valuedPortfolio = await valuePortfolioItems(
-    portfolio.items,
-    cashValueUsd,
-    options,
-  );
-  if (portfolio.items.some((item) => !item.quantity)) {
-    anchorPortfolioQuantities(portfolio.id, valuedPortfolio.items);
-  }
-
-  const etfItems = valuedPortfolio.items.filter((item) => item.kind === "etf");
+  const etfItems = portfolio.items.filter((item) => item.kind === "etf");
   for (const item of etfItems) {
     const component = findEtfById(item.referenceId);
     if (!component || component.fundType === "portfolio") {
@@ -130,11 +116,20 @@ async function buildPortfolioEtfSnapshot(
     }
   }
 
-  const snapshots = await mapWithConcurrency(
-    etfItems,
-    holdingsRefreshConcurrency(),
-    (item) => getHoldingsSnapshot(item.referenceId, options),
-  );
+  // Composition downloads do not depend on prices or cash valuation.
+  const [{ cashPositions, cashValueUsd, valuedPortfolio }, snapshots] = await Promise.all([
+    (async () => {
+      const cashPositions = await valueCashPositions(portfolio.cashPositions, options);
+      const cashValueUsd = cashPositions.reduce((sum, position) => sum + (position.valueUsd ?? 0), 0);
+      const valuedPortfolio = await valuePortfolioItems(portfolio.items, cashValueUsd, options);
+      if (portfolio.items.some((item) => !item.quantity)) {
+        anchorPortfolioQuantities(portfolio.id, valuedPortfolio.items);
+      }
+      return { cashPositions, cashValueUsd, valuedPortfolio };
+    })(),
+    mapWithConcurrency(etfItems, holdingsRefreshConcurrency(),
+      (item) => getHoldingsSnapshot(item.referenceId, options)),
+  ]);
   const directSecurities = findSecuritiesByIds(
     valuedPortfolio.items
       .filter((item) => item.kind === "security")
@@ -194,6 +189,7 @@ async function buildPortfolioEtfSnapshot(
         sector: position.sector,
         assetClass: position.assetClass,
         country: position.country,
+        ...(position.exchange ? { exchange: position.exchange } : {}),
         weight: position.weight,
       })),
       ...explicitCashHoldings,

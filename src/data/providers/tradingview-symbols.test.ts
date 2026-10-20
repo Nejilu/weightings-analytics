@@ -56,6 +56,10 @@ test("falls back to plausible country exchanges for legacy snapshots", () => {
 });
 
 test("retains imported ticker disambiguation rules", () => {
+  for (const ticker of ["BRK B", "BRK_B", "BRK.B", "BRKB"]) {
+    assert.deepEqual(tradingViewSymbolCandidates({ ticker, name: "Berkshire Hathaway Inc Class B",
+      country: "United States", exchange: "New York Stock Exchange" }), ["NYSE:BRK.B"]);
+  }
   assert.deepEqual(tradingViewSymbolCandidates({
     ticker: "BRKB",
     name: "Berkshire Hathaway Inc Class B",
@@ -68,6 +72,11 @@ test("retains imported ticker disambiguation rules", () => {
     country: "Mexico",
     exchange: "Bolsa Mexicana de Valores",
   }), ["BMV:CEMEXCPO", "BMV:CEMEX/CPO"]);
+});
+
+test("keeps an overseas issuer on its actual depositary listing", () => {
+  assert.deepEqual(tradingViewSymbolCandidates({ ticker: "ARM", name: "ARM HOLDINGS AMERICAN DEPOSITARY S",
+    country: "United Kingdom", exchange: "NASDAQ" }), ["NASDAQ:ARM"]);
 });
 
 test("maps confirmed primary aliases for Mexico, Chile and Singapore", () => {

@@ -6,6 +6,7 @@ import type { PortfolioHoldingsValuation } from "@/domain/portfolio-valuation";
 import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
 import type { LocalPortfolioEtfDetail } from "@/domain/local-etf";
 import type { PortfolioHistory } from "@/domain/portfolio-history";
+import { investedIndices } from "@/domain/portfolio-invested-return";
 import { AccessError } from "./site-access";
 
 export function publicationCatalog() {
@@ -116,6 +117,7 @@ export function publicPortfolioHistory(history: PortfolioHistory, reference: str
   return { enabled: history.enabled, lastError: null, lastAttemptAt: null, snapshots: history.snapshots.map((point) => ({
     date: point.date, capturedAt: point.capturedAt, reason: point.reason,
     indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
+    ...investedIndices(point.invested),
     ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
   })) };
 }
@@ -129,6 +131,7 @@ export function publicPortfolioDashboard(entries: PortfolioDashboardEntry[], cat
       positionsCount: entry.positionsCount, cashCount: entry.cashCount,
       snapshots: entry.snapshots.map((point) => ({
         date: point.date, indexUsd: point.indexUsd, indexEur: point.indexEur,
+        investedIndexUsd: point.investedIndexUsd, investedIndexEur: point.investedIndexEur, investedSegment: point.investedSegment,
         ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
       })),
     }];

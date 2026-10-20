@@ -16,6 +16,7 @@ import {
 import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
 import type { LocalPortfolioEtfDetail } from "@/domain/local-etf";
 import type { PortfolioHistory } from "@/domain/portfolio-history";
+import { readJsonLines } from "@/domain/json-lines";
 
 export type RoutePolicy =
   | "owner"
@@ -162,6 +163,33 @@ export function withSiteAccess<Args extends unknown[]>(
           status: response.status,
           headers: outputHeaders,
         });
+      }
+      if (policy === "metrics" && response.body &&
+        response.headers.get("content-type")?.startsWith("application/x-ndjson")) {
+        const frames = readJsonLines(response.body);
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const next = await frames.next();
+              if (next.done) { controller.close(); return; }
+              if (initialRevision !== catalogRevision()) throw new Error("Catalog changed");
+              const catalog = publicationCatalog();
+              for (const reference of references) requirePublicEtf(catalog, reference);
+              const frame = next.value as { error?: unknown };
+              const projected = frame.error
+                ? { error: "Data temporarily unavailable. Please retry." }
+                : publicAnalysis(frame, catalog);
+              controller.enqueue(encoder.encode(JSON.stringify(projected) + "\n"));
+            } catch {
+              controller.enqueue(encoder.encode(JSON.stringify({ error: "Data temporarily unavailable. Please retry." }) + "\n"));
+              controller.close();
+              await frames.return(undefined);
+            }
+          },
+          async cancel() { await frames.return(undefined); },
+        });
+        return new Response(body, { status: response.status, headers: outputHeaders });
       }
       const payload: unknown = await response.json();
       if (initialRevision !== catalogRevision())

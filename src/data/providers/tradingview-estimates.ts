@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { EstimateRequestCoordinator } from "./tradingview-estimates-coordinator";
 
 import type {
   EstimateSeriesPoint,
@@ -9,7 +10,7 @@ const TRADINGVIEW_SOCKET_URL =
   "wss://data.tradingview.com/socket.io/websocket?from=symbols%2FNASDAQ-MSFT%2Fforecast-actuals-and-estimates%2F&type=chart";
 const QUOTE_FIELDS = ["eps_estimates_fq_h", "lp", "currency_code"] as const;
 const DEFAULT_BATCH_SIZE = 250;
-const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 25_000;
 
 interface RawEstimate {
@@ -130,7 +131,7 @@ function configuredBatchSize(): number {
 
 function configuredConcurrency(): number {
   const configured = Number(process.env.TRADINGVIEW_ESTIMATES_CONCURRENCY);
-  return Number.isInteger(configured) && configured >= 1 && configured <= 4
+  return Number.isInteger(configured) && configured >= 1 && configured <= 5
     ? configured
     : DEFAULT_CONCURRENCY;
 }
@@ -146,6 +147,10 @@ function batches<T>(items: T[], size: number): T[][] {
 type EstimateBatchFetcher = (
   symbols: string[],
 ) => Promise<SecurityEstimateSeries[]>;
+
+const shared = globalThis as typeof globalThis & {
+  __tradingViewEstimateCoordinator?: EstimateRequestCoordinator;
+};
 
 export interface TradingViewEstimateSeriesResult {
   series: SecurityEstimateSeries[];
@@ -270,8 +275,15 @@ export async function fetchTradingViewEstimateSeriesDetailed(
       const index = next;
       next += 1;
       try {
-        const batchOutput = await batchFetcher(groups[index]);
-        completedBatches += 1;
+        const fetched = batchFetcher === fetchBatch
+          ? await (shared.__tradingViewEstimateCoordinator ??=
+            new EstimateRequestCoordinator(configuredConcurrency())).fetch(groups[index], batchFetcher)
+          : { series: await batchFetcher(groups[index]), failedSymbols: [] };
+        const batchOutput = fetched.series;
+        if (fetched.failedSymbols.length) {
+          failedGroups.push(fetched.failedSymbols);
+          errors.push(new Error("TradingView estimate batch failed."));
+        } else completedBatches += 1;
         if (batchOutput.length === 0) {
           // A valid TradingView response can contain no EPS consensus series
           // for an exchange or security. Keep that as a coverage gap rather
@@ -287,7 +299,7 @@ export async function fetchTradingViewEstimateSeriesDetailed(
       }
     }
   }));
-  if (completedBatches === 0 && errors.length > 0) {
+  if (completedBatches === 0 && output.length === 0 && errors.length > 0) {
     throw new Error(
       `TradingView estimates unavailable for all batches: ${errors[0].message}`,
     );

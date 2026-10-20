@@ -33,6 +33,10 @@ const resultCache = new Map<string, {
   expiresAt: number;
 }>();
 
+interface OverviewRefreshOptions extends MetricsRefreshOptions {
+  onFundamentals?: (result: MetricsOverviewResult) => void;
+}
+
 function cacheResult(key: string, result: MetricsOverviewResult): void {
   resultCache.set(key, {
     result,
@@ -61,7 +65,7 @@ function resultForOrder(
 
 async function buildOverview(
   references: string[],
-  options: MetricsRefreshOptions,
+  options: OverviewRefreshOptions,
 ): Promise<MetricsOverviewResult> {
   try {
     ensureLocalDatabase();
@@ -87,7 +91,12 @@ async function buildOverview(
   );
   const holdingsAreStale = snapshots.some((snapshot) => snapshot.sourceStatus === "stale");
   const { metricsBySecurity, resolvedSecurityIds, ...metadata } = await retrieveSecurityMetrics(
-    uniqueEquityHoldings(snapshots), options, holdingsAreStale,
+    uniqueEquityHoldings(snapshots), { ...options,
+      onFundamentals: options.onFundamentals ? ({ metricsBySecurity, resolvedSecurityIds, ...metadata }) => {
+        options.onFundamentals!({ ...metadata, holdingsSourceIssues: holdingsSourceIssues(snapshots),
+          etfs: snapshots.map((snapshot) => buildEtfMetricsOverview(snapshot, resolvedSecurityIds, metricsBySecurity)) });
+      } : undefined,
+    }, holdingsAreStale,
   );
   return {
     ...metadata,
@@ -107,7 +116,7 @@ export class MetricsOverviewRequestError extends Error {
 
 export function getMetricsOverview(
   references: string[],
-  options: MetricsRefreshOptions = {},
+  options: OverviewRefreshOptions = {},
 ): Promise<MetricsOverviewResult> {
   if (references.length > MAX_INPUT_REFERENCES) {
     return Promise.reject(new MetricsOverviewRequestError(INVALID_SELECTION_MESSAGE));

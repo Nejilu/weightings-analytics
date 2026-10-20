@@ -38,6 +38,23 @@ const snapshot = {
   ],
 } as HoldingsSnapshot;
 
+test("preserves listing exchanges for ETF holdings and fills missing direct-position metadata", () => {
+  const arm = { ...apple, securityId: "US0420682058", ticker: "ARM", name: "ARM HOLDINGS ADR",
+    country: "United Kingdom" };
+  const input = {
+    items: [
+      { id: "direct", kind: "security" as const, referenceId: arm.securityId, ticker: "ARM", name: arm.name, allocationWeight: 20 },
+      { id: "etf", kind: "etf" as const, referenceId: "test", ticker: "TEST", name: "Test ETF", allocationWeight: 80 },
+    ],
+    directSecurities: new Map([[arm.securityId, arm]]),
+    etfSnapshots: new Map([["test", { ...snapshot, etf: { ...snapshot.etf, id: "test" },
+      holdings: [{ ...arm, exchange: "NASDAQ", weight: 100 }] }]]),
+  };
+  const result = analyzePortfolio(input);
+  assert.equal(result.positions[0].exchange, "NASDAQ");
+  assert.equal(result.positions[0].weight, 100);
+});
+
 test("Samsung display combines local shares and GDRs while canonical instruments and the dominant quote remain distinct", () => {
   const securities: PortfolioSecurity[] = [
     { ...apple, securityId: "KR7005930003", ticker: "005930", name: "SAMSUNG ELECTRONICS LTD" },

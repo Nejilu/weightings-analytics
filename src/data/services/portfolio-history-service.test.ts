@@ -8,7 +8,7 @@ import { closeDatabase, getSqlite } from "@/db/client";
 import { loadPortfolioHistory, setPortfolioHistoryEnabled } from "@/db/repositories/portfolio-history-repository";
 import { GET, PATCH } from "@/app/api/v1/portfolio/history/route";
 import { capturePortfolioIfDue } from "./portfolio-history-service";
-import type { FxRate } from "@/domain/portfolio";
+import type { FxRate, PortfolioItem } from "@/domain/portfolio";
 
 test("history persists both currencies, catches up, retries failures and honors edits and pause", async () => {
   const previousPath = process.env.DATABASE_PATH;
@@ -102,6 +102,76 @@ test("history persists both currencies, catches up, retries failures and honors 
     closeDatabase();
     if (previousPath === undefined) delete process.env.DATABASE_PATH; else process.env.DATABASE_PATH = previousPath;
     if (previousMode === undefined) delete process.env.SITE_ACCESS_MODE; else process.env.SITE_ACCESS_MODE = previousMode;
+    assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("captures persist invested indices, mark sold securities and retain NAV when a past quote is missing", async () => {
+  const previousPath = process.env.DATABASE_PATH;
+  const directory = mkdtempSync(join(tmpdir(), "portfolio-invested-test-"));
+  let price = 100;
+  let fx = 1.25;
+  let missingSold = false;
+  let cashValue = 1000;
+  const batches: string[][] = [];
+  const market = {
+    async getFxRate(): Promise<FxRate> { return { currency: "EUR", providerSymbol: "EURUSD=X", rateToUsd: fx, asOf: "2026-10-01", fetchedAt: "2026-10-01", sourceStatus: "live" }; },
+    async valueCashPositions() { return [{ currency: "USD" as const, amount: cashValue, valueUsd: cashValue }]; },
+    async valuePortfolioItems(items: PortfolioItem[], cash = 0) {
+      batches.push(items.map((p) => p.referenceId));
+      if (missingSold && items.some((p) => p.referenceId === "active-a")) throw new Error("Sold quote unavailable");
+      const valued = items.map((p) => ({ ...p, currentPriceUsd: price, currentValueUsd: p.quantity! * price, priceStatus: "live" as const }));
+      return { items: valued, totalMarketValueUsd: cash + valued.reduce((sum, p) => sum + p.currentValueUsd, 0) };
+    },
+  };
+  const capture = (day: number) => capturePortfolioIfDue("active", new Date(`2026-10-${String(day).padStart(2, "0")}T21:10:00Z`), market);
+  try {
+    process.env.DATABASE_PATH = join(directory, "history.sqlite");
+    ensureLocalDatabase();
+    const sql = getSqlite();
+    sql.prepare("INSERT INTO portfolios (id, name) VALUES ('active', 'Active')").run();
+    for (const id of ["active-a", "active-b"]) sql.prepare("INSERT INTO securities (id, primary_ticker, name, sector, asset_class, country) VALUES (?, ?, ?, 'Technology', 'Equity', 'US')").run(id, id, id);
+    sql.prepare("INSERT INTO portfolio_items (id, portfolio_id, asset_type, security_id, allocation_weight, quantity, input_mode) VALUES ('position', 'active', 'security', 'active-a', 100, 10, 'shares')").run();
+    await capture(1);
+    price = 110;
+    fx = 1.1;
+    cashValue = 50000; // An external deposit cannot change the invested return.
+    sql.prepare("UPDATE portfolio_items SET quantity = 100 WHERE id = 'position'").run();
+    await capture(2);
+    let snapshots = loadPortfolioHistory("active").snapshots;
+    assert.equal(snapshots[0].invested!.indexUsd, 100);
+    assert.ok(Math.abs(snapshots[1].invested!.indexUsd - 110) < 1e-9);
+    assert.ok(Math.abs(snapshots[1].invested!.indexEur - 125) < 1e-9);
+    assert.equal(snapshots[1].invested!.positions[0].quantity, 100);
+    assert.equal(snapshots[1].valueUsd, 61000);
+    sql.prepare("UPDATE portfolio_items SET security_id = 'active-b', quantity = 10 WHERE id = 'position'").run();
+    price = 121;
+    await capture(3);
+    assert.deepEqual(batches.slice(-2), [["active-b"], ["active-a"]]);
+    snapshots = loadPortfolioHistory("active").snapshots;
+    assert.ok(Math.abs(snapshots[2].invested!.indexUsd - 121) < 1e-9);
+    // An unpriceable sale creates a genuine gap, without losing the NAV observation.
+    sql.prepare("UPDATE portfolio_items SET security_id = 'active-a' WHERE id = 'position'").run();
+    await capture(4);
+    sql.prepare("UPDATE portfolio_items SET security_id = 'active-b' WHERE id = 'position'").run();
+    missingSold = true;
+    await capture(5);
+    snapshots = loadPortfolioHistory("active").snapshots;
+    assert.equal(snapshots.length, 5);
+    assert.equal(snapshots[4].invested, null);
+    assert.equal(loadPortfolioHistory("active").lastError, null);
+    missingSold = false;
+    await capture(6);
+    closeDatabase();
+    ensureLocalDatabase();
+    snapshots = loadPortfolioHistory("active").snapshots;
+    assert.equal(snapshots[5].invested!.indexUsd, 100);
+    assert.equal(snapshots[5].invested!.segment, "2026-10-06");
+    assert.equal(snapshots[0].invested!.indexEur, 100);
+  } finally {
+    closeDatabase();
+    if (previousPath === undefined) delete process.env.DATABASE_PATH; else process.env.DATABASE_PATH = previousPath;
     assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep));
     rmSync(directory, { recursive: true, force: true });
   }

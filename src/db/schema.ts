@@ -248,6 +248,7 @@ export const portfolioHistorySettings = sqliteTable("portfolio_history_settings"
 });
 
 export const portfolioValueSnapshots = sqliteTable("portfolio_value_snapshots", {
+  invested: text("invested_json", { mode: "json" }).$type<import("@/domain/portfolio-invested-return").InvestedSnapshot>(),
   portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
   date: text("date").notNull(),
   capturedAt: text("captured_at").notNull(),

@@ -15,7 +15,6 @@ import { isValidEstimateSeries } from "@/domain/metrics-cache";
 import { databasePath, getDb, getSqlite } from "../client";
 import {
   metricDefinitions,
-  metricObservations,
   providerNegativeCache,
   securityProviderSymbols,
 } from "../schema";
@@ -24,6 +23,41 @@ const QUERY_BATCH_SIZE = 250;
 const ESTIMATE_SERIES_DEFINITION_ID = "security:eps_estimate_series:v1";
 const ESTIMATE_SERIES_KEY = "eps_estimate_series";
 const TRADINGVIEW_PROVIDER = "tradingview";
+
+interface MetricWrite {
+  id: string;
+  metricDefinitionId: string;
+  entityId: string;
+  asOf: string;
+  valueNumber?: number | null;
+  valueText: string;
+  valueJson?: unknown;
+  source: string;
+  capturedAt: string;
+}
+
+function writeMetricRows(rows: readonly MetricWrite[]): void {
+  if (!rows.length) return;
+  const sqlite = getSqlite();
+  // Reuse one prepared statement for the entire transaction, instead of
+  // constructing an ORM insert/parameter tree for every batch and field.
+  const statement = sqlite.prepare(`
+    INSERT INTO metric_observations
+      (id, metric_definition_id, entity_type, entity_id, as_of,
+       value_number, value_text, value_json, source, captured_at)
+    VALUES (?, ?, 'security', ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(metric_definition_id, entity_type, entity_id) DO UPDATE SET
+      as_of=excluded.as_of, value_number=excluded.value_number,
+      value_text=excluded.value_text, value_json=excluded.value_json,
+      source=excluded.source, captured_at=excluded.captured_at
+    WHERE metric_observations.captured_at <= excluded.captured_at
+  `);
+  sqlite.transaction(() => {
+    for (const row of rows) statement.run(row.id, row.metricDefinitionId, row.entityId,
+      row.asOf, row.valueNumber ?? null, row.valueText,
+      row.valueJson === undefined ? null : JSON.stringify(row.valueJson), row.source, row.capturedAt);
+  })();
+}
 
 export type ProviderNegativeCacheKind = "estimate_series" | "source_metric";
 
@@ -101,52 +135,30 @@ export function saveProviderNegativeCacheBatch(
 ): void {
   if (inputs.length === 0) return;
   const updatedAt = new Date().toISOString();
-  const db = getDb();
-  db.transaction((transaction) => {
-    for (const batch of batches([...inputs])) {
-      transaction.insert(providerNegativeCache)
-        .values(batch.map((input) => ({
-          provider: input.provider,
-          cacheKind: input.cacheKind,
-          providerSymbol: input.providerSymbol,
-          metricKey: input.metricKey,
-          expiresAt: input.expiresAt,
-          updatedAt,
-        })))
-        .onConflictDoUpdate({
-          target: [
-            providerNegativeCache.provider,
-            providerNegativeCache.cacheKind,
-            providerNegativeCache.providerSymbol,
-            providerNegativeCache.metricKey,
-          ],
-          set: {
-            expiresAt: sql`excluded.expires_at`,
-            updatedAt: sql`excluded.updated_at`,
-          },
-        })
-        .run();
-    }
-  });
+  const sqlite = getSqlite();
+  const statement = sqlite.prepare(`INSERT INTO provider_negative_cache
+    (provider, cache_kind, provider_symbol, metric_key, expires_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, cache_kind, provider_symbol, metric_key) DO UPDATE SET
+      expires_at=excluded.expires_at, updated_at=excluded.updated_at`);
+  sqlite.transaction(() => {
+    for (const input of inputs) statement.run(input.provider, input.cacheKind,
+      input.providerSymbol, input.metricKey, input.expiresAt, updatedAt);
+  })();
 }
 
 export function deleteProviderNegativeCacheBatch(
   inputs: readonly Pick<ProviderNegativeCacheEntry, "provider" | "cacheKind" | "providerSymbol" | "metricKey">[],
 ): void {
   if (inputs.length === 0) return;
-  const db = getDb();
-  db.transaction((transaction) => {
+  const sqlite = getSqlite();
+  const statement = sqlite.prepare(`DELETE FROM provider_negative_cache
+    WHERE provider=? AND cache_kind=? AND provider_symbol=? AND metric_key=?`);
+  sqlite.transaction(() => {
     for (const input of inputs) {
-      transaction.delete(providerNegativeCache)
-        .where(and(
-          eq(providerNegativeCache.provider, input.provider),
-          eq(providerNegativeCache.cacheKind, input.cacheKind),
-          eq(providerNegativeCache.providerSymbol, input.providerSymbol),
-          eq(providerNegativeCache.metricKey, input.metricKey),
-        ))
-        .run();
+      statement.run(input.provider, input.cacheKind, input.providerSymbol, input.metricKey);
     }
-  });
+  })();
 }
 
 export interface ProviderSymbolRecord {
@@ -337,39 +349,16 @@ export function saveEstimateSeriesBatch(
     throw new Error("Invalid estimate series; the previous cache is preserved.");
   }
   const asOf = capturedAt.slice(0, 10);
-  const db = getDb();
-  db.transaction((transaction) => {
-    for (const batch of batches(inputs)) {
-      transaction.insert(metricObservations)
-        .values(batch.map((input) => ({
-          id: randomUUID(),
-          metricDefinitionId: ESTIMATE_SERIES_DEFINITION_ID,
-          entityType: "security" as const,
-          entityId: input.securityId,
-          asOf,
-          valueText: input.series.providerSymbol,
-          valueJson: input.series,
-          source: "tradingview-quote-estimates",
-          capturedAt,
-        })))
-        .onConflictDoUpdate({
-          target: [
-            metricObservations.metricDefinitionId,
-            metricObservations.entityType,
-            metricObservations.entityId,
-          ],
-          set: {
-            asOf: sql`excluded.as_of`,
-            valueText: sql`excluded.value_text`,
-            valueJson: sql`excluded.value_json`,
-            source: sql`excluded.source`,
-            capturedAt: sql`excluded.captured_at`,
-          },
-          setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
-        })
-        .run();
-    }
-  });
+  writeMetricRows(inputs.map((input) => ({
+    id: randomUUID(),
+    metricDefinitionId: ESTIMATE_SERIES_DEFINITION_ID,
+    entityId: input.securityId,
+    asOf,
+    valueText: input.series.providerSymbol,
+    valueJson: input.series,
+    source: "tradingview-quote-estimates",
+    capturedAt,
+  })));
 }
 
 export function saveEstimateSeries(
@@ -405,32 +394,19 @@ export function loadProviderSymbols(securityIds: string[]): Map<string, Provider
 
 export function saveProviderSymbolsBatch(inputs: ProviderSymbolInput[]): void {
   if (inputs.length === 0) return;
-  const db = getDb();
-  db.transaction((transaction) => {
-    for (const batch of batches(inputs)) {
-      transaction.insert(securityProviderSymbols)
-        .values(batch.map((input) => ({
-          provider: "tradingview" as const,
-          securityId: input.securityId,
-          providerSymbol: input.providerSymbol,
-          status: input.status,
-          confidence: input.confidence,
-          lastVerifiedAt: input.verifiedAt,
-          metadataJson: input.metadata ?? null,
-        })))
-        .onConflictDoUpdate({
-          target: [securityProviderSymbols.provider, securityProviderSymbols.securityId],
-          set: {
-            providerSymbol: sql`excluded.provider_symbol`,
-            status: sql`excluded.status`,
-            confidence: sql`excluded.confidence`,
-            lastVerifiedAt: sql`excluded.last_verified_at`,
-            metadataJson: sql`excluded.metadata_json`,
-          },
-        })
-        .run();
-    }
-  });
+  const sqlite = getSqlite();
+  const statement = sqlite.prepare(`INSERT INTO security_provider_symbols
+    (provider, security_id, provider_symbol, status, confidence, last_verified_at, metadata_json)
+    VALUES ('tradingview', ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, security_id) DO UPDATE SET
+      provider_symbol=excluded.provider_symbol, status=excluded.status,
+      confidence=excluded.confidence, last_verified_at=excluded.last_verified_at,
+      metadata_json=excluded.metadata_json`);
+  sqlite.transaction(() => {
+    for (const input of inputs) statement.run(input.securityId, input.providerSymbol,
+      input.status, input.confidence ?? null, input.verifiedAt,
+      input.metadata === undefined ? null : JSON.stringify(input.metadata));
+  })();
 }
 
 export function saveProviderSymbol(input: ProviderSymbolInput): void {
@@ -522,7 +498,6 @@ export function saveSecurityMetricsBatch(
 ): void {
   if (inputs.length === 0) return;
   const asOf = capturedAt.slice(0, 10);
-  const db = getDb();
   const rows = inputs.flatMap((input) => SOURCE_METRIC_DEFINITIONS.flatMap((definition) => {
     const value = input.values[definition.key];
     if (typeof value !== "number" || !Number.isFinite(value)) return [];
@@ -538,28 +513,7 @@ export function saveSecurityMetricsBatch(
       capturedAt,
     }];
   }));
-  db.transaction((transaction) => {
-    for (const batch of batches(rows)) {
-      transaction.insert(metricObservations)
-        .values(batch)
-        .onConflictDoUpdate({
-          target: [
-            metricObservations.metricDefinitionId,
-            metricObservations.entityType,
-            metricObservations.entityId,
-          ],
-          set: {
-            asOf: sql`excluded.as_of`,
-            valueNumber: sql`excluded.value_number`,
-            valueText: sql`excluded.value_text`,
-            source: sql`excluded.source`,
-            capturedAt: sql`excluded.captured_at`,
-          },
-          setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
-        })
-        .run();
-    }
-  });
+  writeMetricRows(rows);
 }
 
 export function saveSecurityMetrics(
@@ -579,7 +533,6 @@ export function saveDerivedSecurityMetricsBatch(
     input.values[key] !== undefined && !Number.isFinite(input.values[key])))) {
     throw new Error("Invalid derived metrics; the previous cache is preserved.");
   }
-  const db = getDb();
   const rows = inputs.flatMap((input) => DERIVED_METRIC_KEYS.map((key) => ({
     id: randomUUID(),
     metricDefinitionId: `security:${key}:v1`,
@@ -591,28 +544,7 @@ export function saveDerivedSecurityMetricsBatch(
     source: "tradingview-estimates-derived-v1",
     capturedAt: input.capturedAt,
   })));
-  db.transaction((transaction) => {
-    for (const batch of batches(rows)) {
-      transaction.insert(metricObservations)
-        .values(batch)
-        .onConflictDoUpdate({
-          target: [
-            metricObservations.metricDefinitionId,
-            metricObservations.entityType,
-            metricObservations.entityId,
-          ],
-          set: {
-            asOf: sql`excluded.as_of`,
-            valueNumber: sql`excluded.value_number`,
-            valueText: sql`excluded.value_text`,
-            source: sql`excluded.source`,
-            capturedAt: sql`excluded.captured_at`,
-          },
-          setWhere: lte(metricObservations.capturedAt, sql`excluded.captured_at`),
-        })
-        .run();
-    }
-  });
+  writeMetricRows(rows);
 }
 
 export function saveDerivedSecurityMetrics(

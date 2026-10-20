@@ -1,0 +1,1 @@
+ALTER TABLE `portfolio_value_snapshots` ADD `invested_json` text;

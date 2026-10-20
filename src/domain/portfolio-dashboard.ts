@@ -1,4 +1,5 @@
 import type { EtfVisibility } from "./visibility";
+import { latestInvestedSegment, type InvestedIndices, type PortfolioReturnBasis } from "./portfolio-invested-return";
 
 export type PortfolioPeriod = { preset: "1M" | "3M" | "1Y" | "All" } | { date: string };
 
@@ -14,7 +15,7 @@ export function portfolioPeriodStart(period: PortfolioPeriod, earliest: string, 
   return date.toISOString().slice(0, 10);
 }
 
-export interface PortfolioDashboardPoint {
+export interface PortfolioDashboardPoint extends InvestedIndices {
   date: string;
   indexUsd: number;
   indexEur: number;
@@ -32,16 +33,17 @@ export interface PortfolioDashboardEntry {
   snapshots: PortfolioDashboardPoint[];
 }
 
-export function dashboardSeries(entries: PortfolioDashboardEntry[], mode: "relative" | "absolute", currency: "USD" | "EUR", start: string) {
+export function dashboardSeries(entries: PortfolioDashboardEntry[], mode: "relative" | "absolute", currency: "USD" | "EUR", start: string, basis: PortfolioReturnBasis = "total") {
   return entries.flatMap((entry) => {
-    const points = entry.snapshots.filter((point) => !start || point.date >= start);
+    const points = (basis === "invested" ? latestInvestedSegment(entry.snapshots) : entry.snapshots).filter((point) => !start || point.date >= start);
     const base = points[0];
     if (!base) return [];
-    const indexKey = currency === "USD" ? "indexUsd" : "indexEur";
+    const indexKey = basis === "invested" ? (currency === "USD" ? "investedIndexUsd" : "investedIndexEur") : (currency === "USD" ? "indexUsd" : "indexEur");
     const valueKey = currency === "USD" ? "valueUsd" : "valueEur";
+    if (basis === "invested" && mode === "absolute") return [];
     if (mode === "absolute" && base[valueKey] === undefined) return [];
     return [{ ...entry, baselineDate: base.date, points: points.flatMap((point) => {
-      const value = mode === "relative" ? (point[indexKey] / base[indexKey] - 1) * 100 : point[valueKey];
+      const value = mode === "relative" ? (point[indexKey]! / base[indexKey]! - 1) * 100 : point[valueKey];
       return value !== undefined && Number.isFinite(value) ? [{ date: point.date, value }] : [];
     }) }];
   });

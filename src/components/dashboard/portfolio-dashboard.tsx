@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dashboardSeries, portfolioPeriodStart, type PortfolioPeriod, type PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
+import { latestInvestedSegment, type PortfolioReturnBasis } from "@/domain/portfolio-invested-return";
+import { InvestedReturnMethodology, PortfolioReturnToggle } from "./portfolio-return-toggle";
 
 const colors = ["#536b8a", "#26775f", "#c26a3b", "#9a579e", "#bd4259", "#298a9c", "#88702c"];
 const dateLabel = (date: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
@@ -13,16 +15,18 @@ const formatValue = (value: number, mode: "relative" | "absolute", currency: "US
 export function PortfolioDashboard({ entries, owner, loading, error, onRetry }: {
   entries: PortfolioDashboardEntry[]; owner: boolean; loading: boolean; error: string | null; onRetry: () => void;
 }) {
-  const [mode, setMode] = useState<"relative" | "absolute">("relative");
+  const [totalMode, setMode] = useState<"relative" | "absolute">("relative");
+  const [basis, setBasis] = useState<PortfolioReturnBasis>("total");
+  const mode = basis === "invested" ? "relative" : totalMode;
   const [currency, setCurrency] = useState<"USD" | "EUR">("USD");
   const [period, setPeriod] = useState<PortfolioPeriod>({ preset: "All" });
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const eligible = useMemo(() => entries.filter((entry) => mode === "relative" || owner || entry.visibility === "public"), [entries, mode, owner]);
-  const dates = useMemo(() => eligible.flatMap((entry) => entry.snapshots.map((point) => point.date)).sort(), [eligible]);
+  const dates = useMemo(() => eligible.flatMap((entry) => (basis === "invested" ? latestInvestedSegment(entry.snapshots) : entry.snapshots).map((point) => point.date)).sort(), [eligible, basis]);
   const earliest = dates[0] ?? "";
   const latest = dates.at(-1) ?? "";
   const start = portfolioPeriodStart(period, earliest, latest);
-  const series = useMemo(() => dashboardSeries(eligible, mode, currency, start), [eligible, mode, currency, start]);
+  const series = useMemo(() => dashboardSeries(eligible, mode, currency, start, basis), [eligible, mode, currency, start, basis]);
   const displayed = series.filter((entry) => !hiddenIds.includes(entry.id));
   const chartData = useMemo(() => {
     const rows = new Map<string, Record<string, number>>();
@@ -41,9 +45,10 @@ export function PortfolioDashboard({ entries, owner, loading, error, onRetry }: 
     <div className="panel-heading">
       <div><span className="eyebrow">Portfolio comparison</span><h2>Evolution over time</h2></div>
       <div className="portfolio-dashboard-controls">
+        <PortfolioReturnToggle value={basis} onChange={setBasis} />
         <div className="segmented-control" role="group" aria-label="Portfolio chart display">
           <button type="button" aria-pressed={mode === "relative"} className={mode === "relative" ? "is-active" : ""} onClick={() => setMode("relative")}>Relative %</button>
-          <button type="button" aria-pressed={mode === "absolute"} className={mode === "absolute" ? "is-active" : ""} onClick={() => setMode("absolute")}>Absolute value</button>
+          <button type="button" disabled={basis === "invested"} title={basis === "invested" ? "Normalized invested performance is expressed as a percentage." : undefined} aria-pressed={mode === "absolute"} className={mode === "absolute" ? "is-active" : ""} onClick={() => setMode("absolute")}>Absolute value</button>
         </div>
         <select aria-label="Portfolio chart currency" value={currency} onChange={(event) => setCurrency(event.target.value as "USD" | "EUR")}><option>USD</option><option>EUR</option></select>
       </div>
@@ -71,7 +76,7 @@ export function PortfolioDashboard({ entries, owner, loading, error, onRetry }: 
             {series.map((entry, index) => hiddenIds.includes(entry.id) ? null : <Line key={entry.id} name={entry.ticker} dataKey={`series${index}`} type="linear" connectNulls stroke={colors[entries.findIndex((candidate) => candidate.id === entry.id) % colors.length]} strokeWidth={2.2} dot={{ r: chartData.length > 100 ? 1 : 3 }} activeDot={{ r: 5 }} isAnimationActive={false} />)}
           </LineChart>
         </ResponsiveContainer>
-      </div> : <p className="portfolio-dashboard-message">{hiddenIds.length && series.length ? "Select a portfolio below to show its curve." : eligible.length ? "No saved snapshots in this period yet." : "No portfolios available in this view."}</p>}
+      </div> : <p className="portfolio-dashboard-message">{hiddenIds.length && series.length ? "Select a portfolio below to show its curve." : basis === "invested" && eligible.length ? "Invested performance needs new captures with position data. Older portfolio totals cannot reconstruct it. A data gap or cash-only capture restarts the series." : eligible.length ? "No saved snapshots in this period yet." : "No portfolios available in this view."}</p>}
     {!loading && !error ? <div className="portfolio-dashboard-legend" aria-label="Portfolios displayed on chart">
       {eligible.map((entry) => {
         const item = series.find((candidate) => candidate.id === entry.id);
@@ -84,6 +89,7 @@ export function PortfolioDashboard({ entries, owner, loading, error, onRetry }: 
         </button>;
       })}
     </div> : null}
-    <p className="portfolio-dashboard-note">{mode === "relative" ? "Each curve starts at 0% at its first saved snapshot on or after the selected date. " : "Saved net asset values, including cash. "}Changes include deposits, withdrawals and portfolio edits. Missing days are not reconstructed; lines connect saved snapshots.</p>
+    <p className="portfolio-dashboard-note">{basis === "invested" ? "Cash excluded · Normalized to 1× gross exposure · Price return, excluding cash dividends. Each curve starts at 0% at its first available observation in the selected period." : <>{mode === "relative" ? "Each curve starts at 0% at its first saved snapshot on or after the selected date. " : "Saved net asset values, including cash. "}Changes include deposits, withdrawals and portfolio edits. Missing days are not reconstructed; lines connect saved snapshots.</>}</p>
+    {basis === "invested" ? <InvestedReturnMethodology /> : null}
   </section>;
 }

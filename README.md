@@ -161,8 +161,32 @@ development view uses `localhost` for the administrator and `127.0.0.1` for the 
 | `TRADINGVIEW_BATCH_SIZE` | `1000` | Screener batch size, 25–1000 |
 | `TRADINGVIEW_MISSING_RETRY_LIMIT` | `100` | Omitted symbols retried in batches of 25, 0–500 |
 | `TRADINGVIEW_ESTIMATES_BATCH_SIZE` | `250` | Estimates session batch size, 25–500 |
-| `TRADINGVIEW_ESTIMATES_CONCURRENCY` | `4` | Parallel Estimates sessions, 1–4 |
+| `TRADINGVIEW_ESTIMATES_CONCURRENCY` | `5` | Parallel Estimates sessions, 1–5; shared across requests in one server process |
 | `TRADINGVIEW_ESTIMATES_MISSING_TTL_SECONDS` | `900` | Confirmed missing series TTL, 60–86400 |
+| `PORTFOLIO_METRICS_DAILY_REFRESH` | `true` | Set `false` to disable daily source-metrics refresh for saved portfolios |
+
+Metrics loads fundamentals and EPS consensus concurrently for known symbols.
+The Metrics screen displays fundamental tables as soon as that phase completes,
+then adds the consensus charts when all estimates have settled. Both phases
+belong to the current request; no previous aggregate is shown while loading.
+Overlapping requests share in-flight consensus symbols, with a process-wide
+connection limit. Completed requests are removed from that coordinator; normal
+observation TTLs still determine data freshness. No durable aggregate-result
+cache is added.
+
+While the server is running, saved portfolio metrics are refreshed once per
+calendar day in `Europe/Paris`. The first check runs 90 seconds after startup,
+then every 15 minutes. The task retrieves each required security once across
+portfolios; unrelated catalog funds are excluded. It refreshes source
+observations and does not store calculated portfolio metrics. A durable day
+claim prevents repeated scans on restart or provider failure; manual loads and
+force refresh remain available. If the server was stopped, it catches up on
+the next startup rather than replaying missed days.
+
+Measure real provider loads against isolated copies of a database with
+`node --conditions=react-server --import tsx scripts/benchmark-metrics.ts --etfs=PF,ACWI --runs=2`.
+Results are written under the ignored `reports/` directory. The source database
+is read-only and each sample starts from the same baseline backup.
 
 Relative paths resolve from the project root. The database, WAL files, and
 backups at the default location are ignored by Git and survive rebuilds or
