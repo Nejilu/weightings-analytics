@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { journalEntryTitle, journalPositionKey, reconstructPortfolio, valueCounterfactual, type CounterfactualMarket, type PortfolioJournal } from "@/domain/portfolio-journal";
+import { journalEntryTitle, journalPositionKey, reconstructPortfolio, valueCounterfactual, type CounterfactualMarket, type PortfolioJournal, type PortfolioJournalEntry } from "@/domain/portfolio-journal";
 
 const money = (value: number | null | undefined) => value === null || value === undefined ? "Unavailable" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 const quantity = (value: number | null) => value === null ? "Unknown quantity" : new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value);
@@ -13,6 +13,56 @@ interface PortfolioJournalExplorerProps {
   portfolioId: string;
   portfolioOptions?: Array<{ id: string; name: string }>;
   onClose: () => void;
+}
+
+function DeleteJournalState({ entry, portfolioId, current, onDeleted, onBusyChange }: {
+  entry: PortfolioJournalEntry; portfolioId: string; current: boolean;
+  onDeleted: (journal: PortfolioJournal) => void; onBusyChange: (busy: boolean) => void;
+}) {
+  const confirmation = useRef<HTMLDialogElement>(null);
+  const inFlight = useRef(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const remove = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(true);
+    onBusyChange(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/v1/portfolio/journal?portfolioId=${encodeURIComponent(portfolioId)}&entryId=${entry.id}`, { method: "DELETE", cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.data) throw new Error(payload.error ?? "The saved state could not be deleted.");
+      confirmation.current?.close();
+      onDeleted(payload.data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The saved state could not be deleted. Reload the journal before retrying.");
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+      onBusyChange(false);
+    }
+  };
+  return <>
+    <button type="button" className="secondary-button portfolio-journal-delete" disabled={current || pending}
+      title={current ? "The latest state represents your current portfolio. Select a past state to delete it." : "Permanently delete this saved state"}
+      onClick={() => { setError(null); confirmation.current?.showModal(); }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+      Delete selected state
+    </button>
+    <dialog ref={confirmation} className="portfolio-journal-confirm" aria-labelledby="journal-delete-title" aria-describedby="journal-delete-description"
+      onClose={(event) => event.stopPropagation()}
+      onCancel={(event) => { event.stopPropagation(); if (inFlight.current) event.preventDefault(); }}>
+      <h3 id="journal-delete-title">Delete this saved state?</h3>
+      <p className="portfolio-journal-confirm-entry">{date(entry.capturedAt, true)} · {time(entry.capturedAt)} UTC<br /><strong>{journalEntryTitle(entry)}</strong></p>
+      <p id="journal-delete-description">This permanently removes this entry from the journal and what-if timeline. Your current holdings and the other saved states are kept. This cannot be undone.</p>
+      {error ? <p className="portfolio-history-error" role="alert">{error}</p> : null}
+      <div className="portfolio-journal-confirm-actions">
+        <button type="button" className="secondary-button" autoFocus disabled={pending} onClick={() => confirmation.current?.close()}>Cancel</button>
+        <button type="button" className="secondary-button portfolio-journal-delete" disabled={pending} onClick={() => void remove()}>{pending ? "Deleting…" : "Delete permanently"}</button>
+      </div>
+    </dialog>
+  </>;
 }
 
 export function PortfolioJournalExplorer(props: PortfolioJournalExplorerProps) {
@@ -29,6 +79,8 @@ function PortfolioJournalExplorerContent({ portfolioId, portfolioOptions = [], o
   const [quoteError, setQuoteError] = useState<{ id: number; message: string } | null>(null);
   const [retry, setRetry] = useState(0);
   const [quotes, setQuotes] = useState<Record<number, Valuation>>({});
+  const [deleting, setDeleting] = useState(false);
+  const [deletionStatus, setDeletionStatus] = useState<string | null>(null);
 
   useEffect(() => { const element = dialog.current!; if (!element.open) element.showModal(); }, []);
   useEffect(() => {
@@ -65,7 +117,7 @@ function PortfolioJournalExplorerContent({ portfolioId, portfolioOptions = [], o
   }
   const cached = selected !== null ? quotes[selected] : undefined;
   useEffect(() => {
-    if (!journal || selected === null || cached || reconstructionError) return;
+    if (!journal || selected === null || cached || reconstructionError || deleting) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void (async () => {
@@ -78,7 +130,7 @@ function PortfolioJournalExplorerContent({ portfolioId, portfolioOptions = [], o
       })();
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [journal, portfolioId, selected, cached, reconstructionError, retry]);
+  }, [journal, portfolioId, selected, cached, reconstructionError, retry, deleting]);
 
   const market = cached?.market;
   const valuation = cached?.valuation;
@@ -89,21 +141,28 @@ function PortfolioJournalExplorerContent({ portfolioId, portfolioOptions = [], o
   const selectedIndex = journal?.entries.findIndex((item) => item.id === selected) ?? 0;
   const changeIndex = (index: number) => { const target = journal?.entries[index]; if (target) setSelected(target.id); };
   const loading = !cached && quoteError?.id !== selected && !reconstructionError;
+  const onDeleted = (updated: PortfolioJournal) => {
+    setJournal(updated);
+    setSelected(updated.entries[Math.min(Math.max(0, selectedIndex), updated.entries.length - 1)]?.id ?? null);
+    setQuotes({});
+    setQuoteError(null);
+    setDeletionStatus("Saved state permanently deleted.");
+  };
 
-  return <dialog ref={dialog} className="portfolio-journal-dialog" aria-labelledby="portfolio-journal-title" onClose={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return <dialog ref={dialog} className="portfolio-journal-dialog" aria-labelledby="portfolio-journal-title" onClose={onClose} onCancel={(event) => { if (deleting) event.preventDefault(); }} onClick={(event) => { if (event.target === event.currentTarget && !deleting) onClose(); }}>
     <div className="portfolio-journal-shell">
       <header className="portfolio-journal-header">
         <div><span className="eyebrow">Portfolio history</span><h2 id="portfolio-journal-title">{journal?.current.name ?? "Portfolio journal"}</h2></div>
         {portfolioOptions.length > 1 ?
-          <label className="portfolio-journal-selector">Portfolio<select aria-label="Portfolio journal selection" value={portfolioId} onChange={(event) => onPortfolioChange(event.target.value)}>
+          <label className="portfolio-journal-selector">Portfolio<select aria-label="Portfolio journal selection" value={portfolioId} disabled={deleting} onChange={(event) => onPortfolioChange(event.target.value)}>
             {portfolioOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
           </select></label> : null}
-        <button type="button" className="secondary-button" onClick={onClose} aria-label="Close portfolio journal">✕</button>
+        <button type="button" className="secondary-button" disabled={deleting} onClick={onClose} aria-label="Close portfolio journal">✕</button>
       </header>
       {error ? <p className="portfolio-history-error" role="alert">{error}</p> : !journal ? <p className="portfolio-dashboard-message" role="status">Loading change journal…</p> : <div className="portfolio-journal-layout">
         <aside className="portfolio-journal-sidebar" aria-label="Portfolio change journal">
-          <div className="portfolio-journal-section-title"><h3>Change journal</h3><span>{journal.entries.length} entries</span></div>
-          <ol ref={logList}>{journal.entries.slice().reverse().map((item) => <li key={item.id}><button type="button" aria-pressed={selected === item.id} className={selected === item.id ? "is-selected" : ""} onClick={() => setSelected(item.id)}>
+          <div className="portfolio-journal-section-title"><h3>Change journal</h3><span>{journal.entries.length} {journal.entries.length === 1 ? "entry" : "entries"}</span></div>
+          <ol ref={logList}>{journal.entries.slice().reverse().map((item) => <li key={item.id}><button type="button" disabled={deleting} aria-pressed={selected === item.id} className={selected === item.id ? "is-selected" : ""} onClick={() => setSelected(item.id)}>
             <time dateTime={item.capturedAt}>{date(item.capturedAt)} · {time(item.capturedAt)} UTC</time><strong>{journalEntryTitle(item)}</strong>
             <small>{item.patch.items.length} position change{item.patch.items.length === 1 ? "" : "s"}{item.patch.cash.length ? ` · ${item.patch.cash.length} cash` : ""}</small>
           </button></li>)}</ol>
@@ -113,10 +172,13 @@ function PortfolioJournalExplorerContent({ portfolioId, portfolioOptions = [], o
           <section className="portfolio-journal-timeline" aria-label="Counterfactual timeline">
             <div><span className="eyebrow">Selected state</span><h3>{entry ? date(entry.capturedAt, true) : "—"}</h3><span className="info-chip">{selectedIndex === journal.entries.length - 1 ? "Current composition" : "Past composition"} · {selectedIndex + 1} / {journal.entries.length}</span></div>
             {entry ? <p className="portfolio-journal-selected-entry">{journalEntryTitle(entry)} · {time(entry.capturedAt)} UTC</p> : null}
-            <div className="portfolio-journal-slider"><button className="secondary-button" type="button" aria-label="Previous portfolio state" disabled={selectedIndex <= 0} onClick={() => changeIndex(selectedIndex - 1)}>←</button>
-              <input type="range" min={0} max={Math.max(0, journal.entries.length - 1)} step={1} value={Math.max(0, selectedIndex)} onChange={(event) => changeIndex(Number(event.target.value))} aria-label="Portfolio modification timeline" aria-valuetext={entry ? `${date(entry.capturedAt)}: ${journalEntryTitle(entry)}` : "Loading"} disabled={journal.entries.length < 2} />
-              <button className="secondary-button" type="button" aria-label="Next portfolio state" disabled={selectedIndex >= journal.entries.length - 1} onClick={() => changeIndex(selectedIndex + 1)}>→</button></div>
+            <div className="portfolio-journal-slider"><button className="secondary-button" type="button" aria-label="Previous portfolio state" disabled={deleting || selectedIndex <= 0} onClick={() => changeIndex(selectedIndex - 1)}>←</button>
+              <input type="range" min={0} max={Math.max(0, journal.entries.length - 1)} step={1} value={Math.max(0, selectedIndex)} onChange={(event) => changeIndex(Number(event.target.value))} aria-label="Portfolio modification timeline" aria-valuetext={entry ? `${date(entry.capturedAt)}: ${journalEntryTitle(entry)}` : "Loading"} disabled={deleting || journal.entries.length < 2} />
+              <button className="secondary-button" type="button" aria-label="Next portfolio state" disabled={deleting || selectedIndex >= journal.entries.length - 1} onClick={() => changeIndex(selectedIndex + 1)}>→</button></div>
             <div className="portfolio-journal-endpoints"><span>{journal.entries[0] ? date(journal.entries[0].capturedAt) : ""}</span><span>{journal.entries.at(-1) ? date(journal.entries.at(-1)!.capturedAt) : ""}</span></div>
+            {entry ? <div className="portfolio-journal-entry-actions"><DeleteJournalState key={entry.id} entry={entry} portfolioId={portfolioId} current={selectedIndex === journal.entries.length - 1} onDeleted={onDeleted} onBusyChange={setDeleting} />
+              {selectedIndex === journal.entries.length - 1 ? <small>Select a past state to delete it. The current state is kept.</small> : null}</div> : null}
+            {deletionStatus ? <p className="portfolio-journal-deletion-status" role="status">{deletionStatus}</p> : null}
           </section>
           {reconstructionError ? <p className="portfolio-history-error" role="alert">{reconstructionError}</p> : <>
             <section className="portfolio-journal-metrics" aria-label="Counterfactual valuation" aria-busy={loading}>

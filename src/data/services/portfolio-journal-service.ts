@@ -2,12 +2,16 @@ import "server-only";
 import { ensureLocalDatabase } from "@/db/bootstrap";
 import { getDb } from "@/db/client";
 import { loadPortfolioById } from "@/db/repositories/portfolio-repository";
-import { loadPortfolioJournalEntries, recordPortfolioChange } from "@/db/repositories/portfolio-journal-repository";
-import { journalComposition, journalPositionKey, reconstructPortfolio, valueCounterfactual, type CounterfactualMarket, type PortfolioJournal } from "@/domain/portfolio-journal";
+import { deletePortfolioJournalEntry, loadPortfolioJournalEntries, recordPortfolioChange } from "@/db/repositories/portfolio-journal-repository";
+import { journalComposition, journalPositionKey, reconstructPortfolio, removeJournalEntry, valueCounterfactual, type CounterfactualMarket, type PortfolioJournal } from "@/domain/portfolio-journal";
 import { mapWithConcurrency } from "@/domain/async-utils";
 import { getAvailableMarketPrices, getFxRate } from "./market-price-service";
 
 export class PortfolioJournalError extends Error {}
+
+export class PortfolioJournalDeletionError extends PortfolioJournalError {
+  constructor(message: string, public status: 404 | 409) { super(message); }
+}
 
 export function getPortfolioJournal(portfolioId: string): PortfolioJournal {
   ensureLocalDatabase();
@@ -17,6 +21,22 @@ export function getPortfolioJournal(portfolioId: string): PortfolioJournal {
     const current = journalComposition(stored);
     if (!loadPortfolioJournalEntries(portfolioId).length) recordPortfolioChange(portfolioId, undefined, current, { kind: "baseline" });
     return { portfolioId, current, entries: loadPortfolioJournalEntries(portfolioId) };
+  });
+}
+
+export function deletePortfolioJournalState(portfolioId: string, entryId: number): PortfolioJournal {
+  ensureLocalDatabase();
+  return getDb().transaction(() => {
+    const stored = loadPortfolioById(portfolioId);
+    if (!stored) throw new PortfolioJournalDeletionError("The saved portfolio no longer exists.", 404);
+    const journal = { portfolioId, current: journalComposition(stored), entries: loadPortfolioJournalEntries(portfolioId) };
+    const index = journal.entries.findIndex((entry) => entry.id === entryId);
+    if (index < 0) throw new PortfolioJournalDeletionError("This journal entry is unavailable. Reload the journal.", 404);
+    let updated;
+    try { updated = removeJournalEntry(journal, entryId); }
+    catch (error) { throw new PortfolioJournalDeletionError(error instanceof Error ? error.message : "Journal entry could not be deleted.", 409); }
+    deletePortfolioJournalEntry(portfolioId, entryId, updated.entries[index]);
+    return { ...updated, entries: loadPortfolioJournalEntries(portfolioId) };
   });
 }
 
@@ -39,7 +59,7 @@ export async function getPortfolioCounterfactual(portfolioId: string, entryId: n
   for (const [key, quote] of quotes) data.prices[key] = { priceUsd: quote.priceUsd, asOf: quote.asOf, stale: quote.sourceStatus === "stale" };
   for (const rate of rates) if (rate) data.fx[rate.currency] = { rateToUsd: rate.rateToUsd, asOf: rate.asOf, stale: rate.sourceStatus === "stale" };
   const current = getPortfolioJournal(portfolioId);
-  if (current.entries.at(-1)?.id !== journal.entries.at(-1)?.id || JSON.stringify(current.current) !== JSON.stringify(journal.current)) {
+  if (JSON.stringify(current.entries) !== JSON.stringify(journal.entries) || JSON.stringify(current.current) !== JSON.stringify(journal.current)) {
     throw new PortfolioJournalError("Portfolio changed during valuation. Close and reopen the journal to reload it.");
   }
   return { entryId, market: data, valuation: valueCounterfactual(composition, data), currentValuation: valueCounterfactual(journal.current, data) };

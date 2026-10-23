@@ -9,6 +9,18 @@ When several saved portfolios are available, the explorer header also allows
 switching between their journals. Switching clears the previous selection and
 quote cache; it does not change the portfolio open behind the explorer.
 
+Select a past state and use **Delete selected state** (trash icon) to remove it
+permanently after confirmation. The latest state represents the current portfolio
+and cannot be deleted. The owner-only `DELETE /api/v1/portfolio/journal` accepts
+`portfolioId` and `entryId` as query parameters. It removes the actual database
+row and rebases the next surviving entry in one transaction, preserving every
+other saved composition, timestamp and recorded value. Deleting the first entry
+makes the next one the initial tracking checkpoint. A round-trip test edit can
+leave a surviving entry labelled **Composition unchanged**. Current positions,
+cash, dividend records and NAV history are unaffected. Quotes are cleared and the
+timeline selects the next surviving state. A valuation overlapping a journal
+deletion is rejected so a removed state cannot be returned as a valid selection.
+
 Migration 0021 adds `portfolio_journal_entries`. One initial checkpoint establishes
 the start of reliable history; later entries retain only changed positions,
 cash balances and the portfolio name, with before/after values. Unchanged lines,

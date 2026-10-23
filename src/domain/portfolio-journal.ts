@@ -104,6 +104,19 @@ export function reconstructPortfolio(journal: PortfolioJournal, entryId: number)
   return journal.entries.slice(index + 1).reverse().reduce((state, entry) => applyJournalPatch(state, entry.patch, true), journal.current);
 }
 
+export function removeJournalEntry(journal: PortfolioJournal, entryId: number): PortfolioJournal {
+  const index = journal.entries.findIndex((entry) => entry.id === entryId);
+  if (index < 0) throw new Error("This journal entry is unavailable. Reload the journal.");
+  if (index === journal.entries.length - 1) throw new Error("The current composition must stay in the journal. Only past states can be deleted.");
+  // Rebase the next surviving state instead of replaying the deleted trade.
+  // Reconstruction validates the complete chain before any persistence occurs.
+  const next = journal.entries[index + 1];
+  const after = reconstructPortfolio(journal, next.id);
+  const before = index > 0 ? reconstructPortfolio(journal, journal.entries[index - 1].id) : emptyJournalComposition();
+  const rebased = { ...next, kind: index === 0 ? "baseline" as const : next.kind, patch: compositionPatch(before, after) };
+  return { ...journal, entries: journal.entries.filter((entry) => entry.id !== entryId).map((entry) => entry.id === next.id ? rebased : entry) };
+}
+
 export function valueCounterfactual(composition: JournalComposition, market: CounterfactualMarket) {
   const missing: string[] = [];
   const dates: string[] = [];
@@ -132,6 +145,7 @@ export function journalEntryTitle(entry: PortfolioJournalEntry) {
   if (entry.kind === "baseline") return "Tracking started";
   if (entry.kind === "created") return "Portfolio created";
   if (entry.kind === "resolved") return "Share quantities resolved";
+  if (patchIsEmpty(entry.patch)) return "Composition unchanged";
   const { items, cash } = entry.patch;
   const added = items.filter((p) => !p.before).map((p) => p.after!.ticker);
   const removed = items.filter((p) => !p.after).map((p) => p.before!.ticker);

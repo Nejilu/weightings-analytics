@@ -10,8 +10,8 @@ import { replacePortfolioEtfRecord } from "@/db/repositories/local-etf-repositor
 import { loadPortfolioJournalEntries } from "@/db/repositories/portfolio-journal-repository";
 import { journalComposition, reconstructPortfolio } from "@/domain/portfolio-journal";
 import type { MarketPrice, PortfolioItem } from "@/domain/portfolio";
-import { getPortfolioCounterfactual, getPortfolioJournal } from "./portfolio-journal-service";
-import { GET as journalGET } from "@/app/api/v1/portfolio/journal/route";
+import { deletePortfolioJournalState, getPortfolioCounterfactual, getPortfolioJournal } from "./portfolio-journal-service";
+import { DELETE as journalDELETE, GET as journalGET } from "@/app/api/v1/portfolio/journal/route";
 import { GET as counterfactualGET } from "@/app/api/v1/portfolio/counterfactual/route";
 import { adjustDividendPayment, confirmDividendPayment } from "@/db/repositories/dividend-repository";
 
@@ -80,6 +80,91 @@ test("journal persists atomic diffs, reconstructs past holdings and never saves 
     getSqlite().prepare("DELETE FROM etfs WHERE id = ?").run(etf.id);
     getSqlite().prepare("DELETE FROM portfolios WHERE id = ?").run(id);
     assert.deepEqual(loadPortfolioJournalEntries(id), []);
+  } finally {
+    closeDatabase();
+    keys.forEach((key, index) => { if (env[index] === undefined) delete process.env[key]; else process.env[key] = env[index]; });
+    assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("owner deletion removes the database row atomically, rebases history and invalidates overlapping valuations", async () => {
+  const keys = ["DATABASE_PATH", "SITE_ACCESS_MODE", "SITE_LOCAL_PUBLIC_PREVIEW"];
+  const env = keys.map((key) => process.env[key]);
+  const directory = mkdtempSync(join(tmpdir(), "portfolio-journal-delete-"));
+  try {
+    process.env.DATABASE_PATH = join(directory, "journal.sqlite");
+    process.env.SITE_ACCESS_MODE = "local";
+    process.env.SITE_LOCAL_PUBLIC_PREVIEW = "true";
+    ensureLocalDatabase();
+    const item: PortfolioItem = { id: "line-a", kind: "etf", referenceId: "acwi-us", ticker: "ACWI", name: "World ETF", allocationWeight: 50, quantity: 100, inputMode: "shares", inputAmount: 100, currentValueUsd: 10000 };
+    const etf = savePortfolioRecordAsEtf({ ticker: "DELTEST", name: "Deletion test", description: "" }, { id: "source", name: "Source", baseCurrency: "USD", updatedAt: "", items: [item], cashPositions: [{ currency: "USD", amount: 10000 }] });
+    const id = etf.portfolioId!;
+    const update = (amount: number) => replacePortfolioEtfRecord({ id: etf.id, portfolioId: id, ticker: etf.ticker, name: etf.name, description: "", editableDescription: "", items: [item], cashPositions: [{ currency: "USD", amount }] });
+    update(11000);
+    update(10000);
+    const original = getPortfolioJournal(id);
+    const [first, temporary, last] = original.entries;
+    assert.equal(original.entries.length, 3);
+    getSqlite().prepare("INSERT INTO portfolios (id, name) VALUES ('other-portfolio', 'Other portfolio')").run();
+    const legacy = getPortfolioJournal("other-portfolio");
+    const bookSnapshot = () => ["portfolios", "portfolio_items", "portfolio_cash_positions", "portfolio_security_balances", "portfolio_dividend_payments", "portfolio_value_snapshots", "etfs"].map((table) => getSqlite().prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+    const before = bookSnapshot();
+    const request = (entry: string | number = temporary.id, portfolio = id, host = "localhost", origin = `http://${host}`) => new Request(`http://${host}/api/v1/portfolio/journal?portfolioId=${portfolio}&entryId=${entry}`, { method: "DELETE", headers: { host, origin } });
+    assert.equal((await journalDELETE(request(temporary.id, id, "127.0.0.1"))).status, 403);
+    assert.equal((await journalDELETE(request(temporary.id, id, "localhost", "https://attacker.example"))).status, 403);
+    assert.equal((await journalDELETE(request(temporary.id, id, "localhost", ""))).status, 403);
+    for (const invalid of ["", "0", "-1", "1.5", "NaN", "9007199254740992"]) assert.equal((await journalDELETE(request(invalid))).status, 400);
+    assert.equal((await journalDELETE(request(temporary.id, "bad.id"))).status, 400);
+    assert.equal((await journalDELETE(request(temporary.id, "missing"))).status, 404);
+    assert.equal((await journalDELETE(request(temporary.id, legacy.portfolioId))).status, 404);
+    assert.equal((await journalDELETE(request(last.id))).status, 409);
+    assert.deepEqual(getPortfolioJournal(id).entries, original.entries);
+    // Simulate a disk/database rejection after the successor patch was updated.
+    getSqlite().exec("CREATE TRIGGER reject_journal_deletion BEFORE DELETE ON portfolio_journal_entries BEGIN SELECT RAISE(ABORT, 'simulated failure'); END");
+    assert.equal((await journalDELETE(request())).status, 503);
+    assert.deepEqual(getPortfolioJournal(id).entries, original.entries);
+    getSqlite().exec("DROP TRIGGER reject_journal_deletion");
+    let releaseQuotes!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseQuotes = resolve; });
+    const valuation = getPortfolioCounterfactual(id, temporary.id, {
+      async getAvailableMarketPrices() { await gate; return new Map(); },
+      async getFxRate() { throw new Error("No FX needed"); },
+    });
+    const rejectedValuation = assert.rejects(valuation, /changed during valuation/);
+    const response = await journalDELETE(request());
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("cache-control")!, /no-store/);
+    const result = (await response.json()).data;
+    assert.equal(result.entries.length, 2);
+    assert.deepEqual(getSqlite().prepare("SELECT COUNT(*) AS n FROM portfolio_journal_entries WHERE id = ?").get(temporary.id), { n: 0 });
+    assert.equal(result.entries[1].capturedAt, last.capturedAt);
+    assert.equal(result.entries[1].valueUsd, last.valueUsd);
+    assert.deepEqual(result.entries[1].patch, { items: [], cash: [] });
+    assert.deepEqual(reconstructPortfolio(result, first.id), reconstructPortfolio(original, first.id));
+    assert.deepEqual(reconstructPortfolio(result, last.id), original.current);
+    releaseQuotes();
+    await rejectedValuation;
+    assert.equal((await journalDELETE(request())).status, 404);
+    assert.equal((await counterfactualGET(new Request(`http://localhost/api/v1/portfolio/counterfactual?portfolioId=${id}&entryId=${temporary.id}`, { headers: { host: "localhost" } }))).status, 409);
+    closeDatabase();
+    ensureLocalDatabase();
+    assert.deepEqual(getPortfolioJournal(id), result);
+    const pruned = deletePortfolioJournalState(id, first.id);
+    assert.equal(pruned.entries.length, 1);
+    assert.equal(pruned.entries[0].kind, "baseline");
+    assert.equal(pruned.entries[0].capturedAt, last.capturedAt);
+    assert.deepEqual(reconstructPortfolio(pruned, last.id), original.current);
+    assert.equal((await journalDELETE(request(last.id))).status, 409);
+    assert.deepEqual(bookSnapshot(), before);
+    // Later ordinary edits append to the pruned checkpoint and remain reversible.
+    update(12000);
+    const later = getPortfolioJournal(id);
+    assert.equal(later.entries.length, 2);
+    assert.deepEqual(reconstructPortfolio(later, last.id), original.current);
+    getSqlite().prepare("UPDATE portfolio_cash_positions SET amount = 13000 WHERE portfolio_id = ?").run(id);
+    assert.throws(() => deletePortfolioJournalState(id, last.id), /outside this journal/);
+    assert.deepEqual(loadPortfolioJournalEntries(id), later.entries);
   } finally {
     closeDatabase();
     keys.forEach((key, index) => { if (env[index] === undefined) delete process.env[key]; else process.env[key] = env[index]; });

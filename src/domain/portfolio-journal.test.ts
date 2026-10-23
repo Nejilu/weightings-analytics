@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyJournalPatch, compositionPatch, emptyJournalComposition, reconstructPortfolio, valueCounterfactual } from "./portfolio-journal";
+import { applyJournalPatch, compositionPatch, emptyJournalComposition, journalEntryTitle, patchIsEmpty, reconstructPortfolio, removeJournalEntry, valueCounterfactual, type JournalComposition, type PortfolioJournal } from "./portfolio-journal";
 import { portfolioJournalFixture } from "./portfolio-journal.test-fixture";
 
 test("every recorded fixture state can be recovered by reversing only subsequent edits", () => {
@@ -57,4 +57,52 @@ test("unknown quantities, delisted securities and missing FX never produce a par
   assert.equal(valueCounterfactual(composition, market).valueUsd, null);
   delete market.prices["security:demo-NVDA"];
   assert.deepEqual(valueCounterfactual(composition, market).missing, ["MSFT", "NVDA"]);
+});
+
+test("deleting any past state preserves every surviving composition, timestamp and recorded value", () => {
+  const original = structuredClone(portfolioJournalFixture.journal);
+  const normalize = (state: JournalComposition) => ({ ...state,
+    items: state.items.slice().sort((a, b) => a.referenceId.localeCompare(b.referenceId)),
+    cashPositions: state.cashPositions.slice().sort((a, b) => a.currency.localeCompare(b.currency)),
+  });
+  for (const removed of original.entries.slice(0, -1)) {
+    const result = removeJournalEntry(original, removed.id);
+    assert.equal(result.entries.length, original.entries.length - 1);
+    assert.equal(result.entries.some((entry) => entry.id === removed.id), false);
+    assert.deepEqual(result.current, original.current);
+    for (const kept of result.entries) {
+      const prior = original.entries.find((entry) => entry.id === kept.id)!;
+      assert.equal(kept.capturedAt, prior.capturedAt);
+      assert.equal(kept.valueUsd, prior.valueUsd);
+      assert.deepEqual(normalize(reconstructPortfolio(result, kept.id)), normalize(reconstructPortfolio(original, kept.id)));
+    }
+    if (removed === original.entries[0]) assert.equal(result.entries[0].kind, "baseline");
+  }
+  assert.deepEqual(original, portfolioJournalFixture.journal);
+  let pruned = original;
+  for (const entry of original.entries.slice(0, -1)) pruned = removeJournalEntry(pruned, entry.id);
+  assert.equal(pruned.entries.length, 1);
+  assert.deepEqual(normalize(reconstructPortfolio(pruned, pruned.entries[0].id)), normalize(original.current));
+});
+
+test("removing the temporary $1,000 cash addition retains the actual book and a truthful successor label", () => {
+  const states: JournalComposition[] = [10000, 11000, 10000].map((amount) => ({ name: "Personal PF test", items: [], cashPositions: [{ currency: "USD", amount }] }));
+  const journal: PortfolioJournal = { portfolioId: "test", current: states[2], entries: states.map((state, index) => ({
+    id: index + 1, kind: index === 0 ? "baseline" : "edited", capturedAt: `2026-10-23T16:0${index}:00Z`, valueUsd: state.cashPositions[0].amount,
+    patch: compositionPatch(states[index - 1] ?? emptyJournalComposition(), state),
+  })) };
+  const result = removeJournalEntry(journal, 2);
+  assert.deepEqual(reconstructPortfolio(result, 1), states[0]);
+  assert.deepEqual(reconstructPortfolio(result, 3), states[2]);
+  assert(patchIsEmpty(result.entries[1].patch));
+  assert.equal(journalEntryTitle(result.entries[1]), "Composition unchanged");
+  assert.equal(result.entries[1].valueUsd, 10000);
+});
+
+test("deletion rejects the current state, missing entries and incomplete histories", () => {
+  const journal = structuredClone(portfolioJournalFixture.journal);
+  assert.throws(() => removeJournalEntry(journal, journal.entries.at(-1)!.id), /current composition must stay/);
+  assert.throws(() => removeJournalEntry(journal, 99999), /entry is unavailable/);
+  journal.entries.splice(1, 1);
+  assert.throws(() => removeJournalEntry(journal, 1), /incomplete/);
 });
