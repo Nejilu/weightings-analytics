@@ -1,6 +1,80 @@
 .panel.portfolio-dashboard { min-width: 0; padding: 24px; }
 .portfolio-dashboard .panel-heading { align-items: center; flex-wrap: wrap; gap: 16px; }
 .portfolio-dashboard .panel-heading h2 { font-size: 20px; }
+.portfolio-journal-dialog { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(1240px, calc(100vw - 48px)); max-width: none; height: min(860px, calc(100dvh - 48px)); max-height: none; overflow: hidden; box-shadow: 0 24px 100px #0005; }
+.portfolio-journal-dialog::backdrop { background: #101826a8; backdrop-filter: blur(4px); }
+body:has(.portfolio-journal-dialog[open]) { overflow: hidden; }
+.portfolio-journal-shell { height: 100%; display: flex; flex-direction: column; }
+.portfolio-journal-header { padding: 24px 28px 18px; display: flex; gap: 20px; align-items: start; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.portfolio-journal-header h2 { font-size: 21px; margin: 6px 0 10px; }
+.portfolio-journal-header p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.portfolio-journal-header button { flex-shrink: 0; }
+.portfolio-journal-header > div:first-child { flex: 1; }
+.portfolio-journal-selector { display: grid; gap: 5px; font-size: 10px; color: var(--muted); }
+.portfolio-journal-selector select { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 7px 12px; font: inherit; font-size: 12px; min-width: 125px; }
+.portfolio-journal-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 0; flex: 1; }
+.portfolio-journal-sidebar { border-right: 1px solid var(--line); padding: 20px 16px; overflow-y: auto; }
+.portfolio-journal-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.portfolio-journal-section-title h3 { font-size: 13px; margin: 0; }
+.portfolio-journal-section-title > span { font-size: 10px; color: var(--muted); }
+.portfolio-journal-sidebar ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.portfolio-journal-sidebar li button { width: 100%; display: grid; gap: 6px; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; }
+.portfolio-journal-sidebar li button:hover { background: color-mix(in srgb, var(--purple) 4%, var(--surface)); }
+.portfolio-journal-sidebar li button.is-selected { background: color-mix(in srgb, var(--purple) 9%, var(--surface)); border-color: color-mix(in srgb, var(--purple) 36%, var(--line)); }
+.portfolio-journal-sidebar time { color: var(--purple); font-size: 11px; }
+.portfolio-journal-sidebar strong { font-size: 12px; line-height: 1.55; font-weight: 600; overflow-wrap: anywhere; }
+.portfolio-journal-sidebar small, .portfolio-journal-sidebar > p { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.portfolio-journal-sidebar > p { padding: 10px 12px 0; }
+.portfolio-journal-main { padding: 22px 26px; overflow-y: auto; min-width: 0; }
+.portfolio-journal-timeline { padding-bottom: 20px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+.portfolio-journal-timeline > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.portfolio-journal-timeline .eyebrow { width: 100%; }
+.portfolio-journal-timeline h3 { margin: 0; font-size: 20px; }
+.portfolio-journal-selected-entry { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 10px 0 0; }
+.portfolio-journal-slider { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+.portfolio-journal-slider input { flex: 1; min-width: 0; accent-color: var(--purple); cursor: pointer; }
+.portfolio-journal-slider button { padding: 6px 11px; }
+.portfolio-journal-endpoints { display: flex; justify-content: space-between; margin-top: 7px; color: var(--muted); font-size: 10px; }
+.portfolio-journal-metrics { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 10px; margin-bottom: 26px; }
+.portfolio-journal-metrics article { padding: 16px; border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.portfolio-journal-metrics article > span { font-size: 10px; color: var(--muted); line-height: 1.5; }
+.portfolio-journal-metrics article > strong { font-size: 23px; letter-spacing: -.04em; }
+.portfolio-journal-metrics article > small { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.portfolio-journal-metrics .portfolio-journal-value { border-color: color-mix(in srgb, var(--purple) 35%, var(--line)); background: color-mix(in srgb, var(--purple) 4%, var(--surface)); }
+.portfolio-journal-positions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.portfolio-journal-positions .portfolio-position-bubble { min-width: 0; padding: 14px; }
+.portfolio-journal-positions .portfolio-position-bubble > p { color: var(--muted); font-size: 10px; line-height: 1.5; min-height: 28px; margin: 7px 0 12px; }
+.portfolio-journal-positions .portfolio-position-bubble > strong { font-size: 20px; }
+.portfolio-journal-diff { list-style: none; padding: 0; }
+.portfolio-journal-diff li { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+.portfolio-journal-diff li span { color: var(--muted); }
+.portfolio-journal-footnote { margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.7; }
+@media (max-width: 900px) {
+  .portfolio-journal-layout { grid-template-columns: 215px minmax(0, 1fr); }
+  .portfolio-journal-main { padding: 18px; }
+  .portfolio-journal-positions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .portfolio-journal-metrics { grid-template-columns: 1fr 1fr; }
+  .portfolio-journal-metrics .portfolio-journal-value { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .portfolio-journal-header { flex-wrap: wrap; }
+  .portfolio-journal-selector { order: 3; width: 100%; }
+  .portfolio-journal-dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); border-radius: 10px; }
+  .portfolio-journal-header { padding: 16px; gap: 10px; }
+  .portfolio-journal-header h2 { font-size: 17px; }
+  .portfolio-journal-header p { font-size: 10px; }
+  .portfolio-journal-layout { display: block; overflow-y: auto; }
+  .portfolio-journal-sidebar { border-right: none; border-bottom: 1px solid var(--line); padding: 12px 16px; overflow: visible; }
+  .portfolio-journal-sidebar ol { display: flex; overflow-x: auto; padding-bottom: 7px; }
+  .portfolio-journal-sidebar li { flex: 0 0 205px; }
+  .portfolio-journal-sidebar > p { margin: 5px 0 0; padding: 0; }
+  .portfolio-journal-main { overflow: visible; padding: 18px 16px; }
+  .portfolio-journal-timeline h3 { font-size: 18px; }
+  .portfolio-journal-metrics article { padding: 12px; }
+  .portfolio-journal-metrics article > strong { font-size: 21px; }
+  .portfolio-journal-positions { gap: 9px; }
+  .portfolio-journal-positions .portfolio-position-bubble { padding: 11px; }
+}
 .portfolio-dashboard-controls, .portfolio-dashboard-period { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .portfolio-dashboard-controls select, .portfolio-dashboard-period input { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px; font: inherit; font-size: 11px; min-height: 34px; }
 .portfolio-dashboard-period { justify-content: space-between; margin: 18px 0; }
@@ -33,6 +107,14 @@
 .panel.portfolio-history-panel { overflow: hidden; padding: 24px; }
 .portfolio-history-heading h2 { font-size: 20px; letter-spacing: -0.4px; }
 .portfolio-history-heading { gap: 16px; flex-wrap: wrap; }
+.portfolio-history-identity { flex: 1; min-width: 0; }
+.portfolio-history-identity h1 { margin: 0; font-size: clamp(22px, 2.5vw, 27px); letter-spacing: -.6px; }
+.portfolio-history-identity > p { margin: 8px 0; max-width: 680px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.portfolio-history-identity > span { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.portfolio-history-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
+.portfolio-history-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 0 4px; border-top: 1px solid var(--line); }
+.portfolio-history-toolbar .portfolio-history-ranges { margin-left: auto; }
+.portfolio-history-toolbar .segmented-control button { min-height: 30px; font-size: 11px; }
 .portfolio-history-summary { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 24px 0 8px; }
 .portfolio-history-summary > div:first-child { display: grid; gap: 7px; }
 .portfolio-history-summary strong { font-size: clamp(24px, 3vw, 34px); letter-spacing: -1px; font-variant-numeric: tabular-nums; }
@@ -40,6 +122,12 @@
 .portfolio-history-summary .is-positive { color: var(--mint); }
 .portfolio-history-summary .is-negative { color: var(--negative); }
 .portfolio-history-summary small { color: var(--muted); margin-left: 5px; }
+.portfolio-history-summary .portfolio-history-value-label { font-size: 11px; }
+.portfolio-history-summary .portfolio-history-equivalent { margin: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.portfolio-history-summary .portfolio-history-period-change { display: grid; gap: 6px; text-align: right; }
+.portfolio-history-period-change > b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.portfolio-history-period-change > small { font-size: 11px; margin: 0; }
+.portfolio-history-summary .portfolio-history-pending { font-size: 11px; }
 .portfolio-history-ranges { display: flex; padding: 4px; gap: 3px; background: var(--surface-muted); border-radius: 9px; }
 .portfolio-history-ranges button { border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .portfolio-history-ranges button.is-active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
@@ -58,7 +146,9 @@
 .portfolio-history-table .table-scroll { max-height: 300px; margin-top: 12px; }
 @media (max-width: 640px) {
   .panel.portfolio-history-panel { padding: 18px 14px; }
-  .portfolio-history-summary { align-items: flex-start; flex-direction: column; gap: 15px; }
+  .portfolio-history-summary { align-items: flex-start; flex-wrap: wrap; gap: 15px; }
+  .portfolio-history-actions { justify-content: flex-start; }
+  .portfolio-history-summary .portfolio-history-period-change { text-align: left; }
   .portfolio-history-chart { height: 240px; }
   .portfolio-history-summary small { display: block; margin: 4px 0 0; }
   .portfolio-history-ranges { align-self: flex-end; }
@@ -1514,6 +1604,8 @@ tbody tr:hover {
 
 .portfolio-workspace {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 14px;
 }
 
@@ -1527,6 +1619,11 @@ tbody tr:hover {
 }
 
 .portfolio-overview-heading { padding: 12px 0 10px; }
+.portfolio-navigation { flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .portfolio-navigation { gap: 8px; }
+  .portfolio-navigation .primary-button { min-width: 0; width: auto; }
+}
 .portfolio-overview-heading h1 {
   font-size: 32px;
   letter-spacing: -1px;

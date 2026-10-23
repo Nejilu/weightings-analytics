@@ -30,6 +30,9 @@ import {
   securities,
 } from "../schema";
 import { findEtfById } from "./catalog-repository";
+import { loadPortfolioById } from "./portfolio-repository";
+import { journalComposition } from "@/domain/portfolio-journal";
+import { knownJournalValue, recordPortfolioChange } from "./portfolio-journal-repository";
 
 interface LocalEtfIdentityInput {
   visibility?: import("@/domain/visibility").EtfVisibility;
@@ -458,6 +461,7 @@ export function replacePortfolioEtfRecord(
   const now = new Date().toISOString();
 
   db.transaction((transaction) => {
+    const before = loadPortfolioById(input.portfolioId);
     transaction
       .delete(portfolioItems)
       .where(eq(portfolioItems.portfolioId, input.portfolioId))
@@ -530,6 +534,10 @@ export function replacePortfolioEtfRecord(
       .where(eq(etfs.id, input.id))
       .run();
     recordPortfolioSecurityBalances(input.portfolioId, now);
+    const after = loadPortfolioById(input.portfolioId);
+    if (before && after) recordPortfolioChange(input.portfolioId, journalComposition(before), journalComposition(after), {
+      capturedAt: now, valueUsd: knownJournalValue(input.items, input.cashPositions),
+    });
   });
 
   return findEtfById(input.id);

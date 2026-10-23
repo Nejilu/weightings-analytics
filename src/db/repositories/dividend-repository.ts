@@ -4,6 +4,9 @@ import { getDb, getSqlite } from "../client";
 import { applicationSettings, portfolioCashPositions, portfolioDividendPayments, portfolioDividendTracking, portfolioSecurityBalances, portfolios, securities, securityDividendObservations } from "../schema";
 import { dividendAmounts, DividendRequestError, validateDividendSettings, type DividendObservation, type DividendPayment, type DividendSettings } from "@/domain/dividends";
 import { SUPPORTED_CASH_CURRENCIES } from "@/domain/portfolio";
+import { loadPortfolioById } from "./portfolio-repository";
+import { journalComposition } from "@/domain/portfolio-journal";
+import { recordPortfolioChange } from "./portfolio-journal-repository";
 import { securityListingQuoteSymbol } from "@/domain/security-equivalence";
 
 export function loadDividendSettings(): DividendSettings {
@@ -93,6 +96,7 @@ export function confirmDividendPayment(portfolioId: string, providerSymbol: stri
   const amounts = validatePayment(input);
   const db = getDb();
   return db.transaction((tx) => {
+    const before = loadPortfolioById(portfolioId);
     if (!tx.select().from(portfolios).where(eq(portfolios.id, portfolioId)).get()) throw new DividendRequestError("Portfolio unavailable.");
     const existing = tx.select().from(portfolioDividendPayments).where(and(eq(portfolioDividendPayments.portfolioId, portfolioId), eq(portfolioDividendPayments.securityId, input.securityId), eq(portfolioDividendPayments.exDate, input.exDate))).get();
     if (existing) throw new DividendRequestError("This dividend has already been recorded. Cash was not credited again.");
@@ -107,6 +111,8 @@ export function confirmDividendPayment(portfolioId: string, providerSymbol: stri
       else tx.insert(portfolioCashPositions).values({ portfolioId, currency: input.currency, amount, updatedAt: now }).onConflictDoUpdate({ target: [portfolioCashPositions.portfolioId, portfolioCashPositions.currency], set: { amount, updatedAt: now } }).run();
       tx.update(portfolios).set({ updatedAt: now }).where(eq(portfolios.id, portfolioId)).run();
     }
+    const after = loadPortfolioById(portfolioId);
+    if (before && after && input.cashCredited) recordPortfolioChange(portfolioId, journalComposition(before), journalComposition(after), { capturedAt: now });
     return payment;
   });
 }
@@ -122,6 +128,7 @@ export function recordAutomaticDividendPayment(portfolioId: string, providerSymb
 
 export function adjustDividendPayment(portfolioId: string, paymentId: string, input: Record<string, unknown>): DividendPayment {
   return getDb().transaction((tx) => {
+    const before = loadPortfolioById(portfolioId);
     const row = tx.select().from(portfolioDividendPayments).where(and(eq(portfolioDividendPayments.portfolioId, portfolioId), eq(portfolioDividendPayments.id, paymentId))).get();
     if (!row) throw new DividendRequestError("Payment unavailable.");
     const previous = JSON.parse(row.valueJson) as DividendPayment;
@@ -144,6 +151,8 @@ export function adjustDividendPayment(portfolioId: string, paymentId: string, in
       }
       tx.update(portfolios).set({ updatedAt: now }).where(eq(portfolios.id, portfolioId)).run();
     }
+    const after = loadPortfolioById(portfolioId);
+    if (before && after && previous.cashCredited) recordPortfolioChange(portfolioId, journalComposition(before), journalComposition(after));
     return payment;
   });
 }

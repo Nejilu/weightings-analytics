@@ -5,6 +5,8 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { EtfShareClass } from "@/domain/etf";
 import type { PortfolioCashPosition, PortfolioItem } from "@/domain/portfolio";
 import { securityQuoteAlias } from "@/domain/security-equivalence";
+import { journalComposition } from "@/domain/portfolio-journal";
+import { knownJournalValue, recordPortfolioChange } from "./portfolio-journal-repository";
 
 import { getDb } from "../client";
 import { recordPortfolioSecurityBalances } from "./dividend-repository";
@@ -141,6 +143,7 @@ export function anchorPortfolioQuantities(
 ) {
   const db = getDb();
   db.transaction((transaction) => {
+    const before = loadPortfolio(portfolioId);
     for (const item of items) {
       if (!item.quantity || !Number.isFinite(item.quantity)) continue;
       transaction
@@ -165,6 +168,8 @@ export function anchorPortfolioQuantities(
         .run();
     }
     recordPortfolioSecurityBalances(portfolioId);
+    const after = loadPortfolio(portfolioId);
+    if (before && after) recordPortfolioChange(portfolioId, journalComposition(before), journalComposition(after), { kind: "resolved" });
   });
 }
 
@@ -368,6 +373,8 @@ export function savePortfolioRecordAsEtf(
       })
       .run();
     recordPortfolioSecurityBalances(portfolioId, now);
+    const created = loadPortfolio(portfolioId)!;
+    recordPortfolioChange(portfolioId, undefined, journalComposition(created), { kind: "created", capturedAt: now, valueUsd: knownJournalValue(source.items, source.cashPositions) });
   });
 
   return {

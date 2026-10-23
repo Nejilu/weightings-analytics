@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { PortfolioHistory, PortfolioValueSnapshot } from "@/domain/portfolio-history";
 import { investedIndices, latestInvestedSegment, type InvestedIndices, type PortfolioReturnBasis } from "@/domain/portfolio-invested-return";
@@ -31,16 +31,32 @@ function HistoryTooltip({ active, payload, currency, relative }: {
   </div>;
 }
 
-export function PortfolioValueHistory({ portfolioId, currency: portfolioCurrency, owner = true, etfId, relative = false }: { portfolioId: string; currency: "EUR" | "USD"; owner?: boolean; etfId?: string; relative?: boolean }) {
+interface PortfolioValueHistoryProps {
+  portfolioId: string;
+  title: string;
+  description?: string;
+  positionsCount: number;
+  cashCount: number;
+  currentValueUsd?: number;
+  eurRateToUsd: number | null;
+  currency: "EUR" | "USD";
+  onCurrencyChange: (currency: "EUR" | "USD") => void;
+  currencyLoading?: boolean;
+  currencyError?: string | null;
+  onCurrencyRetry: () => void;
+  actions?: ReactNode;
+  owner?: boolean;
+  etfId?: string;
+  relative?: boolean;
+}
+
+export function PortfolioValueHistory({ portfolioId, title, description, positionsCount, cashCount, currentValueUsd, eurRateToUsd, currency, onCurrencyChange,
+  currencyLoading = false, currencyError, onCurrencyRetry, actions, owner = true, etfId, relative = false }: PortfolioValueHistoryProps) {
   const [history, setHistory] = useState<HistoryView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [range, setRange] = useState(Infinity);
   const [basis, setBasis] = useState<PortfolioReturnBasis>("total");
-  const [relativeCurrency, setRelativeCurrency] = useState<"USD" | "EUR">("USD");
-  // Weights-only details have no monetary total/currency control. Their chart
-  // can still select either recorded return series without a live FX request.
-  const currency = relative ? relativeCurrency : portfolioCurrency;
   const percentage = relative || basis === "invested";
   const gradientId = `portfolio-history-${useId().replace(/:/g, "")}`;
   const endpoint = owner ? `/api/v1/portfolio/history?portfolioId=${encodeURIComponent(portfolioId)}` : `/api/v1/portfolio/published/${encodeURIComponent(etfId!)}/history`;
@@ -95,23 +111,38 @@ export function PortfolioValueHistory({ portfolioId, currency: portfolioCurrency
   const change = first && last ? last.value - first.value : 0;
   const positive = change >= 0;
   const color = positive ? "var(--mint)" : "var(--negative)";
+  const currentValue = currentValueUsd === undefined ? undefined : currency === "USD" ? currentValueUsd : eurRateToUsd ? currentValueUsd / eurRateToUsd : undefined;
+  const equivalent = currentValueUsd === undefined ? undefined : currency === "EUR" ? money(currentValueUsd, "USD") : eurRateToUsd ? money(currentValueUsd / eurRateToUsd, "EUR") : undefined;
+  const equivalentCurrency = currency === "USD" ? "EUR" : "USD";
 
   return <section className="panel portfolio-history-panel" aria-label="Portfolio value history">
     <div className="panel-heading portfolio-history-heading">
-      <div><span className="eyebrow">Daily snapshots · {percentage ? `Return in ${currency}` : currency}</span><h2>{basis === "invested" ? "Invested performance over time" : "Portfolio value over time"}</h2></div>
-      {owner ? <button type="button" className="holdings-cash-toggle" role="switch" aria-checked={history?.enabled ?? true} disabled={!history || saving} onClick={() => void toggle()}>
+      <div className="portfolio-history-identity"><h1>{title}</h1>
+        {description ? <p>{description}</p> : null}
+        <span>{positionsCount} position{positionsCount === 1 ? "" : "s"} · {cashCount} cash balance{cashCount === 1 ? "" : "s"}</span>
+      </div>
+      <div className="portfolio-history-actions">{actions}{owner ? <button type="button" className="holdings-cash-toggle" role="switch" aria-checked={history?.enabled ?? true} disabled={!history || saving} onClick={() => void toggle()}>
         {saving ? "Saving…" : history?.enabled === false ? "Recording paused" : "Daily recording"}<span className="holdings-cash-toggle-track" aria-hidden="true" />
-      </button> : <span className="info-chip">Read-only · {relative ? "Amounts private" : "Published values"}</span>}
-    </div>
-    <div className="portfolio-dashboard-controls"><PortfolioReturnToggle value={basis} onChange={setBasis} />
-      {relative ? <select aria-label="Portfolio history currency" value={currency} onChange={(event) => setRelativeCurrency(event.target.value as "USD" | "EUR")}><option>USD</option><option>EUR</option></select> : null}
+      </button> : null}</div>
     </div>
     <div className="portfolio-history-summary">
-      <div><strong>{last ? format(last.value) : "—"}</strong>
-        {data.length > 1 ? <span className={positive ? "is-positive" : "is-negative"}>{percentage ? percent(last!.value) : <>{positive ? "+" : ""}{money(change, currency)} ({positive ? "+" : ""}{(change / first.value * 100).toFixed(2)}%)</>} <small>over selected period</small></span> : <span>{last ? "Your history starts here" : history ? "Waiting for the first capture" : "Loading history…"}</span>}
+      <div className="portfolio-history-primary-value" role="group" aria-label={relative ? "Portfolio performance" : "Portfolio net asset value"}><span className="portfolio-history-value-label">{relative ? basis === "invested" ? "Invested return" : "Relative evolution" : "Net asset value"}</span>
+        <strong>{relative ? last ? percent(last.value) : "—" : currentValue !== undefined ? money(currentValue, currency) : "Unavailable"}</strong>
+        {!relative ? <small className="portfolio-history-equivalent">{equivalent ? `${equivalent} ${equivalentCurrency}` : `${equivalentCurrency} · ${currencyLoading ? "Loading…" : "Unavailable"}`}</small> : null}
+      </div>
+      {data.length > 1 && !relative ? <div className="portfolio-history-period-change"><span className="portfolio-history-value-label">{basis === "invested" ? "Invested return" : "Saved change"} · selected period</span>
+        <b className={positive ? "is-positive" : "is-negative"}>{percentage ? percent(last!.value) : `${positive ? "+" : ""}${(change / first.value * 100).toFixed(2)}%`}</b>
+        {!percentage ? <small>{positive ? "+" : ""}{money(change, currency)}</small> : null}
+      </div> : <span className="portfolio-history-pending">{relative && data.length > 1 ? "Over selected period" : last ? "First saved snapshot" : history ? "Waiting for the first capture" : "Loading history…"}</span>}
+    </div>
+    <div className="portfolio-history-toolbar">
+      <div className="portfolio-dashboard-controls"><PortfolioReturnToggle value={basis} onChange={setBasis} />
+        <div className="segmented-control" role="group" aria-label="Portfolio chart currency">{(["USD", "EUR"] as const).map((item) =>
+          <button type="button" key={item} aria-pressed={currency === item} className={currency === item ? "is-active" : ""} disabled={item === "EUR" && !relative && !eurRateToUsd} onClick={() => onCurrencyChange(item)}>{item}</button>)}</div>
       </div>
       <div className="portfolio-history-ranges" role="group" aria-label="History period">{ranges.map((item) => <button type="button" key={item.label} aria-pressed={range === item.days} className={range === item.days ? "is-active" : ""} onClick={() => setRange(item.days)}>{item.label}</button>)}</div>
     </div>
+    {currencyError && !relative ? <p className="portfolio-history-error" role="status">{currencyError} <button className="secondary-button" type="button" onClick={onCurrencyRetry}>Retry FX</button></p> : null}
     {error ? <p className="portfolio-history-error" role="alert">{error}</p> : null}
     {history?.enabled && history.lastError ? <p className="portfolio-history-error" role="status">Last capture failed: {history.lastError} A new attempt is made after five minutes while the server is running.</p> : null}
     {data.length ? <div className="portfolio-history-chart" role="img" aria-label={`${data.length} saved portfolio values in ${percentage ? "percent" : currency}, from ${dateLabel(first.timestamp)} to ${dateLabel(last!.timestamp)}. Latest value ${format(last!.value)}.`}>

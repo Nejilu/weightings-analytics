@@ -247,6 +247,15 @@ export const portfolioHistorySettings = sqliteTable("portfolio_history_settings"
   lastError: text("last_error"),
 });
 
+export const portfolioJournalEntries = sqliteTable("portfolio_journal_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
+  capturedAt: text("captured_at").notNull(),
+  kind: text("kind", { enum: ["baseline", "created", "edited", "resolved"] }).notNull(),
+  patch: text("patch_json", { mode: "json" }).$type<import("@/domain/portfolio-journal").JournalPatch>().notNull(),
+  valueUsd: real("value_usd"),
+}, (table) => [index("portfolio_journal_portfolio_idx").on(table.portfolioId, table.id)]);
+
 export const portfolioValueSnapshots = sqliteTable("portfolio_value_snapshots", {
   invested: text("invested_json", { mode: "json" }).$type<import("@/domain/portfolio-invested-return").InvestedSnapshot>(),
   portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),

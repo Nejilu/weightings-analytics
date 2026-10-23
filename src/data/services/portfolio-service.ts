@@ -524,7 +524,7 @@ export async function updatePortfolioEtf(
       description,
       editableDescription: identity.customDescription,
       items,
-      cashPositions,
+      cashPositions: valuedCash,
     });
     if (!updated) {
       throw new PortfolioRequestError("This portfolio ETF no longer exists.");
@@ -560,7 +560,7 @@ export async function savePortfolioAsEtf(
       if (!Number.isFinite(nav) || nav <= 0) {
         throw new PortfolioRequestError("Net portfolio value must be positive.");
       }
-      stored = { id: "portfolio-preview", name, baseCurrency: "USD", updatedAt: "", items, cashPositions };
+      stored = { id: "portfolio-preview", name, baseCurrency: "USD", updatedAt: "", items, cashPositions: cash };
       portfolio = stored;
     } else {
       if (draft.cashPositions !== undefined) throw new PortfolioRequestError("The portfolio items array is required.");

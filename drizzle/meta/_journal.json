@@ -148,6 +148,13 @@
       "when": 1792494704404,
       "tag": "0020_elite_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792695859897,
+      "tag": "0021_portfolio_journal",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,7 @@ import { HoldingsSourceWarning } from "./holdings-source-warning";
 import { VisibilitySelect } from "./visibility-select";
 import type { EtfVisibility } from "@/domain/visibility";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail, LocalPortfolioEtfDetail } from "@/domain/local-etf";
@@ -34,6 +34,7 @@ import { PortfolioDividendsPanel } from "./portfolio-dividends";
 import { MetricCard } from "./metric-card";
 import { PortfolioAllocationPanels } from "./portfolio-allocation-panels";
 import { PortfolioCloneBuilder } from "./portfolio-clone-builder";
+import { PortfolioJournalExplorer } from "./portfolio-journal-explorer";
 import type { HoldingsCashDisplay } from "@/domain/holdings-cash-display";
 
 interface PortfolioAnalyticsProps {
@@ -141,6 +142,7 @@ export function PortfolioAnalytics({
   );
   const [workflowMode, setWorkflowMode] = useState<"create" | "edit">("create");
   const [panelView, setPanelView] = useState<"overview" | "view" | "editor">("overview");
+  const [journalOpen, setJournalOpen] = useState(false);
   const isEditor = owner && panelView === "editor";
   const [editingEtfId, setEditingEtfId] = useState("");
   const [definitionLoading, setDefinitionLoading] = useState(false);
@@ -148,6 +150,12 @@ export function PortfolioAnalytics({
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [cashPositions, setCashPositions] = useState<PortfolioCashPosition[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioRecord | null>(null);
+  useLayoutEffect(() => {
+    // Reset after both the navigation and the asynchronous detail render.
+    // Instant scrolling overrides the global smooth-scroll rule and anchoring
+    // from the portfolio card that was just removed from the document.
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [panelView, editingEtfId, portfolio?.id]);
   const amountsVisible = owner || portfolio?.amountsVisible === true;
   const [compositionPrices, setCompositionPrices] = useState<
     Record<string, MarketPrice>
@@ -466,7 +474,7 @@ export function PortfolioAnalytics({
   );
 
   const changeDisplayCurrency = (next: PortfolioDisplayCurrency) => {
-    if (next === "USD" || eurRateToUsd || embeddedEurRate) setDisplayCurrency(next);
+    if (!amountsVisible || next === "USD" || eurRateToUsd || embeddedEurRate) setDisplayCurrency(next);
   };
   const normalizedItems = useMemo(
     () =>
@@ -906,6 +914,7 @@ export function PortfolioAnalytics({
         <button className="secondary-button" type="button" disabled={saving || savingEtf || refreshing || definitionLoading} onClick={isEditor ? cancelEditing : showOverview}>
           <span aria-hidden="true">←</span> {isEditor ? "Cancel" : "All portfolios"}
         </button>
+        {!isEditor && owner && portfolio ? <button className="secondary-button" type="button" onClick={() => setJournalOpen(true)}>◷ Journal & what-if</button> : null}
         {isEditor ? (
           <span className="info-chip">{workflowMode === "edit" ? "Editing portfolio" : "New portfolio"}</span>
         ) : owner ? (
@@ -914,7 +923,8 @@ export function PortfolioAnalytics({
           </button>
         ) : <span className="info-chip">Read-only · {visibility === "public" ? "Public" : "Weights only"}</span>}
       </div>
-      <section className="metrics-hero holdings-hero panel portfolio-detail-hero">
+      {journalOpen && owner && portfolio ? <PortfolioJournalExplorer portfolioId={portfolio.id} portfolioOptions={portfolioEtfs.flatMap((etf) => etf.portfolioId ? [{ id: etf.portfolioId, name: etf.name }] : [])} onClose={() => setJournalOpen(false)} /> : null}
+      {isEditor ? <section className="metrics-hero holdings-hero panel portfolio-detail-hero">
         <div>
           <span className="eyebrow">Look-through aggregation</span>
           <h1>{workflowMode === "edit" ? etfName : "Create a portfolio"}</h1>
@@ -966,9 +976,14 @@ export function PortfolioAnalytics({
             onRefresh={() => void loadEditablePortfolioEtf(editingEtfId, undefined, true)}
           /> : null}
         </div>
-      </section>
+      </section> : null}
 
-      {!isEditor && portfolio ? <PortfolioValueHistory key={portfolio.id} portfolioId={portfolio.id} etfId={editingEtfId} owner={owner} relative={!amountsVisible} currency={displayCurrency} /> : null}
+      {!isEditor && portfolio ? <PortfolioValueHistory key={portfolio.id} portfolioId={portfolio.id} etfId={editingEtfId} owner={owner} relative={!amountsVisible}
+        title={etfName} description={etfDescription} positionsCount={items.length} cashCount={cashPositions.length}
+        currentValueUsd={amountsVisible && !portfolio.priceError ? draftMarketValue : undefined} eurRateToUsd={eurRateToUsd ?? embeddedEurRate ?? null}
+        currency={displayCurrency} onCurrencyChange={changeDisplayCurrency} currencyLoading={currencyLoading} currencyError={currencyError} onCurrencyRetry={portfolioFx.retry}
+        actions={<ManualRefreshButton loading={refreshing} disabled={saving || savingEtf || (items.length === 0 && cashPositions.length === 0)} onRefresh={() => void loadEditablePortfolioEtf(editingEtfId, undefined, true)} />}
+      /> : null}
       {error ? <div className="alert alert--error">{error}</div> : null}
       {!isEditor && savedEtf ? <div className="saved-etf-success" role="status">{savedEtf.name} was saved.</div> : null}
       {portfolio?.priceError ? (
