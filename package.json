@@ -36,7 +36,7 @@
     "db:audit-mappings": "node scripts/audit-tradingview-mappings.mjs",
     "db:backup": "tsx scripts/db-backup.ts",
     "db:import-tradingview-mappings": "tsx scripts/import-tradingview-mappings.ts",
-    "test:site": "node --conditions=react-server --import tsx --test src/server/site.test.ts",
+    "test:site": "node --conditions=react-server --import tsx --test src/server/site.test.ts src/server/public-portfolio-journal.test.ts",
     "test:holdings": "node --conditions=react-server --import tsx --test src/data/services/holdings-refresh.test.ts && node --test deploy/ishares-relay/worker.test.mjs",
     "test:ai": "node --conditions=react-server --import tsx --test src/server/ai-analysis.test.ts && node --test scripts/renew-ai-t3.test.mjs"
   },

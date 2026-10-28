@@ -13,13 +13,13 @@ export class PortfolioJournalDeletionError extends PortfolioJournalError {
   constructor(message: string, public status: 404 | 409) { super(message); }
 }
 
-export function getPortfolioJournal(portfolioId: string): PortfolioJournal {
+export function getPortfolioJournal(portfolioId: string, options: { initialize?: boolean } = {}): PortfolioJournal {
   ensureLocalDatabase();
   return getDb().transaction(() => {
     const stored = loadPortfolioById(portfolioId);
     if (!stored) throw new PortfolioJournalError("The saved portfolio no longer exists.");
     const current = journalComposition(stored);
-    if (!loadPortfolioJournalEntries(portfolioId).length) recordPortfolioChange(portfolioId, undefined, current, { kind: "baseline" });
+    if (options.initialize !== false && !loadPortfolioJournalEntries(portfolioId).length) recordPortfolioChange(portfolioId, undefined, current, { kind: "baseline" });
     return { portfolioId, current, entries: loadPortfolioJournalEntries(portfolioId) };
   });
 }
@@ -42,8 +42,8 @@ export function deletePortfolioJournalState(portfolioId: string, entryId: number
 
 const providers = { getAvailableMarketPrices, getFxRate };
 
-export async function getPortfolioCounterfactual(portfolioId: string, entryId: number, market = providers) {
-  const journal = getPortfolioJournal(portfolioId);
+export async function getPortfolioCounterfactual(portfolioId: string, entryId: number, market = providers, options: { initialize?: boolean } = {}) {
+  const journal = getPortfolioJournal(portfolioId, options);
   let composition;
   try { composition = reconstructPortfolio(journal, entryId); }
   catch (error) { throw new PortfolioJournalError(error instanceof Error ? error.message : "Reconstruction unavailable."); }
@@ -58,7 +58,7 @@ export async function getPortfolioCounterfactual(portfolioId: string, entryId: n
   const data: CounterfactualMarket = { prices: {}, fx: {}, fetchedAt: new Date().toISOString() };
   for (const [key, quote] of quotes) data.prices[key] = { priceUsd: quote.priceUsd, asOf: quote.asOf, stale: quote.sourceStatus === "stale" };
   for (const rate of rates) if (rate) data.fx[rate.currency] = { rateToUsd: rate.rateToUsd, asOf: rate.asOf, stale: rate.sourceStatus === "stale" };
-  const current = getPortfolioJournal(portfolioId);
+  const current = getPortfolioJournal(portfolioId, options);
   if (JSON.stringify(current.entries) !== JSON.stringify(journal.entries) || JSON.stringify(current.current) !== JSON.stringify(journal.current)) {
     throw new PortfolioJournalError("Portfolio changed during valuation. Close and reopen the journal to reload it.");
   }

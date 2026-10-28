@@ -1,7 +1,7 @@
 # Portfolio journal and counterfactual explorer
 
 In a saved portfolio, **Journal & what-if**
-opens the owner-only explorer. Selecting a log entry or moving the discrete
+opens the explorer. Selecting a log entry or moving the discrete
 timeline selects the composition **after** that modification.
 Example data, when requested, is inserted as an ordinary portfolio and journal;
 there is no separate demo interface or alternate client-side valuation path.
@@ -61,8 +61,18 @@ the current portfolio can include external cash flows and are not alpha.
 Exploring does not save another portfolio, overwrite holdings, restore an old
 state or record each simulated variant. Ordinary market quote caching and the
 single initial journal checkpoint are the only read-path persistence. Journal
-data contains exact historical quantities and cash, so it is not exposed in
-visitor views, even when the current portfolio is public.
+data contains exact historical quantities and cash. Visitors use separate read
+endpoints under `/api/v1/portfolio/published/[etfId]/journal` and `/counterfactual`.
+Fully public portfolios publish amounts and quantities. Weights-only portfolios
+publish descriptive changes, current hypothetical weights and percentage returns;
+the server omits quantities, money amounts, raw deltas and the quote/FX payload.
+Returns use the selected entry's recorded value as their base; missing historical
+values remain unavailable. Private portfolios and historical states containing
+private ETF sources are unavailable. Publication is rechecked after valuation.
+The same explorer handles visitors in read-only mode, with no delete control.
+Owner APIs and deletion remain owner-only. Visitor reads never create an initial
+checkpoint or save a simulated portfolio.
 
-Run `npm run test:portfolio-journal` for reconstruction, partial pricing, atomic
+Run `npm run test:site` for visitor disclosure and access boundaries, and
+`npm run test:portfolio-journal` for reconstruction, partial pricing, atomic
 edit persistence, rollback, access boundaries and ephemeral valuation tests.

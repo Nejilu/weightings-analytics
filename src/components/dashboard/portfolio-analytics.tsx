@@ -914,7 +914,7 @@ export function PortfolioAnalytics({
         <button className="secondary-button" type="button" disabled={saving || savingEtf || refreshing || definitionLoading} onClick={isEditor ? cancelEditing : showOverview}>
           <span aria-hidden="true">←</span> {isEditor ? "Cancel" : "All portfolios"}
         </button>
-        {!isEditor && owner && portfolio ? <button className="secondary-button" type="button" onClick={() => setJournalOpen(true)}>◷ Journal & what-if</button> : null}
+        {!isEditor && portfolio ? <button className="secondary-button" type="button" onClick={() => setJournalOpen(true)}>◷ Journal & what-if</button> : null}
         {isEditor ? (
           <span className="info-chip">{workflowMode === "edit" ? "Editing portfolio" : "New portfolio"}</span>
         ) : owner ? (
@@ -923,7 +923,7 @@ export function PortfolioAnalytics({
           </button>
         ) : <span className="info-chip">Read-only · {visibility === "public" ? "Public" : "Weights only"}</span>}
       </div>
-      {journalOpen && owner && portfolio ? <PortfolioJournalExplorer portfolioId={portfolio.id} portfolioOptions={portfolioEtfs.flatMap((etf) => etf.portfolioId ? [{ id: etf.portfolioId, name: etf.name }] : [])} onClose={() => setJournalOpen(false)} /> : null}
+      {journalOpen && portfolio ? <PortfolioJournalExplorer key={`${owner}:${portfolio.id}`} owner={owner} portfolioId={portfolio.id} portfolioOptions={portfolioEtfs.flatMap((etf) => owner ? etf.portfolioId ? [{ id: etf.portfolioId, name: etf.name }] : [] : [{ id: etf.id, name: etf.name }])} onClose={() => setJournalOpen(false)} /> : null}
       {isEditor ? <section className="metrics-hero holdings-hero panel portfolio-detail-hero">
         <div>
           <span className="eyebrow">Look-through aggregation</span>

@@ -17,6 +17,8 @@ import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
 import type { LocalPortfolioEtfDetail } from "@/domain/local-etf";
 import type { PortfolioHistory } from "@/domain/portfolio-history";
 import { readJsonLines } from "@/domain/json-lines";
+import { publicPortfolioJournal, publicPortfolioCounterfactual, type PublicCounterfactualInput } from "./public-portfolio-journal";
+import type { PortfolioJournal } from "@/domain/portfolio-journal";
 
 export type RoutePolicy =
   | "owner"
@@ -29,11 +31,13 @@ export type RoutePolicy =
   | "portfolio-overview"
   | "portfolio-detail"
   | "portfolio-public-history"
+  | "portfolio-public-journal"
+  | "portfolio-public-counterfactual"
   | "published-portfolio";
 
 function referencesFor(request: Request, policy: RoutePolicy): string[] {
   const url = new URL(request.url);
-  if (policy === "portfolio-detail" || policy === "portfolio-public-history") return [decodeURIComponent(url.pathname.split("/")[5] ?? "")];
+  if (["portfolio-detail", "portfolio-public-history", "portfolio-public-journal", "portfolio-public-counterfactual"].includes(policy)) return [decodeURIComponent(url.pathname.split("/")[5] ?? "")];
   if (policy === "holdings" || policy === "published-portfolio") {
     return [decodeURIComponent(url.pathname.split("/")[4] ?? "")];
   }
@@ -75,7 +79,7 @@ export function withSiteAccess<Args extends unknown[]>(
           const catalog = publicationCatalog();
           for (const reference of references) {
             const etf = requirePublicEtf(catalog, reference);
-            if ((policy === "portfolio-detail" || policy === "portfolio-public-history") && etf.fundType !== "portfolio") throw new AccessError(404, "Portfolio unavailable.");
+            if (["portfolio-detail", "portfolio-public-history", "portfolio-public-journal", "portfolio-public-counterfactual"].includes(policy) && etf.fundType !== "portfolio") throw new AccessError(404, "Portfolio unavailable.");
             if (policy === "quote" && etf.fundType === "portfolio")
               throw new AccessError(404, "Quote unavailable.");
             if (
@@ -222,6 +226,10 @@ export function withSiteAccess<Args extends unknown[]>(
               ? { data: publicPortfolioDetail((payload as { data: LocalPortfolioEtfDetail }).data, catalog) }
             : policy === "portfolio-public-history"
               ? { data: publicPortfolioHistory((payload as { data: PortfolioHistory }).data, references[0], catalog) }
+            : policy === "portfolio-public-journal"
+              ? { data: publicPortfolioJournal((payload as { data: PortfolioJournal }).data, references[0], catalog) }
+            : policy === "portfolio-public-counterfactual"
+              ? { data: publicPortfolioCounterfactual((payload as { data: PublicCounterfactualInput }).data, references[0], catalog) }
             : publicAnalysis(payload, catalog),
         { status: response.status, headers: outputHeaders },
       );

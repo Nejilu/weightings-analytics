@@ -73,7 +73,7 @@ export function publicationCatalog() {
   return { groups, byId, visible, resolve };
 }
 
-type PublicationCatalog = ReturnType<typeof publicationCatalog>;
+export type PublicationCatalog = ReturnType<typeof publicationCatalog>;
 
 export function publicPortfolioDetail(detail: LocalPortfolioEtfDetail, catalog: PublicationCatalog) {
   const etf = requirePublicEtf(catalog, detail.etf.id);
