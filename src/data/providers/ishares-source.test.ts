@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parseIsharesHoldingsCsv } from "./ishares-csv";
 
 import {
   assertPlausibleIsharesHoldingsCount,
@@ -152,6 +153,52 @@ test("falls back to the official CSV when BlackRock product data is unavailable"
     globalThis.fetch = originalFetch;
   }
 });
+
+for (const format of ["json", "csv"] as const) {
+  test(`accepts the updated IVV ${format} format through source validation and parsing`, async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    const etf = {
+      id: "ivv-us", ticker: "IVV",
+      productUrl: "https://www.ishares.com/us/products/239726/IVV",
+      holdingsUrl: "https://www.ishares.com/us/products/239726/ishares-core-s-p-500-etf/latest-holdings.csv",
+    } as Parameters<typeof fetchIsharesHoldingsFile>[0];
+    globalThis.fetch = (async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (!url.includes("/varnish-api/")) {
+        return new Response([
+          'Fund Holdings as of,"Oct 27, 2026"',
+          "Ticker,Name,Market Value,Notional Weight,Market Weight",
+          ...Array.from({ length: 5 }, (_, i) => `T${i},Company ${i},200,19,20`),
+        ].join("\n"), { headers: { "content-type": "text/plain" } });
+      }
+      if (format === "csv") return new Response("unavailable", { status: 503 });
+      const points = url.includes("asOfDate=") ? {
+        asOfDate: { value: 20261027 },
+        ticker: { value: ["A", "B", "C", "D", "E"] },
+        issueName: { value: ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"] },
+        marketWeight: { value: [20, 20, 20, 20, 20] },
+        ceMarketValue: { value: [200, 200, 200, 200, 200] },
+      } : { dateList: { value: [20261023, 20261027] } };
+      return Response.json({ componentsByNameMap: { holdings: { containersByNameMap: {
+        all: { dataPointsByNameMap: points },
+      } } } });
+    }) as typeof fetch;
+    try {
+      const file = await fetchIsharesHoldingsFile(etf);
+      const parsed = parseIsharesHoldingsCsv(file.raw);
+      assert.equal(parsed.asOf, "2026-10-27");
+      assert.equal(parsed.holdings.length, 5);
+      assert.equal(parsed.holdings[0].weight, 20);
+      assert.equal(parsed.holdings[0].marketValue, 200);
+      assert.equal(calls.length, 2);
+      assert.equal(file.sourceUrl, format === "csv" ? etf.holdingsUrl : `${calls[0]}&asOfDate=20261027`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+}
 
 test("tries the next official source when BlackRock data is implausibly short", async () => {
   const originalFetch = globalThis.fetch;

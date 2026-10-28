@@ -38,6 +38,52 @@ test("parses US-style holdings dates without a timezone shift", () => {
   assert.equal(parsed.asOf, "2026-07-30");
 });
 
+test("parses IVV Market Weight CSV columns without using Notional Weight", () => {
+  const parsed = parseIsharesHoldingsCsv([
+    'Fund Holdings as of,"Oct 27, 2026"',
+    "Ticker,Name,Market Value,Notional Weight,Market Weight",
+    'NVDA,NVIDIA,"70,223,995,863.70",7.91,7.92',
+    "AAPL,APPLE,67447762874.7,7.60,7.61",
+    "MSFT,MICROSOFT,52532234201.61,5.92,5.93",
+    "OTHER,Other,100,0.01,0.01",
+    "SMALL,Small,1,0.00,0.00",
+  ].join("\n"));
+
+  assert.equal(parsed.asOf, "2026-10-27");
+  assert.equal(parsed.holdings.length, 5);
+  assert.equal(parsed.holdings[0].weight, 7.92);
+  assert.equal(parsed.holdings[0].marketValue, 70_223_995_863.7);
+  assert.equal(parsed.holdings[4].weight, 0);
+  assert.equal(parsed.holdings[4].marketValue, 1);
+});
+
+test("parses IVV marketWeight and ceMarketValue while preserving identifiers and rounded holdings", () => {
+  const parsed = parseIsharesHoldingsCsv(JSON.stringify({
+    componentsByNameMap: { holdings: { containersByNameMap: { all: {
+      dataPointsByNameMap: {
+        asOfDate: { value: 20261027 },
+        ticker: { value: ["NVDA", "AAPL", "MSFT", "OTHER", "SMALL"] },
+        issueName: { value: ["NVIDIA", "APPLE", "MICROSOFT", "Other", "Small"] },
+        marketWeight: { value: [7.92, 7.61, 5.93, 0.01, 0] },
+        notionalWeight: { value: [7.91, 7.60, 5.92, 0.01, 0] },
+        ceMarketValue: { value: [70_223_995_863.7, 67_447_762_874.7, 52_532_234_201.61, 100, 1] },
+        ceNotionalValue: { value: [1, 1, 1, 1, 1] },
+        isin: { value: ["US67066G1040", "US0378331005", "US5949181045", "", ""] },
+        exchange: { value: ["NASDAQ", "NASDAQ", "NASDAQ", "", ""] },
+      },
+    } } } },
+  }));
+
+  assert.equal(parsed.asOf, "2026-10-27");
+  assert.equal(parsed.holdings.length, 5);
+  assert.equal(parsed.holdings[0].weight, 7.92);
+  assert.equal(parsed.holdings[0].marketValue, 70_223_995_863.7);
+  assert.equal(parsed.holdings[0].isin, "US67066G1040");
+  assert.equal(parsed.holdings[0].exchange, "NASDAQ");
+  assert.equal(parsed.holdings[4].weight, 0);
+  assert.equal(parsed.holdings[4].marketValue, 1);
+});
+
 test("retains the listing exchange used by provider symbol resolution", () => {
   const parsed = parseIsharesHoldingsCsv(
     [

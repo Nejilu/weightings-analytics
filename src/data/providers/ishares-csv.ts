@@ -175,7 +175,7 @@ function parseBlackrockProductData(raw: string): ParsedHoldingsFile {
   };
   const tickers = arrayValue("ticker");
   const names = arrayValue("issueName");
-  const weights = arrayValue("holdingPercent");
+  const weights = arrayValue("holdingPercent") ?? arrayValue("marketWeight");
   if (!tickers || !names || !weights) {
     throw new Error("The BlackRock holdings response contains no holdings.");
   }
@@ -189,7 +189,7 @@ function parseBlackrockProductData(raw: string): ParsedHoldingsFile {
   const currencies = arrayValue("currencyCode");
   const marketCurrencies = arrayValue("marketCurrencyCode");
   const exchanges = arrayValue("exchange");
-  const marketValues = arrayValue("marketValue");
+  const marketValues = arrayValue("marketValue") ?? arrayValue("ceMarketValue");
   const rowCount = Math.max(tickers.length, names.length, weights.length);
 
   const parsedHoldings = Array.from(
@@ -265,7 +265,7 @@ export function parseIsharesHoldingsCsv(raw: string): ParsedHoldingsFile {
   const nameIndex = findColumn(headers, ["Name"]);
   const sectorIndex = findColumn(headers, ["Sector"]);
   const assetClassIndex = findColumn(headers, ["Asset Class"]);
-  const weightIndex = findColumn(headers, ["Weight (%)", "Weight"]);
+  const weightIndex = findColumn(headers, ["Weight (%)", "Weight", "Market Weight"]);
   const marketValueIndex = findColumn(headers, ["Market Value"]);
   const countryIndex = findColumn(headers, ["Location", "Country"]);
   const isinIndex = findColumn(headers, ["ISIN"]);

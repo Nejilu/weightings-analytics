@@ -131,7 +131,7 @@ function assertCsvContainsRows(raw: string): number {
     );
     return (
       columns.includes("name") &&
-      columns.some((column) => column === "weight" || column === "weight (%)")
+      columns.some((column) => ["weight", "weight (%)", "market weight"].includes(column))
     );
   });
   if (headerIndex < 0) {
@@ -188,6 +188,7 @@ function assertBlackrockRows(raw: string): number {
               dataPointsByNameMap?: {
                 ticker?: { value?: unknown };
                 holdingPercent?: { value?: unknown };
+                marketWeight?: { value?: unknown };
               };
             };
           };
@@ -198,7 +199,8 @@ function assertBlackrockRows(raw: string): number {
       parsed.componentsByNameMap?.holdings?.containersByNameMap?.all
         ?.dataPointsByNameMap;
     const tickers = dataPoints?.ticker?.value;
-    const weights = dataPoints?.holdingPercent?.value;
+    const weights = Array.isArray(dataPoints?.holdingPercent?.value)
+      ? dataPoints.holdingPercent.value : dataPoints?.marketWeight?.value;
     if (
       !Array.isArray(tickers) ||
       !Array.isArray(weights) ||
