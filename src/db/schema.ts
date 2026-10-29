@@ -334,6 +334,10 @@ export const marketPrices = sqliteTable(
     asOf: text("as_of").notNull(),
     fetchedAt: text("fetched_at").notNull(),
     source: text("source").notNull(),
+    quoteMetadata: text("quote_metadata", { mode: "json" }).$type<{
+      session?: import("@/domain/market-quote").QuoteSession;
+      delaySeconds?: number;
+    }>(),
   },
   (table) => [
     uniqueIndex("market_prices_asset_uq").on(table.assetType, table.assetId),

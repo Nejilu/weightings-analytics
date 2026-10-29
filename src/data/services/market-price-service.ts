@@ -1,6 +1,10 @@
 import "server-only";
 
 import YahooFinance from "yahoo-finance2";
+import { loadProviderSymbols } from "@/db/repositories/metrics-repository";
+import { tradingViewPriceSymbols } from "@/data/providers/market-quote-symbols";
+import { getTradingViewQuote } from "@/data/providers/tradingview-quotes";
+import { loadPreferredQuote, selectYahooQuote, type MarketQuote } from "@/domain/market-quote";
 
 import { ensureLocalDatabase } from "@/db/bootstrap";
 import { databasePath } from "@/db/client";
@@ -33,7 +37,7 @@ import {
   securityQuoteAlias,
 } from "@/domain/security-equivalence";
 
-const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
+const DEFAULT_TTL_SECONDS = 60;
 const DEFAULT_CONCURRENCY = 4;
 const yahooFinance = new YahooFinance({
   suppressNotices: ["yahooSurvey"],
@@ -66,11 +70,11 @@ function marketPriceConcurrency(): number {
     : DEFAULT_CONCURRENCY;
 }
 
-function isFresh(fetchedAt: string): boolean {
+function isFresh(fetchedAt: string, seconds = ttlSeconds()): boolean {
   const value = Date.parse(fetchedAt);
   return (
     Number.isFinite(value) &&
-    Date.now() - value < ttlSeconds() * 1000
+    Date.now() - value >= 0 && Date.now() - value < seconds * 1000
   );
 }
 
@@ -91,25 +95,31 @@ async function withTimeout<T>(promise: Promise<T>, milliseconds = 15_000) {
   }
 }
 
-function quoteAsOf(value: Date | undefined): string {
-  const date = value instanceof Date ? value : new Date();
-  return Number.isNaN(date.valueOf())
-    ? new Date().toISOString()
-    : date.toISOString();
-}
-
-async function fetchQuote(symbol: string) {
+async function fetchYahooQuote(symbol: string): Promise<MarketQuote> {
   const quote = await withTimeout(yahooFinance.quote(symbol));
-  const price = quote.regularMarketPrice;
-  if (!Number.isFinite(price) || Number(price) <= 0) {
+  if (!("symbol" in quote) || typeof quote.symbol !== "string") {
     throw new Error(`No usable market price was returned for ${symbol}.`);
   }
-  return {
-    symbol: quote.symbol,
-    price: Number(price),
-    currency: quote.currency ?? "USD",
-    asOf: quoteAsOf(quote.regularMarketTime),
-  };
+  const selected = selectYahooQuote({ ...quote, symbol: quote.symbol,
+    currency: quote.currency ?? (symbol.endsWith("USD=X") ? "USD" : undefined) });
+  if (!selected) {
+    throw new Error(`No usable market price was returned for ${symbol}.`);
+  }
+  return selected;
+}
+
+async function fetchAssetQuote(
+  listing: { ticker: string; name: string; country: string; exchange?: string },
+  yahooSymbol: string | undefined,
+  resolveYahoo: () => Promise<string>,
+  securityId?: string,
+): Promise<MarketQuote> {
+  const mapping = securityId ? loadProviderSymbols([securityId]).get(securityId) : undefined;
+  return loadPreferredQuote(tradingViewPriceSymbols(listing, yahooSymbol,
+    mapping?.status === "resolved" ? mapping.providerSymbol ?? undefined : undefined), {
+    tradingView: getTradingViewQuote,
+    yahoo: async () => fetchYahooQuote(yahooSymbol ?? await resolveYahoo()),
+  });
 }
 
 async function resolveSecuritySymbol(
@@ -165,11 +175,13 @@ async function refreshFxRate(
   options: MarketRefreshOptions,
 ): Promise<FxRate> {
   const cached = findFxRate(currency);
-  if (!options.forceRefresh && cached && isFresh(cached.fetchedAt)) return cached;
+  const configured = Number(process.env.FX_RATE_TTL_SECONDS);
+  const fxTtl = Number.isFinite(configured) && configured > 0 ? configured : 86_400;
+  if (!options.forceRefresh && cached && isFresh(cached.fetchedAt, fxTtl)) return cached;
 
   const providerSymbol = `${currency}USD=X`;
   try {
-    const quote = await fetchQuote(providerSymbol);
+    const quote = await fetchYahooQuote(providerSymbol);
     return persistFxRate({
       currency,
       providerSymbol,
@@ -226,18 +238,18 @@ async function refreshMarketPrice(
     ? securityListingQuoteSymbol(security)
     : undefined;
   const preferredSecuritySymbol = alias?.providerSymbol ?? listingSymbol;
+  const securityCandidates = security ? tradingViewPriceSymbols(security, preferredSecuritySymbol) : [];
   const fallbackCached =
-    !preferredSecuritySymbol ||
-    cached?.providerSymbol.toUpperCase() ===
-      preferredSecuritySymbol.toUpperCase()
+    (cached?.source === "TradingView" ? securityCandidates.includes(cached.providerSymbol) || assetKind === "etf" :
+      !preferredSecuritySymbol || cached?.providerSymbol.toUpperCase() === preferredSecuritySymbol.toUpperCase())
       ? cached
       : undefined;
-  if (!options.forceRefresh && fallbackCached && isFresh(fallbackCached.fetchedAt)) {
+  if (!options.forceRefresh && fallbackCached?.quoteSession && isFresh(fallbackCached.fetchedAt)) {
     return fallbackCached;
   }
 
   try {
-    let providerSymbol = preferredSecuritySymbol ?? fallbackCached?.providerSymbol;
+    let quote: MarketQuote;
     if (assetKind === "etf") {
       const etf = findEtfById(assetId);
       if (
@@ -249,28 +261,13 @@ async function refreshMarketPrice(
           "Only source ETFs can be priced as portfolio components.",
         );
       }
-      providerSymbol ??= etf.priceSymbol ?? etf.ticker;
+      const symbol = etf.priceSymbol ?? etf.ticker;
+      quote = await fetchAssetQuote({ ...etf, country: "" }, symbol, async () => symbol);
     } else {
       if (!security) {
         throw new MarketPriceRequestError("The selected security is unavailable.");
       }
-      providerSymbol ??= await resolveSecuritySymbol(security);
-    }
-
-    let quote;
-    try {
-      quote = await fetchQuote(providerSymbol);
-    } catch (error) {
-      if (assetKind !== "security" || fallbackCached || preferredSecuritySymbol) {
-        throw error;
-      }
-      if (!security) throw error;
-      providerSymbol = await resolveSecuritySymbol({
-        ...security,
-        country: "",
-        exchange: undefined,
-      });
-      quote = await fetchQuote(providerSymbol);
+      quote = await fetchAssetQuote(security, preferredSecuritySymbol, () => resolveSecuritySymbol(security), assetId);
     }
 
     const { baseCurrency, unitScale } = currencyDefinition(quote.currency);
@@ -288,6 +285,9 @@ async function refreshMarketPrice(
       asOf: quote.asOf,
       fetchedAt: new Date().toISOString(),
       sourceStatus: "live",
+      source: quote.source,
+      quoteSession: quote.session,
+      delaySeconds: quote.delaySeconds,
     });
   } catch (error) {
     if (error instanceof MarketPriceRequestError) throw error;
@@ -377,11 +377,10 @@ async function getSecurityListingPrice(
   security: PortfolioSecurity,
   options: MarketRefreshOptions,
 ): Promise<MarketPrice> {
-  const providerSymbol =
-    securityListingQuoteSymbol(security, request.ticker) ??
-    await resolveSecuritySymbol({ ...security, ticker: request.ticker });
-  const cacheAssetId = `listing:${request.securityId}:${providerSymbol}`;
-  const inFlightKey = `${databasePath()}::security:${cacheAssetId}::${options.forceRefresh ? "force" : "cached"}`;
+  const providerSymbol = securityListingQuoteSymbol(security, request.ticker);
+  const listing = { ...security, ticker: request.ticker };
+  const cacheAssetId = `listing:${request.securityId}:${providerSymbol ?? request.ticker}`;
+  const inFlightKey = `${databasePath()}::security:${cacheAssetId}::${options.forceRefresh ? "force" : "cached"}::${options.requireFresh ? "strict" : "fallback"}`;
   const existing = inFlightPrices.get(inFlightKey);
   if (existing) {
     const price = await existing;
@@ -391,11 +390,11 @@ async function getSecurityListingPrice(
   const loadPrice = (async () => {
     ensureLocalDatabase();
     const cached = findMarketPrice("security", cacheAssetId);
-    if (!options.forceRefresh && cached && isFresh(cached.fetchedAt)) {
+    if (!options.forceRefresh && cached?.quoteSession && isFresh(cached.fetchedAt)) {
       return cached;
     }
     try {
-      const quote = await fetchQuote(providerSymbol);
+      const quote = await fetchAssetQuote(listing, providerSymbol, () => resolveSecuritySymbol(listing), request.securityId);
       const { baseCurrency, unitScale } = currencyDefinition(quote.currency);
       const fx = await getFxRate(baseCurrency, options);
       return persistMarketPrice({
@@ -409,9 +408,12 @@ async function getSecurityListingPrice(
         asOf: quote.asOf,
         fetchedAt: new Date().toISOString(),
         sourceStatus: "live",
+        source: quote.source,
+        quoteSession: quote.session,
+        delaySeconds: quote.delaySeconds,
       });
     } catch (error) {
-      if (cached) return { ...cached, sourceStatus: "stale" as const };
+      if (cached && !options.requireFresh) return { ...cached, sourceStatus: "stale" as const };
       throw error;
     }
   })().finally(() => {

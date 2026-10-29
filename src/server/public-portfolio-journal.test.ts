@@ -45,7 +45,7 @@ test("visitor journals and counterfactuals enforce publication, omit amounts for
     for (const [id, ticker] of [["journal-a", "AAA"], ["journal-b", "BBB"]]) {
       getDb().insert(securities).values({ id, primaryTicker: ticker, name: ticker, assetClass: "Equity", sector: "Technology", country: "United States" }).run();
       persistMarketPrice({ assetKind: "security", assetId: id, providerSymbol: ticker, price: ticker === "AAA" ? 101 : 80, currency: "USD", fxToUsd: 1,
-        priceUsd: ticker === "AAA" ? 101 : 80, asOf: now, fetchedAt: now, sourceStatus: "cached" });
+        priceUsd: ticker === "AAA" ? 101 : 80, asOf: now, fetchedAt: now, sourceStatus: "cached", quoteSession: "regular" });
     }
     persistFxRate({ currency: "EUR", providerSymbol: "EURUSD=X", rateToUsd: 1.2, asOf: now, fetchedAt: now, sourceStatus: "cached" });
     globalThis.fetch = async () => { throw new Error("These tests must only use the quote cache"); };

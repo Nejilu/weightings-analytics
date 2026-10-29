@@ -89,6 +89,9 @@ export interface MarketPrice {
   asOf: string;
   fetchedAt: string;
   sourceStatus: PriceStatus;
+  source?: import("./market-quote").QuoteSource;
+  quoteSession?: import("./market-quote").QuoteSession;
+  delaySeconds?: number;
 }
 
 export interface FxRate {

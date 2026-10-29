@@ -799,6 +799,7 @@ test("owner creates and edits a portfolio through the API and publication change
       asOf: now,
       fetchedAt: now,
       source: "test",
+      quoteMetadata: { session: "regular" },
     })
     .run();
   const items = [

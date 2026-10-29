@@ -181,6 +181,8 @@ export function PortfolioAnalytics({
     useState<PortfolioExposureMode>("gross-normalized");
   const [cashDisplay, setCashDisplay] = useState<HoldingsCashDisplay>("combined");
   const [compositionVisibleCount, setCompositionVisibleCount] = useState(COMPOSITION_INITIAL_COUNT);
+  const [compositionRefreshRevision, setCompositionRefreshRevision] = useState(0);
+  const forcedCompositionQuotes = useRef(new Set<string>());
   const [quote, setQuote] = useState<MarketPrice | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -248,6 +250,8 @@ export function PortfolioAnalytics({
   ) => {
     if (!etfId) return;
     const requestId = ++definitionRequestId.current;
+    forcedCompositionQuotes.current.clear();
+    setCompositionRefreshRevision(0);
     setPanelView("view");
     setEditingEtfId(etfId);
     setWorkflowMode("edit");
@@ -259,6 +263,7 @@ export function PortfolioAnalytics({
     setResultFilter("");
     setCompositionVisibleCount(COMPOSITION_INITIAL_COUNT);
     setDefinitionLoading(true);
+    if (forceRefresh) setRefreshing(true);
     setError(null);
     setSavedEtf(null);
     setConfirmDelete(false);
@@ -287,6 +292,10 @@ export function PortfolioAnalytics({
       setEtfDescription(loaded.editableDescription);
       setVisibility(loaded.etf.visibility ?? "private");
       applyPortfolioRecord(loaded.portfolio);
+      if (forceRefresh) {
+        forcedCompositionQuotes.current.clear();
+        setCompositionRefreshRevision((value) => value + 1);
+      }
     } catch (loadError) {
       if (requestId !== definitionRequestId.current) return;
       setError(
@@ -297,6 +306,7 @@ export function PortfolioAnalytics({
     } finally {
       if (requestId === definitionRequestId.current) {
         setDefinitionLoading(false);
+        setRefreshing(false);
       }
     }
   };
@@ -837,16 +847,22 @@ export function PortfolioAnalytics({
     void (async () => {
       try {
         // The quote API accepts up to 30 listings per request.
-        const batches = Array.from({ length: Math.ceil(quotes.length / 30) }, (_, index) => quotes.slice(index * 30, (index + 1) * 30));
+        const groups = [false, true].map((refresh) => ({ refresh, quotes: quotes.filter((quote) =>
+          (compositionRefreshRevision > 0 && !forcedCompositionQuotes.current.has(quote.key)) === refresh) }));
+        const batches = groups.flatMap((group) => Array.from({ length: Math.ceil(group.quotes.length / 30) }, (_, index) =>
+          ({ refresh: group.refresh, quotes: group.quotes.slice(index * 30, (index + 1) * 30) })));
         const results = await Promise.allSettled(batches.map(async (batch) => {
           const response = await fetch("/api/v1/prices/quotes", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ quotes: batch }),
+            body: JSON.stringify(batch),
             signal: controller.signal,
           });
           const payload = (await response.json()) as { data?: MarketPrice[]; error?: string };
           if (!response.ok || !payload.data) throw new Error(payload.error ?? "Security prices are unavailable.");
+          if (!controller.signal.aborted && batch.refresh) {
+            for (const price of payload.data) forcedCompositionQuotes.current.add(price.assetId);
+          }
           return payload.data;
         }));
         if (controller.signal.aborted) return;
@@ -867,7 +883,7 @@ export function PortfolioAnalytics({
       }
     })();
     return () => controller.abort();
-  }, [visibleSecurityQuotesKey, amountsVisible]);
+  }, [visibleSecurityQuotesKey, amountsVisible, compositionRefreshRevision]);
 
   const analysis = portfolio?.analysis;
   const maxPositionWeight = compositionRows.reduce(
@@ -1169,7 +1185,9 @@ export function PortfolioAnalytics({
                   </strong>
                 ) : null}
                 <small>
-                  {activeQuote.sourceStatus} price - cached for up to 24 hours
+                  {activeQuote.source ?? "Yahoo Finance"} · {activeQuote.quoteSession ?? "regular"} · {activeQuote.sourceStatus}
+                  {" · "}{new Date(activeQuote.asOf).toLocaleString("en-US")}
+                  {activeQuote.delaySeconds ? ` · delayed ${activeQuote.delaySeconds / 60} min` : ""}
                   {selectedHoldingsSourceEtf
                     ? ` - ${selectedHoldingsSourceEtf.ticker} look-through holdings`
                     : ""}

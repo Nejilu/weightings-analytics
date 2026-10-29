@@ -38,7 +38,7 @@ test("clones ETF and portfolio weights in EUR without saving or linking sources;
       ...["C", "D", "E"].map((ticker) => ({ securityId: `CLONE-${ticker}`, ticker: `CL${ticker}`, name: `Clone ${ticker}`, assetClass: "Equity", sector: "Technology", country: "United States", weight: 0 })),
     ] });
     const now = new Date().toISOString();
-    for (const [assetId, price] of [["CLONE-A", 20], ["CLONE-B", 100]] as const) persistMarketPrice({ assetKind: "security", assetId, price, priceUsd: price, currency: "USD", fxToUsd: 1, providerSymbol: assetId === "CLONE-A" ? "CLA" : "CLB", asOf: now, fetchedAt: now, sourceStatus: "cached" });
+    for (const [assetId, price] of [["CLONE-A", 20], ["CLONE-B", 100]] as const) persistMarketPrice({ assetKind: "security", assetId, price, priceUsd: price, currency: "USD", fxToUsd: 1, providerSymbol: assetId === "CLONE-A" ? "CLA" : "CLB", asOf: now, fetchedAt: now, sourceStatus: "cached", quoteSession: "regular" });
     persistFxRate({ currency: "EUR", rateToUsd: 1.2, providerSymbol: "EURUSD=X", asOf: now, fetchedAt: now, sourceStatus: "cached" });
     await savePortfolio([{ id: "source-a", kind: "security", referenceId: "CLONE-A", inputMode: "value", inputAmount: 5_000 }], [{ currency: "USD", amount: 5_000 }]);
     const source = await savePortfolioAsEtf({ ticker: "SRC", name: "Source portfolio" });

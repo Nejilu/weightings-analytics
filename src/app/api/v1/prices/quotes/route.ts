@@ -41,7 +41,7 @@ async function handlePOST(request: Request) {
     );
     return Response.json(
       { data: [...prices.values()] },
-      { headers: { "Cache-Control": "private, max-age=60" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     if (error instanceof SyntaxError) {

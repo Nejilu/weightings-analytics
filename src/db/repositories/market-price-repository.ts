@@ -26,6 +26,9 @@ function mapRow(
     asOf: row.asOf,
     fetchedAt: row.fetchedAt,
     sourceStatus,
+    source: row.source === "TradingView" ? "TradingView" : "Yahoo Finance",
+    quoteSession: row.quoteMetadata?.session,
+    delaySeconds: row.quoteMetadata?.delaySeconds,
   };
 }
 
@@ -62,7 +65,8 @@ export function persistMarketPrice(price: MarketPrice): MarketPrice {
       priceUsd: price.priceUsd,
       asOf: price.asOf,
       fetchedAt: price.fetchedAt,
-      source: "Yahoo Finance",
+      source: price.source ?? "Yahoo Finance",
+      quoteMetadata: { session: price.quoteSession, delaySeconds: price.delaySeconds },
     })
     .onConflictDoUpdate({
       target: marketPrices.id,
@@ -74,7 +78,8 @@ export function persistMarketPrice(price: MarketPrice): MarketPrice {
         priceUsd: price.priceUsd,
         asOf: price.asOf,
         fetchedAt: price.fetchedAt,
-        source: "Yahoo Finance",
+        source: price.source ?? "Yahoo Finance",
+        quoteMetadata: { session: price.quoteSession, delaySeconds: price.delaySeconds },
       },
     })
     .run();

@@ -154,8 +154,9 @@ development view uses `localhost` for the administrator and `127.0.0.1` for the 
 | `HOLDINGS_CACHE_TTL_SECONDS` | `86400` | Positive holdings snapshot TTL |
 | `ISHARES_RELAY_URL` | unset | Optional operator-managed HTTPS relay for iShares/BlackRock; direct access remains the default |
 | `HOLDINGS_REFRESH_CONCURRENCY` | `4` | Parallel holdings refreshes, 1–8 |
-| `MARKET_PRICE_TTL_SECONDS` | `86400` | Positive Yahoo price and FX TTL |
-| `MARKET_PRICE_CONCURRENCY` | `4` | Parallel Yahoo requests, 1–8 |
+| `MARKET_PRICE_TTL_SECONDS` | `60` | TradingView/Yahoo quote cache TTL; manual refresh bypasses it |
+| `FX_RATE_TTL_SECONDS` | `86400` | Yahoo FX cache TTL; manual refresh bypasses it |
+| `MARKET_PRICE_CONCURRENCY` | `4` | Parallel price lookups, 1–8; TradingView lookups are coalesced |
 | `TRADINGVIEW_METRICS_TTL_SECONDS` | `86400` | Positive Screener metrics TTL |
 | `TRADINGVIEW_METRICS_MISSING_TTL_SECONDS` | `900` | Confirmed missing field TTL, 60–86400 |
 | `TRADINGVIEW_BATCH_SIZE` | `1000` | Screener batch size, 25–1000 |
@@ -253,6 +254,17 @@ share class. The endpoints are:
 Comparison excludes cash by default. Add `includeCash=true` to include it in
 weight normalization, overlap, and active-sleeve calculations. Metrics Overview
 accepts one to four distinct ETFs after reference resolution.
+
+Instrument prices (portfolio valuation, previews, history and equivalent shares)
+use TradingView first. A newer pre-/post-market trade is used when available;
+otherwise the regular TradingView price is kept, including on delayed feeds.
+Yahoo is queried only if no usable TradingView quote can be obtained for the
+held listing. Its fallback also considers timestamped pre-/post-market prices.
+Quote caches retain provider, session, trade time and any reported feed delay.
+Foreign exchange and dividend sources remain Yahoo. `npm run test:prices` runs
+offline regression tests; `npm run test:prices:live` checks five representative
+instruments against the live service in a temporary database, then checks quote
+coverage for every catalog listing.
 
 Metrics also includes a **Single stock** sub-panel. Select an equity through
 the ACWI and supported-securities search to inspect all 20 company metrics,
