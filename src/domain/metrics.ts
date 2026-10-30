@@ -407,6 +407,17 @@ export type MetricsOverviewWarning =
   | "estimates-partial"
   | "estimates-unavailable";
 
+export interface TargetAssetMetricsOverview extends EtfMetricsOverview {
+  relativeToEtfId: string;
+  /** Weight of the residual sleeve in the source ETF, before rebasing to 100%. */
+  sourceActiveWeight: number;
+}
+
+export interface TargetAssetPairMetrics {
+  overlapWeight: number;
+  assets: [TargetAssetMetricsOverview, TargetAssetMetricsOverview];
+}
+
 export interface MetricsOverviewResult {
   calculatedAt: string;
   fundamentalsCaptureWindow: MetricCaptureWindow | null;
@@ -418,4 +429,5 @@ export interface MetricsOverviewResult {
   cacheTtlHours: number;
   definitions: MetricDefinitionView[];
   etfs: EtfMetricsOverview[];
+  targetAssetPairs?: TargetAssetPairMetrics[];
 }

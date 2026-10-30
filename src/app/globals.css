@@ -4819,6 +4819,95 @@ td.holdings-table-empty {
   margin-right: auto;
 }
 
+.metrics-result-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.metrics-result-tabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 12px 2px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metrics-result-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--purple);
+  color: var(--ink);
+}
+
+.metrics-result-tabs button:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 3px;
+}
+
+.metrics-target-context {
+  padding: 20px;
+}
+
+.metrics-target-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.metrics-target-heading h2 {
+  margin: 5px 0 0;
+  font-size: 18px;
+}
+
+.metrics-target-context p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  max-width: 880px;
+}
+
+.metrics-target-pair {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.metrics-target-pair select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 10px;
+  max-width: 100%;
+}
+
+.metrics-target-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.metrics-target-summary article {
+  display: grid;
+  gap: 7px;
+  border-left: 3px solid;
+  padding-left: 12px;
+  font-size: 12px;
+}
+
+.metrics-target-summary small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
 .metrics-coverage-grid {
   display: grid;
   gap: 10px;

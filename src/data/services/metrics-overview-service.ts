@@ -12,6 +12,7 @@ import {
 } from "@/domain/metrics-overview-request";
 import { getHoldingsSnapshot, HoldingsUnavailableError } from "./holdings-service";
 import { buildEtfMetricsOverview, uniqueEquityHoldings } from "./metrics-overview-model";
+import { buildTargetAssetPairs } from "./target-asset-metrics-model";
 import {
   retrieveSecurityMetrics,
   providerOrUnavailable,
@@ -94,6 +95,7 @@ async function buildOverview(
     uniqueEquityHoldings(snapshots), { ...options,
       onFundamentals: options.onFundamentals ? ({ metricsBySecurity, resolvedSecurityIds, ...metadata }) => {
         options.onFundamentals!({ ...metadata, holdingsSourceIssues: holdingsSourceIssues(snapshots),
+          targetAssetPairs: buildTargetAssetPairs(snapshots, resolvedSecurityIds, metricsBySecurity),
           etfs: snapshots.map((snapshot) => buildEtfMetricsOverview(snapshot, resolvedSecurityIds, metricsBySecurity)) });
       } : undefined,
     }, holdingsAreStale,
@@ -101,6 +103,7 @@ async function buildOverview(
   return {
     ...metadata,
     holdingsSourceIssues: holdingsSourceIssues(snapshots),
+    targetAssetPairs: buildTargetAssetPairs(snapshots, resolvedSecurityIds, metricsBySecurity),
     etfs: snapshots.map((snapshot) => buildEtfMetricsOverview(
       snapshot, resolvedSecurityIds, metricsBySecurity,
     )),

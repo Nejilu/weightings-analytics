@@ -145,7 +145,7 @@ function ComponentTooltip({
   if (point.kind === "etf") {
     return (
       <div className="metrics-bubble-tooltip">
-        <strong>{point.ticker} · ETF aggregate</strong>
+        <strong>{point.ticker} · portfolio aggregate</strong>
         <span>{point.name}</span>
         <dl>
           <div><dt>Estimated EPS growth · Q-3 to next Q</dt><dd>{formatNumber(point.epsGrowth)}%</dd></div>
@@ -200,7 +200,7 @@ function ValuationPathChart({
         <div><span className="eyebrow">P/E roll-down</span><h2>How forward earnings compress the P/E</h2></div>
         <p>Current price divided by {option.description}, rolled forward one quarter at each point.</p>
       </div>
-      <div className="metrics-feature-chart" aria-label="P/E valuation path by ETF">
+      <div className="metrics-feature-chart" aria-label="P/E valuation path by portfolio">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 18, right: 24, bottom: 5, left: 0 }}>
             <CartesianGrid stroke="var(--line)" strokeDasharray="2 5" vertical={false} />
@@ -234,7 +234,7 @@ function ValuationPathChart({
           </div>
         ))}
       </div>
-      <p className="metrics-chart-note">Every point uses current local-currency price divided by {option.description}. Historical reported EPS and reconstructed adjusted EPS are never used. ETF P/E is the holding-weighted harmonic mean.</p>
+      <p className="metrics-chart-note">Every point uses current local-currency price divided by {option.description}. Historical reported EPS and reconstructed adjusted EPS are never used. Portfolio P/E is the holding-weighted harmonic mean.</p>
     </section>
   );
 }
@@ -337,9 +337,9 @@ function ComponentBubbleChart({
   return (
     <section className="metrics-feature-card metrics-feature-card--bubble panel">
       <div className="metrics-feature-heading metrics-feature-heading--stacked">
-        <div><span className="eyebrow">ETF + constituent map</span><h2>{selected.ticker}: estimated EPS growth versus next-quarter P/E</h2></div>
+        <div><span className="eyebrow">Portfolio + constituent map</span><h2>{selected.ticker}: estimated EPS growth versus next-quarter P/E</h2></div>
         <div className="metrics-bubble-controls">
-          <div className="metrics-fund-tabs" role="tablist" aria-label="ETF shown in constituent chart">
+          <div className="metrics-fund-tabs" role="tablist" aria-label="Portfolio shown in constituent chart">
             {result.etfs.map((etf, index) => (
               <button
                 key={etf.etfId}
@@ -374,14 +374,14 @@ function ComponentBubbleChart({
       </div>
       <div className="metrics-bubble-summary">
         <span><b>{plottedPoints.length}/{points.length}</b> selected companies plotted</span>
-        <span><b>{etfPoints.length}/{result.etfs.length}</b> ETF aggregates plotted</span>
-        <span><b>{representedWeight.toFixed(1)}%</b> ETF weight plotted</span>
-        <span><b>{showAllCompanies ? "Full universe" : `Top ${DEFAULT_COMPONENT_POINT_LIMIT}`}</b> {showAllCompanies ? "shown" : "by ETF weight"}</span>
+        <span><b>{etfPoints.length}/{result.etfs.length}</b> portfolio aggregates plotted</span>
+        <span><b>{representedWeight.toFixed(1)}%</b> portfolio weight plotted</span>
+        <span><b>{showAllCompanies ? "Full universe" : `Top ${DEFAULT_COMPONENT_POINT_LIMIT}`}</b> {showAllCompanies ? "shown" : "by portfolio weight"}</span>
         {view.missingMetricCount > 0 ? <span><b>{view.missingMetricCount}</b> missing Q-3 or next-quarter EPS</span> : null}
         {view.truncatedCount > 0 ? <span><b>{view.truncatedCount}</b> beyond top-500 by weight</span> : null}
         <span><b>{showFullExtent ? "Full" : "Robust IQR"} axes</b> {outsideRobustFrame.length} extreme points {showFullExtent ? "included" : "listed below"}</span>
         <span>Constituent bubbles scale with holding weight</span>
-        <span><b>Squares</b> selected ETF aggregates</span>
+        <span><b>Squares</b> selected portfolio aggregates</span>
       </div>
       <div className="metrics-bubble-chart" aria-label={`${selected.ticker} constituent growth versus valuation bubble chart`}>
         <ResponsiveContainer width="100%" height="100%">
@@ -411,7 +411,7 @@ function ComponentBubbleChart({
               tick={{ fill: "var(--muted)", fontSize: 8 }}
               width={42}
             />
-            <ZAxis zAxisId="constituents" type="number" dataKey="plotSize" name="ETF weight" unit="%" range={[18, 900]} />
+            <ZAxis zAxisId="constituents" type="number" dataKey="plotSize" name="Portfolio weight" unit="%" range={[18, 900]} />
             <ZAxis zAxisId="etfs" type="number" dataKey="plotSize" range={[80, 80]} />
             <ReferenceLine x={0} stroke="var(--faint)" strokeDasharray="3 4" />
             <Tooltip content={(props) => <ComponentTooltip {...props} />} offset={28} wrapperStyle={{ pointerEvents: "none" }} cursor={{ strokeDasharray: "3 4" }} />
@@ -448,7 +448,7 @@ function ComponentBubbleChart({
       ) : null}
       <p className="metrics-chart-note">{showAllCompanies
         ? `All ${allPoints.length} available companies are shown.`
-        : `The ${points.length} largest available companies by ETF weight are selected; ${Math.max(0, allPoints.length - points.length)} remain available through the full-universe toggle.`} ETF squares use the same axes and remain visible in robust mode. ETF growth directly transforms the two corresponding roll-down endpoints: P/E Q-3 ÷ P/E next Q − 1; each endpoint keeps its own displayed coverage. Visible axes: {minGrowth}% to {maxGrowth}% growth and 0× to {maxPe}× P/E. {showFullExtent ? "Full extent includes every selected point; robust axes can be restored." : "Robust axes use the central 90% of selected constituent values bounded by IQR fences, so isolated extremes never set the scale. Points outside the frame are listed instead of being partially clipped; full extent remains available."} Both P/E endpoints use current price and a single quarterly EPS consensus annualized ×4. Non-positive EPS at either endpoint is excluded. Up to 500 valid constituents are retained by descending ETF weight.</p>
+        : `The ${points.length} largest available companies by portfolio weight are selected; ${Math.max(0, allPoints.length - points.length)} remain available through the full-universe toggle.`} Portfolio squares use the same axes and remain visible in robust mode. Portfolio growth directly transforms the two corresponding roll-down endpoints: P/E Q-3 ÷ P/E next Q − 1; each endpoint keeps its own displayed coverage. Visible axes: {minGrowth}% to {maxGrowth}% growth and 0× to {maxPe}× P/E. {showFullExtent ? "Full extent includes every selected point; robust axes can be restored." : "Robust axes use the central 90% of selected constituent values bounded by IQR fences, so isolated extremes never set the scale. Points outside the frame are listed instead of being partially clipped; full extent remains available."} Both P/E endpoints use current price and a single quarterly EPS consensus annualized ×4. Non-positive EPS at either endpoint is excluded. Up to 500 valid constituents are retained by descending portfolio weight.</p>
     </section>
   );
 }
@@ -572,12 +572,32 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
   const allEtfs = useMemo(() => catalog.flatMap((group) => group.variants), [catalog]);
   const defaultId = allEtfs[0]?.id ?? "";
   const [selectedIds, setSelectedIds] = useState(() => [...new Set(initialEtfIds.filter((id) => allEtfs.some((etf) => etf.id === id)))].slice(0, 4));
-  const [result, setResult] = useState<MetricsOverviewResult | null>(null);
+  const [loadedResult, setResult] = useState<MetricsOverviewResult | null>(null);
+  const [resultView, setResultView] = useState<"etfs" | "targets">("etfs");
+  const [selectedPairKey, setSelectedPairKey] = useState("");
   const [consensusReady, setConsensusReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consensusHorizon, setConsensusHorizon] = useState<ConsensusHorizon>("4q");
   const requestController = useRef<AbortController | null>(null);
+
+  // Orient cached pairs to the current selection order, including the reference column.
+  const targetPairs = loadedResult?.etfs.flatMap((left, index) =>
+    loadedResult.etfs.slice(index + 1).flatMap((right) => {
+      const pair = loadedResult.targetAssetPairs?.find(({ assets }) =>
+        assets.some((asset) => asset.etfId === left.etfId) &&
+        assets.some((asset) => asset.etfId === right.etfId));
+      return pair ? [{
+        ...pair,
+        key: `${left.etfId}|${right.etfId}`,
+        assets: pair.assets[0].etfId === left.etfId ? pair.assets : [pair.assets[1], pair.assets[0]],
+      }] : [];
+    })) ?? [];
+  const selectedPair = targetPairs.find((pair) => pair.key === selectedPairKey) ?? targetPairs[0];
+  const showingTargets = resultView === "targets" && Boolean(selectedPair);
+  const result = loadedResult && showingTargets && selectedPair
+    ? { ...loadedResult, etfs: selectedPair.assets }
+    : loadedResult;
 
   useEffect(() => () => {
     requestController.current?.abort();
@@ -682,6 +702,47 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
       {result ? (
         <>
           <HoldingsSourceWarning issues={result.holdingsSourceIssues} />
+          {targetPairs.length > 0 ? (
+            <div className="metrics-result-tabs" role="tablist" aria-label="Metrics portfolios">
+              {(["etfs", "targets"] as const).map((view, index) => (
+                <button key={view} id={`metrics-tab-${view}`} type="button" role="tab"
+                  aria-selected={showingTargets ? view === "targets" : view === "etfs"}
+                  aria-controls="metrics-results-panel"
+                  tabIndex={(showingTargets ? view === "targets" : view === "etfs") ? 0 : -1}
+                  onClick={() => setResultView(view)}
+                  onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    event.preventDefault();
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+                    setResultView(next === 0 ? "etfs" : "targets");
+                    event.currentTarget.parentElement?.querySelectorAll("button")[next]?.focus();
+                  }}
+                >{view === "etfs" ? "ETFs" : "Target assets"}</button>
+              ))}
+            </div>
+          ) : null}
+          <div id="metrics-results-panel" className="metrics-overview" role={targetPairs.length ? "tabpanel" : undefined}
+            aria-labelledby={targetPairs.length ? `metrics-tab-${showingTargets ? "targets" : "etfs"}` : undefined}>
+          {showingTargets && selectedPair ? (
+            <section className="metrics-target-context panel">
+              <div className="metrics-target-heading">
+                <div><span className="eyebrow">Relative exposures · normalised to 100%</span><h2>Target assets</h2></div>
+                {targetPairs.length > 1 ? <label className="metrics-target-pair">Compare pair
+                  <select value={selectedPair.key} onChange={(event) => setSelectedPairKey(event.target.value)}>
+                    {targetPairs.map((pair) => <option key={pair.key} value={pair.key}>{pair.assets[0].ticker} vs {pair.assets[1].ticker}</option>)}
+                  </select>
+                </label> : null}
+              </div>
+              <p>Remove the common exposure ({selectedPair.overlapWeight.toFixed(2)}% overlap), then rebase each ETF’s remaining overweights to 100%. Same construction as Comparison, with the same metrics and coverage methodology as the ETF view.</p>
+              <div className="metrics-target-summary">
+                {selectedPair.assets.map((asset, index) => <article key={asset.etfId} style={{ borderLeftColor: FUND_COLORS[index] }}>
+                  <strong>{asset.ticker} <small>relative to {selectedPair.assets[1 - index].ticker}</small></strong>
+                  <span>{asset.sourceActiveWeight.toFixed(2)}% of source ETF → {asset.holdingsCount > 0 ? "100% target portfolio" : "no equity target"}</span>
+                  <small>{asset.holdingsCount} equity holdings · {asset.holdingsCount > 0 ? "Metrics below use target weights" : "No residual equity exposure; metrics are unavailable"}</small>
+                </article>)}
+              </div>
+            </section>
+          ) : null}
           <section className="metrics-coverage-grid" aria-label="TradingView mapping coverage">
             {result.etfs.map((etf, index) => <article key={etf.etfId} style={{ borderTopColor: FUND_COLORS[index] }}><span>{etf.ticker} · symbol coverage</span><strong>{etf.mappingCoverageWeight.toFixed(1)}%</strong><small>{etf.mappedHoldings} / {etf.holdingsCount} equity holdings · {formatDate(etf.asOf)}</small></article>)}
           </section>
@@ -707,7 +768,7 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
           {consensusReady ? <>
             <ConsensusHorizonControl value={consensusHorizon} onChange={setConsensusHorizon} />
             <ValuationPathChart result={result} horizon={consensusHorizon} />
-            <ComponentBubbleChart result={result} />
+            <ComponentBubbleChart key={`${showingTargets ? "targets" : "etfs"}:${showingTargets ? selectedPair?.key : ""}`} result={result} />
           </> : loading ? <section className="metrics-loading metrics-loading--partial panel" role="status">
             <span className="spinner" /><strong>Fundamentals ready · Loading EPS consensus…</strong>
           </section> : null}
@@ -715,7 +776,7 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
           <section className="metrics-groups-panel panel">
             <div className="panel-heading">
               <div><span className="eyebrow">Fundamental groups</span><h2>Read the portfolio by investment lens</h2></div>
-              <span className="info-chip">First ETF is the reference</span>
+              <span className="info-chip">{showingTargets ? "First target portfolio is the reference" : "First ETF is the reference"}</span>
             </div>
             <p className="metrics-groups-intro">Values, reference deltas and covered weight stay visible. Hover or focus a cell for the full definition, holding count and capture date.</p>
             <div className="metrics-group-grid">
@@ -732,6 +793,7 @@ function EtfMetricsPanel({ catalog, initialEtfIds }: MetricsOverviewProps) {
               ))}
             </div>
           </section>
+          </div>
         </>
       ) : !loading ? (
         <section className="metrics-empty panel"><span>∿</span><div><strong>Select funds, then load their constituent metrics.</strong><p>No aggregate is estimated until TradingView returns security-level observations.</p></div></section>

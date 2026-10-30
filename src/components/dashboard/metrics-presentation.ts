@@ -57,7 +57,7 @@ export const METRIC_GROUPS: Array<{
   {
     id: "size",
     title: "Size profile",
-    description: "Typical constituent size after ETF holding weights.",
+    description: "Typical constituent size after portfolio holding weights.",
     method: "Holding-weighted median market capitalization",
     color: "#8a6bb8",
     keys: ["market_cap"],
