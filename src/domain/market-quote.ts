@@ -1,5 +1,5 @@
-export type QuoteSession = "regular" | "pre-market" | "post-market" | "nav";
-export type QuoteSource = "TradingView" | "Yahoo Finance" | "BlackRock";
+export type QuoteSession = "regular" | "pre-market" | "post-market";
+export type QuoteSource = "TradingView" | "Yahoo Finance";
 
 export interface MarketQuote {
   symbol: string;

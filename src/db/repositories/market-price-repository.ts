@@ -26,7 +26,7 @@ function mapRow(
     asOf: row.asOf,
     fetchedAt: row.fetchedAt,
     sourceStatus,
-    source: row.source === "TradingView" || row.source === "BlackRock" ? row.source : "Yahoo Finance",
+    source: row.source === "TradingView" ? "TradingView" : "Yahoo Finance",
     quoteSession: row.quoteMetadata?.session,
     delaySeconds: row.quoteMetadata?.delaySeconds,
   };

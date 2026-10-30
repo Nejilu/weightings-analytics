@@ -1,7 +1,7 @@
 import type { EtfShareClass } from "@/domain/etf";
 import { tradingViewPriceSymbols } from "./providers/market-quote-symbols";
 
-export type EtfQuoteSource = { source: "TradingView"; symbol: string } | { source: "BlackRock"; symbol: string };
+export type EtfQuoteSource = { source: "TradingView"; symbol: string };
 
 // Unit-price listings are independent of the ETF used for look-through holdings.
 // Keep the held share class, exchange and currency, including SIX's USD suffix.
@@ -24,7 +24,6 @@ export const ETF_QUOTE_SOURCES: Readonly<Record<string, EtfQuoteSource>> = {
   "tqqq-us": { source: "TradingView", symbol: "NASDAQ:TQQQ" },
   "qtop-us": { source: "TradingView", symbol: "NASDAQ:QTOP" },
   "qtop-ucits": { source: "TradingView", symbol: "EURONEXT:QTOP" },
-  "bgsix-us": { source: "BlackRock", symbol: "BGSIX" },
 };
 
 export function etfQuoteSource(etf: EtfShareClass): EtfQuoteSource | undefined {

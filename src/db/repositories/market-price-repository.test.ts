@@ -27,12 +27,6 @@ test("provider, session, delay and trade time survive a cache round trip and dat
     persistMarketPrice({ ...base, providerSymbol: "IVV", source: "Yahoo Finance", quoteSession: "regular" });
     assert.equal(findMarketPrice("etf", "ivv-us")?.source, "Yahoo Finance");
     assert.equal(findMarketPrice("etf", "ivv-us")?.delaySeconds, undefined);
-    persistMarketPrice({ ...base, assetId: "bgsix-us", providerSymbol: "BGSIX", source: "BlackRock", quoteSession: "nav", asOf: "2026-10-29" });
-    closeDatabase(); ensureLocalDatabase();
-    const nav = findMarketPrice("etf", "bgsix-us")!;
-    assert.equal(nav.source, "BlackRock");
-    assert.equal(nav.quoteSession, "nav");
-    assert.equal(nav.asOf, "2026-10-29");
   } finally {
     closeDatabase();
     if (previousPath === undefined) delete process.env.DATABASE_PATH;

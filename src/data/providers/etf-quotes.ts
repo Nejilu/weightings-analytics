@@ -11,10 +11,6 @@ function currencyMatches(etf: EtfShareClass, currency: string) {
 export function etfPriceIsCompatible(etf: EtfShareClass, price: MarketPrice): boolean {
   if (!currencyMatches(etf, price.currency)) return false;
   const source = etfQuoteSource(etf);
-  if (source?.source === "BlackRock") {
-    return price.quoteSession === "nav" && price.providerSymbol === source.symbol &&
-      (price.source === "BlackRock" || price.source === "Yahoo Finance");
-  }
   if (price.source === "TradingView") return source?.source === "TradingView" && price.providerSymbol === source.symbol;
   return price.source === "Yahoo Finance" && price.providerSymbol === (etf.priceSymbol ?? etf.ticker);
 }
@@ -22,7 +18,6 @@ export function etfPriceIsCompatible(etf: EtfShareClass, price: MarketPrice): bo
 export async function fetchEtfQuote(etf: EtfShareClass, providers: {
   tradingView: (symbol: string) => Promise<MarketQuote | null>;
   yahoo: (symbol: string) => Promise<MarketQuote>;
-  blackrockNav: (etf: EtfShareClass) => Promise<MarketQuote>;
 }): Promise<MarketQuote> {
   const source = etfQuoteSource(etf);
   const yahoo = async () => {
@@ -32,10 +27,6 @@ export async function fetchEtfQuote(etf: EtfShareClass, providers: {
     if (!currencyMatches(etf, quote.currency)) throw new Error("Quote currency does not match the held ETF listing.");
     return quote;
   };
-  if (source?.source === "BlackRock") {
-    try { return await providers.blackrockNav(etf); }
-    catch { return { ...await yahoo(), session: "nav" }; }
-  }
   return loadPreferredQuote(source ? [source.symbol] : [], {
     tradingView: async (symbol) => {
       const quote = await providers.tradingView(symbol);

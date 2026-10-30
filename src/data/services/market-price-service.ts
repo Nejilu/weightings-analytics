@@ -4,7 +4,6 @@ import YahooFinance from "yahoo-finance2";
 import { loadProviderSymbols } from "@/db/repositories/metrics-repository";
 import { tradingViewPriceSymbols } from "@/data/providers/market-quote-symbols";
 import { getTradingViewQuote } from "@/data/providers/tradingview-quotes";
-import { fetchBlackrockNav } from "@/data/providers/blackrock-nav";
 import { etfPriceIsCompatible, fetchEtfQuote } from "@/data/providers/etf-quotes";
 import { loadPreferredQuote, selectYahooQuote, type MarketQuote } from "@/domain/market-quote";
 
@@ -237,6 +236,7 @@ async function refreshMarketPrice(
   ensureLocalDatabase();
   const cached = findMarketPrice(assetKind, assetId);
   const etf = assetKind === "etf" ? findEtfById(assetId) : undefined;
+  const legacyFundQuote = etf?.id === "bgsix-us";
   const security =
     assetKind === "security"
       ? findSecuritiesByIds([assetId]).get(assetId)
@@ -248,10 +248,10 @@ async function refreshMarketPrice(
   const preferredSecuritySymbol = alias?.providerSymbol ?? listingSymbol;
   const securityCandidates = security ? tradingViewPriceSymbols(security, preferredSecuritySymbol) : [];
   const compatibleCache = cached && (assetKind === "etf"
-    ? etf && etfPriceIsCompatible(etf, cached)
+    ? etf && (legacyFundQuote || etfPriceIsCompatible(etf, cached))
     : cached.source === "TradingView"
       ? securityCandidates.includes(cached.providerSymbol)
-      : cached.source !== "BlackRock" && (!preferredSecuritySymbol || cached.providerSymbol.toUpperCase() === preferredSecuritySymbol.toUpperCase()));
+      : !preferredSecuritySymbol || cached.providerSymbol.toUpperCase() === preferredSecuritySymbol.toUpperCase());
   const fallbackCached = compatibleCache ? cached : undefined;
   if (!options.forceRefresh && fallbackCached?.quoteSession && isFresh(fallbackCached.fetchedAt)) {
     return fallbackCached;
@@ -269,7 +269,12 @@ async function refreshMarketPrice(
           "Only source ETFs can be priced as portfolio components.",
         );
       }
-      quote = await fetchEtfQuote(etf, { tradingView: getTradingViewQuote, yahoo: fetchYahooQuote, blackrockNav: fetchBlackrockNav });
+      if (legacyFundQuote) {
+        const symbol = etf.priceSymbol ?? etf.ticker;
+        quote = await fetchAssetQuote({ ...etf, country: "" }, symbol, async () => symbol);
+      } else {
+        quote = await fetchEtfQuote(etf, { tradingView: getTradingViewQuote, yahoo: fetchYahooQuote });
+      }
     } else {
       if (!security) {
         throw new MarketPriceRequestError("The selected security is unavailable.");

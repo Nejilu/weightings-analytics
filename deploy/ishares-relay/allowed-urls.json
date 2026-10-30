@@ -1,6 +1,5 @@
 [
   "https://www.blackrock.com/us/individual/products/227450/blackrock-science-tech-oppsinst-class-fund/1464253357814.ajax?fileType=csv&fileName=BGSIX_holdings&dataType=fund",
-  "https://www.blackrock.com/us/individual/products/227450/technology-opportunities-fund",
   "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=239600&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
   "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=239696&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",
   "https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data?portfolioId=239726&component=holdings&appType=PRODUCT_PAGE&appSubType=ISHARES&targetSite=us-ishares&locale=en_US&userType=individual",

@@ -265,10 +265,9 @@ All listed catalog ETFs have an explicit TradingView unit-price symbol in
 `src/data/etf-quote-sources.ts`, including the Amundi listings. These symbols
 identify the held share class and currency independently of its composition
 source. Reported delayed exchange feeds retain their actual timestamp and delay.
-The BGSIX mutual fund instead uses BlackRock's dated daily NAV; it does not open
-a TradingView price session. Yahoo remains the labelled fallback if a primary
-source is unavailable. Cache compatibility rejects other listings/currencies
-and pre-upgrade TradingView prices for this NAV fund.
+Yahoo remains the labelled fallback if TradingView is unavailable. ETF cache
+compatibility rejects other listings/currencies. BGSIX retains its existing
+TradingView-first quote path and Yahoo fallback, independently of these ETF rules.
 Foreign exchange and dividend sources remain Yahoo. `npm run test:prices` runs
 offline regression tests; `npm run test:prices:live` checks five representative
 instruments against the live service in a temporary database, then checks quote

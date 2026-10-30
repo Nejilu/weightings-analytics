@@ -9,14 +9,6 @@ const request = (url = upstream, ip = env.ALLOWED_IP) => new Request(
   { headers: { "CF-Connecting-IP": ip } },
 );
 
-test("the daily NAV page is allowed only by its exact catalog URL", async () => {
-  const nav = "https://www.blackrock.com/us/individual/products/227450/technology-opportunities-fund";
-  assert.equal(allowedUrl(nav, [nav]), true);
-  assert.equal(allowedUrl(nav + "?other=1", [nav]), false);
-  assert.equal(allowedUrl(nav.replace("227450", "227447"), [nav]), false);
-  assert.equal(allowedUrl(nav, env.ALLOWED_URLS), false);
-});
-
 test("restricts targets and caller; permits only a validated holdings date", async () => {
   assert.equal(allowedUrl(upstream + "&asOfDate=20260918", env.ALLOWED_URLS), true);
   for (const url of [upstream + "&other=1", upstream + "&asOfDate=evil",

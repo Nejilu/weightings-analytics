@@ -29,8 +29,7 @@ function HistoryTooltip({ active, payload, currency, relative }: {
     <strong>{relative ? percent(point.value ?? 0) : money((currency === "EUR" ? point.valueEur : point.valueUsd) ?? 0, currency)}</strong>
     {!relative ? <small>{money((currency === "EUR" ? point.valueUsd : point.valueEur) ?? 0, currency === "EUR" ? "USD" : "EUR")}</small> : null}
     <small>{captureLabel(point.reason)} capture</small>
-    {point.quotesAsOf ? <small>Oldest quote: {/^[\d]{4}-[\d]{2}-[\d]{2}$/.test(point.quotesAsOf)
-      ? `${point.quotesAsOf} · daily NAV` : `${hourLabel(Date.parse(point.quotesAsOf))} · New York`}</small> : null}
+    {point.quotesAsOf ? <small>Oldest quote: {hourLabel(Date.parse(point.quotesAsOf))} · New York</small> : null}
   </div>;
 }
 
