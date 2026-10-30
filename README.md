@@ -261,10 +261,18 @@ otherwise the regular TradingView price is kept, including on delayed feeds.
 Yahoo is queried only if no usable TradingView quote can be obtained for the
 held listing. Its fallback also considers timestamped pre-/post-market prices.
 Quote caches retain provider, session, trade time and any reported feed delay.
+All listed catalog ETFs have an explicit TradingView unit-price symbol in
+`src/data/etf-quote-sources.ts`, including the Amundi listings. These symbols
+identify the held share class and currency independently of its composition
+source. Reported delayed exchange feeds retain their actual timestamp and delay.
+The BGSIX mutual fund instead uses BlackRock's dated daily NAV; it does not open
+a TradingView price session. Yahoo remains the labelled fallback if a primary
+source is unavailable. Cache compatibility rejects other listings/currencies
+and pre-upgrade TradingView prices for this NAV fund.
 Foreign exchange and dividend sources remain Yahoo. `npm run test:prices` runs
 offline regression tests; `npm run test:prices:live` checks five representative
 instruments against the live service in a temporary database, then checks quote
-coverage for every catalog listing.
+coverage and currency checks for every listed catalog ETF.
 
 Saved portfolios share one automatic refresh per Paris calendar day. It first
 forces a download of their ETF compositions, including shared and derived

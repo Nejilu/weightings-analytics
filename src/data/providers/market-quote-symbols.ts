@@ -18,12 +18,11 @@ const LISTING_ALIASES: Record<string, string> = {
 /** Price mappings must identify the held listing, not a company's interchangeable
  * metrics listing. In particular, never price a local share using its ADR/GDR. */
 export function tradingViewPriceSymbols(listing: Listing, yahooSymbol?: string, savedSymbol?: string): string[] {
+  if (/mutual fund/i.test(listing.exchange ?? "")) return [];
   const suffix = yahooSymbol ? /^(.+)\.([A-Z]+)$/i.exec(yahooSymbol) : null;
   let exact: string[];
   if (yahooSymbol && LISTING_ALIASES[yahooSymbol.toUpperCase()]) {
     exact = [LISTING_ALIASES[yahooSymbol.toUpperCase()]];
-  } else if (/mutual fund/i.test(listing.exchange ?? "")) {
-    exact = [`NASDAQ:${listing.ticker}`];
   } else if (suffix && YAHOO_EXCHANGES[suffix[2].toUpperCase()]) {
     const prefix = YAHOO_EXCHANGES[suffix[2].toUpperCase()];
     const ticker = prefix === "HKEX" ? suffix[1].replace(/^0+/, "") : suffix[1];

@@ -1229,7 +1229,7 @@ export function PortfolioAnalytics({
                 ) : null}
                 <small>
                   {activeQuote.source ?? "Yahoo Finance"} · {activeQuote.quoteSession ?? "regular"} · {activeQuote.sourceStatus}
-                  {" · "}{new Date(activeQuote.asOf).toLocaleString("en-US")}
+                  {" · "}{activeQuote.quoteSession === "nav" ? activeQuote.asOf.slice(0, 10) : new Date(activeQuote.asOf).toLocaleString("en-US")}
                   {activeQuote.delaySeconds ? ` · delayed ${activeQuote.delaySeconds / 60} min` : ""}
                   {selectedHoldingsSourceEtf
                     ? ` - ${selectedHoldingsSourceEtf.ticker} look-through holdings`

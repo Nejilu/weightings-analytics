@@ -21,7 +21,10 @@ to the configured IP using Cloudflare's trusted connection header; update this
 binding if the server's egress IP changes. Other callers receive 403.
 
 When adding a source, regenerate and deploy the allowlist. BlackRock mutual-fund
-CSV sources use the same optional transport. Other providers are unaffected.
+CSV sources and the exact BGSIX product page used for daily NAV share the optional
+transport. ETF market prices use TradingView and do not pass through this relay.
+Other providers are unaffected. Regenerate the allowlist after a source change;
+the BGSIX NAV page must be included when upgrading from holdings-only releases.
 To roll back, unset the application variable and redeploy; then disable/delete
 the Worker if unused. Direct downloads will still fail if the IP remains blocked.
 

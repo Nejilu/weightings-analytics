@@ -95,5 +95,5 @@ test("price mappings respect held listings, share classes and receipt ratios ins
   assert.deepEqual(tradingViewPriceSymbols({ ...company, ticker: "005930" }, "SMSN.IL", "KRX:005930"), ["LSIN:SMSN"]);
   assert.deepEqual(tradingViewPriceSymbols({ ...company, ticker: "BRKB", name: "Berkshire" }, "BRK-B"), ["NASDAQ:BRK.B"]);
   assert.deepEqual(tradingViewPriceSymbols({ ...company, ticker: "CSEMAS", exchange: "SIX Swiss Exchange" }, "CSEMAS.SW"), ["SIX:CSEMAS.USD"]);
-  assert.deepEqual(tradingViewPriceSymbols({ ...company, ticker: "BGSIX", exchange: "Mutual fund (NAV)" }, "BGSIX"), ["NASDAQ:BGSIX"]);
+  assert.deepEqual(tradingViewPriceSymbols({ ...company, ticker: "BGSIX", exchange: "Mutual fund (NAV)" }, "BGSIX"), []);
 });

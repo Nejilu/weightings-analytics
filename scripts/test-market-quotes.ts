@@ -6,7 +6,7 @@ import { ensureLocalDatabase } from "../src/db/bootstrap";
 import { closeDatabase, getSqlite } from "../src/db/client";
 import { getMarketPrice, getMarketPrices } from "../src/data/services/market-price-service";
 import { ETF_CATALOG } from "../src/data/catalog";
-import { tradingViewPriceSymbols } from "../src/data/providers/market-quote-symbols";
+import { ETF_QUOTE_SOURCES } from "../src/data/etf-quote-sources";
 import { fetchTradingViewQuoteBatch } from "../src/data/providers/tradingview-quotes";
 import { persistMarketPrice } from "../src/db/repositories/market-price-repository";
 
@@ -46,12 +46,17 @@ try {
   console.table([...prices.values()].map((price) => ({ symbol: price.providerSymbol, source: price.source,
     session: price.quoteSession, price: price.price, currency: price.currency, asOf: price.asOf, delaySeconds: price.delaySeconds ?? 0 })));
   console.log("Five live TradingView lookups and their persisted cache round trips passed.");
-  const catalog = ETF_CATALOG.flatMap((group) => group.variants).filter((etf) => etf.fundType !== "custom" && etf.fundType !== "portfolio");
-  const symbols = catalog.map((etf) => tradingViewPriceSymbols({ ...etf, country: "" }, etf.priceSymbol ?? etf.ticker)[0]);
+  const catalog = ETF_CATALOG.flatMap((group) => group.variants).filter((etf) => ETF_QUOTE_SOURCES[etf.id]?.source === "TradingView");
+  const symbols = catalog.map((etf) => ETF_QUOTE_SOURCES[etf.id].symbol);
   assert.ok(symbols.every(Boolean), "Every catalog instrument has a TradingView listing candidate");
   const observations = await fetchTradingViewQuoteBatch(symbols);
   const missing = symbols.filter((symbol) => !observations.has(symbol));
   assert.deepEqual(missing, [], "Catalog listings unavailable on TradingView");
+  for (const etf of catalog) {
+    const observation = observations.get(ETF_QUOTE_SOURCES[etf.id].symbol)!;
+    const currency = observation.currency === "GBX" || observation.currency === "GBp" ? "GBP" : observation.currency;
+    assert.equal(currency, etf.tradingCurrency, `${etf.id}: wrong listing currency`);
+  }
   console.log(`Catalog coverage: ${observations.size}/${catalog.length} instrument quotes received.`);
 } finally {
   closeDatabase();
