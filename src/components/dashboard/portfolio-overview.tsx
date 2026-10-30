@@ -31,7 +31,10 @@ function PortfolioCard({
 
   useEffect(() => {
     const controller = new AbortController();
-    void (async () => {
+    let pending = false;
+    async function load() {
+      if (pending || document.hidden) return;
+      pending = true;
       try {
         const response = await fetch(`/api/v1/local-etfs/${encodeURIComponent(etf.id)}`, {
           cache: "no-store",
@@ -41,14 +44,26 @@ function PortfolioCard({
         if (!response.ok || payload.data?.kind !== "portfolio") {
           throw new Error(payload.error ?? "Portfolio summary unavailable.");
         }
-        if (!controller.signal.aborted) setDetail(payload.data);
+        if (!controller.signal.aborted) {
+          setDetail(payload.data);
+          setError(null);
+        }
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setError(loadError instanceof Error ? loadError.message : "Portfolio summary unavailable.");
         }
-      }
-    })();
-    return () => controller.abort();
+      } finally { pending = false; }
+    }
+    void load();
+    const timer = setInterval(() => void load(), 30_000);
+    window.addEventListener("focus", load);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", load);
+      document.removeEventListener("visibilitychange", load);
+    };
   }, [etf.id, attempt]);
 
   const record = detail?.portfolio;
@@ -87,7 +102,7 @@ function PortfolioCard({
           <span><b>{record?.analysis?.positionsCount ?? "—"}</b> underlying holdings</span>
         </span>
         <span className="portfolio-card__footer">
-          <span>{record ? `Updated ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(record.updatedAt))}` : "Saved portfolio"}</span>
+          <span>{record ? `Saved ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(record.updatedAt))}` : "Saved portfolio"}</span>
           <b>View portfolio <span aria-hidden="true">↗</span></b>
         </span>
       </button>

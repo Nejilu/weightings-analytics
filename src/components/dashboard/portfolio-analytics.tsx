@@ -7,7 +7,7 @@ import { HoldingsSourceWarning } from "./holdings-source-warning";
 import { VisibilitySelect } from "./visibility-select";
 import type { EtfVisibility } from "@/domain/visibility";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail, LocalPortfolioEtfDetail } from "@/domain/local-etf";
@@ -201,11 +201,22 @@ export function PortfolioAnalytics({
   const definitionRequestId = useRef(0);
   const [savedDefinition, setSavedDefinition] = useState<LocalPortfolioEtfDetail | null>(null);
 
-  const applyPortfolioRecord = (record: PortfolioRecord) => {
+  const applyPortfolioRecord = useCallback((record: PortfolioRecord) => {
     setPortfolio(record);
     setItems(record.items);
     setCashPositions(record.cashPositions ?? []);
-  };
+  }, []);
+
+  const applyPortfolioDetail = useCallback((loaded: LocalPortfolioEtfDetail) => {
+    setSavedDefinition(loaded);
+    setWorkflowMode("edit");
+    setEditingEtfId(loaded.etf.id);
+    setEtfTicker(loaded.etf.ticker);
+    setEtfName(loaded.etf.name);
+    setEtfDescription(loaded.editableDescription);
+    setVisibility(loaded.etf.visibility ?? "private");
+    applyPortfolioRecord(loaded.portfolio);
+  }, [applyPortfolioRecord]);
 
   const startCreateMode = () => {
     definitionRequestId.current += 1;
@@ -214,6 +225,7 @@ export function PortfolioAnalytics({
     setSavedDefinition(null);
     setEditingEtfId("");
     setDefinitionLoading(false);
+    setRefreshing(false);
     setConfirmDelete(false);
     setItems([]);
     setCashPositions([]);
@@ -235,6 +247,7 @@ export function PortfolioAnalytics({
     definitionRequestId.current += 1;
     setPanelView("overview");
     setDefinitionLoading(false);
+    setRefreshing(false);
     setConfirmDelete(false);
     setError(null);
     setPortfolio(null);
@@ -262,36 +275,28 @@ export function PortfolioAnalytics({
     setCompositionPricesLoading(false);
     setResultFilter("");
     setCompositionVisibleCount(COMPOSITION_INITIAL_COUNT);
-    setDefinitionLoading(true);
-    if (forceRefresh) setRefreshing(true);
+    setDefinitionLoading(!detail);
+    setRefreshing(forceRefresh || !!detail);
     setError(null);
     setSavedEtf(null);
     setConfirmDelete(false);
+    if (detail) applyPortfolioDetail(detail);
     try {
-      let loaded = detail;
-      if (!loaded) {
-        const response = await fetch(
-          `${owner ? "/api/v1/local-etfs" : "/api/v1/portfolio/published"}/${encodeURIComponent(etfId)}${forceRefresh ? "?refresh=true" : ""}`,
-          { cache: "no-store" },
-        );
-        const payload = (await response.json()) as {
-          data?: LocalEtfDetail;
-          error?: string;
-        };
-        if (!response.ok || payload.data?.kind !== "portfolio") {
-          throw new Error(payload.error ?? "The portfolio could not be loaded.");
-        }
-        loaded = payload.data;
+      // A card is only an immediate preview. Revalidate on every opening so
+      // leaving the overview open cannot freeze the portfolio at old prices.
+      const response = await fetch(
+        `${owner ? "/api/v1/local-etfs" : "/api/v1/portfolio/published"}/${encodeURIComponent(etfId)}${forceRefresh ? "?refresh=true" : ""}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json()) as {
+        data?: LocalEtfDetail;
+        error?: string;
+      };
+      if (!response.ok || payload.data?.kind !== "portfolio") {
+        throw new Error(payload.error ?? "The portfolio could not be loaded.");
       }
       if (requestId !== definitionRequestId.current) return;
-      setSavedDefinition(loaded);
-      setWorkflowMode("edit");
-      setEditingEtfId(loaded.etf.id);
-      setEtfTicker(loaded.etf.ticker);
-      setEtfName(loaded.etf.name);
-      setEtfDescription(loaded.editableDescription);
-      setVisibility(loaded.etf.visibility ?? "private");
-      applyPortfolioRecord(loaded.portfolio);
+      applyPortfolioDetail(payload.data);
       if (forceRefresh) {
         forcedCompositionQuotes.current.clear();
         setCompositionRefreshRevision((value) => value + 1);
@@ -310,6 +315,44 @@ export function PortfolioAnalytics({
       }
     }
   };
+
+  useEffect(() => {
+    if (panelView !== "view" || !editingEtfId || definitionLoading || refreshing) return;
+    const controller = new AbortController();
+    const requestId = definitionRequestId.current;
+    let pending = false;
+    async function revalidate() {
+      if (document.hidden || pending) return;
+      pending = true;
+      try {
+        const response = await fetch(
+          `${owner ? "/api/v1/local-etfs" : "/api/v1/portfolio/published"}/${encodeURIComponent(editingEtfId)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        const payload = await response.json() as { data?: LocalEtfDetail; error?: string };
+        if (!response.ok || payload.data?.kind !== "portfolio") {
+          throw new Error(payload.error ?? "Portfolio prices could not be updated.");
+        }
+        if (!controller.signal.aborted && requestId === definitionRequestId.current) {
+          applyPortfolioDetail(payload.data);
+          setError(null);
+        }
+      } catch (cause) {
+        if (!controller.signal.aborted && requestId === definitionRequestId.current) {
+          setError(cause instanceof Error ? cause.message : "Portfolio prices could not be updated.");
+        }
+      } finally { pending = false; }
+    }
+    const timer = setInterval(() => void revalidate(), 30_000);
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
+  }, [panelView, editingEtfId, owner, definitionLoading, refreshing, applyPortfolioDetail]);
 
   const cancelEditing = () => {
     const definition = savedDefinition;
@@ -927,14 +970,14 @@ export function PortfolioAnalytics({
   return (
     <div className="portfolio-workspace" id="portfolio">
       <div className="portfolio-navigation">
-        <button className="secondary-button" type="button" disabled={saving || savingEtf || refreshing || definitionLoading} onClick={isEditor ? cancelEditing : showOverview}>
+        <button className="secondary-button" type="button" disabled={saving || savingEtf} onClick={isEditor ? cancelEditing : showOverview}>
           <span aria-hidden="true">←</span> {isEditor ? "Cancel" : "All portfolios"}
         </button>
         {!isEditor && portfolio ? <button className="secondary-button" type="button" onClick={() => setJournalOpen(true)}>◷ Journal & what-if</button> : null}
         {isEditor ? (
           <span className="info-chip">{workflowMode === "edit" ? "Editing portfolio" : "New portfolio"}</span>
         ) : owner ? (
-          <button className="primary-button" type="button" onClick={() => { setError(null); setSavedEtf(null); setPanelView("editor"); }}>
+          <button className="primary-button" type="button" disabled={definitionLoading || refreshing} onClick={() => { setError(null); setSavedEtf(null); setPanelView("editor"); }}>
             <span aria-hidden="true">✎</span> Edit portfolio
           </button>
         ) : <span className="info-chip">Read-only · {visibility === "public" ? "Public" : "Weights only"}</span>}
@@ -989,7 +1032,7 @@ export function PortfolioAnalytics({
           {!isEditor ? <ManualRefreshButton
             loading={refreshing}
             disabled={saving || savingEtf || (items.length === 0 && cashPositions.length === 0)}
-            onRefresh={() => void loadEditablePortfolioEtf(editingEtfId, undefined, true)}
+            onRefresh={() => void loadEditablePortfolioEtf(editingEtfId, savedDefinition ?? undefined, true)}
           /> : null}
         </div>
       </section> : null}
@@ -998,7 +1041,7 @@ export function PortfolioAnalytics({
         title={etfName} description={etfDescription} positionsCount={items.length} cashCount={cashPositions.length}
         currentValueUsd={amountsVisible && !portfolio.priceError ? draftMarketValue : undefined} eurRateToUsd={eurRateToUsd ?? embeddedEurRate ?? null}
         currency={displayCurrency} onCurrencyChange={changeDisplayCurrency} currencyLoading={currencyLoading} currencyError={currencyError} onCurrencyRetry={portfolioFx.retry}
-        actions={<ManualRefreshButton loading={refreshing} disabled={saving || savingEtf || (items.length === 0 && cashPositions.length === 0)} onRefresh={() => void loadEditablePortfolioEtf(editingEtfId, undefined, true)} />}
+        actions={<ManualRefreshButton loading={refreshing} disabled={saving || savingEtf || (items.length === 0 && cashPositions.length === 0)} onRefresh={() => void loadEditablePortfolioEtf(editingEtfId, savedDefinition ?? undefined, true)} />}
       /> : null}
       {error ? <div className="alert alert--error">{error}</div> : null}
       {!isEditor && savedEtf ? <div className="saved-etf-success" role="status">{savedEtf.name} was saved.</div> : null}

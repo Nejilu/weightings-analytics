@@ -156,7 +156,7 @@ development view uses `localhost` for the administrator and `127.0.0.1` for the 
 | `HOLDINGS_REFRESH_CONCURRENCY` | `4` | Parallel holdings refreshes, 1–8 |
 | `MARKET_PRICE_TTL_SECONDS` | `60` | TradingView/Yahoo quote cache TTL; manual refresh bypasses it |
 | `FX_RATE_TTL_SECONDS` | `86400` | Yahoo FX cache TTL; manual refresh bypasses it |
-| `MARKET_PRICE_CONCURRENCY` | `4` | Parallel price lookups, 1–8; TradingView lookups are coalesced |
+| `MARKET_PRICE_CONCURRENCY` | `4` | Shared limit for individual Yahoo requests and cash valuation, 1–8; TradingView uses batches of up to 100 symbols and at most two sockets |
 | `TRADINGVIEW_METRICS_TTL_SECONDS` | `86400` | Positive Screener metrics TTL |
 | `TRADINGVIEW_METRICS_MISSING_TTL_SECONDS` | `900` | Confirmed missing field TTL, 60–86400 |
 | `TRADINGVIEW_BATCH_SIZE` | `1000` | Screener batch size, 25–1000 |

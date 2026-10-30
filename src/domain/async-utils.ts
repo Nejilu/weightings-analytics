@@ -1,3 +1,21 @@
+/** Share a fixed request budget across concurrent callers and batches. */
+export function createConcurrencyLimiter(concurrency: number) {
+  const limit = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async function run<T>(task: () => Promise<T>): Promise<T> {
+    if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve));
+    else active++;
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+
 export async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,

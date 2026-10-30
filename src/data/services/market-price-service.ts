@@ -30,7 +30,7 @@ import {
   MarketPriceRequestError,
   MarketPriceUnavailableError,
 } from "@/domain/portfolio";
-import { mapWithConcurrency } from "@/domain/async-utils";
+import { createConcurrencyLimiter, mapWithConcurrency } from "@/domain/async-utils";
 import { valuePortfolioPositions } from "@/domain/processors/value-portfolio";
 import {
   securityListingQuoteSymbol,
@@ -39,6 +39,11 @@ import {
 
 const DEFAULT_TTL_SECONDS = 60;
 const DEFAULT_CONCURRENCY = 4;
+// Feed a complete socket batch instead of opening a new connection for every
+// four positions. TradingView already bounds batch size and socket concurrency;
+// individual Yahoo requests retain their own shared concurrency budget.
+const QUOTE_BATCH_CONCURRENCY = 100;
+const runYahooRequest = createConcurrencyLimiter(marketPriceConcurrency());
 const yahooFinance = new YahooFinance({
   suppressNotices: ["yahooSurvey"],
 });
@@ -96,7 +101,7 @@ async function withTimeout<T>(promise: Promise<T>, milliseconds = 15_000) {
 }
 
 async function fetchYahooQuote(symbol: string): Promise<MarketQuote> {
-  const quote = await withTimeout(yahooFinance.quote(symbol));
+  const quote = await runYahooRequest(() => withTimeout(yahooFinance.quote(symbol)));
   if (!("symbol" in quote) || typeof quote.symbol !== "string") {
     throw new Error(`No usable market price was returned for ${symbol}.`);
   }
@@ -137,12 +142,12 @@ async function resolveSecuritySymbol(
     return security.ticker.toUpperCase();
   }
 
-  const result = await withTimeout(
+  const result = await runYahooRequest(() => withTimeout(
     yahooFinance.search(
       security.isin ?? `${security.ticker} ${security.name}`,
       { quotesCount: 8, newsCount: 0 },
     ),
-  );
+  ));
   const candidates = result.quotes.filter(
     (candidate) =>
       candidate.isYahooFinance &&
@@ -326,6 +331,7 @@ export async function getMarketPrice(
 export async function getMarketPrices(
   assets: Array<{ kind: PortfolioAssetKind; referenceId: string }>,
   options: MarketRefreshOptions = {},
+  loadPrice: typeof getMarketPrice = getMarketPrice,
 ): Promise<Map<string, MarketPrice>> {
   const unique = [
     ...new Map(
@@ -334,8 +340,8 @@ export async function getMarketPrices(
   ];
   const prices = await mapWithConcurrency(
     unique,
-    marketPriceConcurrency(),
-    (asset) => getMarketPrice(asset.kind, asset.referenceId, options),
+    QUOTE_BATCH_CONCURRENCY,
+    (asset) => loadPrice(asset.kind, asset.referenceId, options),
   );
   return new Map(
     prices.map((price) => [
@@ -356,7 +362,7 @@ export async function getAvailableMarketPrices(
   ];
   const prices = await mapWithConcurrency(
     unique,
-    marketPriceConcurrency(),
+    QUOTE_BATCH_CONCURRENCY,
     async (asset) => {
       try {
         return await getMarketPrice(asset.kind, asset.referenceId, options);
@@ -432,7 +438,7 @@ export async function getAvailableSecurityListingPrices(
   const securities = findSecuritiesByIds(unique.map((request) => request.securityId));
   const prices = await mapWithConcurrency(
     unique,
-    marketPriceConcurrency(),
+    QUOTE_BATCH_CONCURRENCY,
     async (request) => {
       const security = securities.get(request.securityId);
       if (!security) return null;
