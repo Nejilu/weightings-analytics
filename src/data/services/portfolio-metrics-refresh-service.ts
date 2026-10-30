@@ -5,7 +5,7 @@ import {
 } from "@/db/repositories/portfolio-metrics-refresh-repository";
 import { mapWithConcurrency } from "@/domain/async-utils";
 import { uniqueEquityHoldings } from "./metrics-overview-model";
-import { getHoldingsSnapshot } from "./holdings-service";
+import { getHoldingsSnapshot, type RefreshOptions } from "./holdings-service";
 import { retrieveSecurityMetrics } from "./security-metrics-service";
 
 const providers = { holdings: getHoldingsSnapshot, metrics: retrieveSecurityMetrics };
@@ -27,9 +27,13 @@ export async function refreshPortfolioMetricsIfDue(now = new Date(), refresh = p
   if (!ids.length || !claimPortfolioMetricsDay(date, startedAt)) return;
   const errors: string[] = [];
   let securities = 0;
+  // Refresh the full source composition before selecting today's metrics
+  // universe, even when yesterday's 24-hour cache is still valid. Share each
+  // completed download for this run so common ETF sources are fetched once.
+  const holdingsOptions: RefreshOptions = { forceRefresh: true, sharedSnapshots: new Map() };
   try {
     const snapshots = await mapWithConcurrency(ids, 2, async (id) => {
-      try { return await refresh.holdings(id); }
+      try { return await refresh.holdings(id, holdingsOptions); }
       catch (error) {
         errors.push(`${id}: ${error instanceof Error ? error.message : "Holdings unavailable"}`);
         return null;

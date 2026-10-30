@@ -164,7 +164,7 @@ development view uses `localhost` for the administrator and `127.0.0.1` for the 
 | `TRADINGVIEW_ESTIMATES_BATCH_SIZE` | `250` | Estimates session batch size, 25–500 |
 | `TRADINGVIEW_ESTIMATES_CONCURRENCY` | `5` | Parallel Estimates sessions, 1–5; shared across requests in one server process |
 | `TRADINGVIEW_ESTIMATES_MISSING_TTL_SECONDS` | `900` | Confirmed missing series TTL, 60–86400 |
-| `PORTFOLIO_METRICS_DAILY_REFRESH` | `true` | Set `false` to disable daily source-metrics refresh for saved portfolios |
+| `PORTFOLIO_METRICS_DAILY_REFRESH` | `true` | Set `false` to disable the daily composition-then-metrics refresh for saved portfolios |
 
 Metrics loads fundamentals and EPS consensus concurrently for known symbols.
 The Metrics screen displays fundamental tables as soon as that phase completes,
@@ -265,6 +265,14 @@ Foreign exchange and dividend sources remain Yahoo. `npm run test:prices` runs
 offline regression tests; `npm run test:prices:live` checks five representative
 instruments against the live service in a temporary database, then checks quote
 coverage for every catalog listing.
+
+Saved portfolios share one automatic refresh per Paris calendar day. It first
+forces a download of their ETF compositions, including shared and derived
+sources, then refreshes metrics for the updated, deduplicated equity universe.
+Each common composition is fetched once within that run, even when portfolios
+reach it at different times. Fresh source snapshots remain in SQLite for
+ordinary reads. Unrelated catalog ETFs are not scanned. The server checks every
+15 minutes; the durable daily claim survives restarts and partial failures.
 
 Metrics also includes a **Single stock** sub-panel. Select an equity through
 the ACWI and supported-securities search to inspect all 20 company metrics,

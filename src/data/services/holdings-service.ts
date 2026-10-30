@@ -54,6 +54,9 @@ const inFlightRefreshes = new Map<
 
 export interface RefreshOptions {
   forceRefresh?: boolean;
+  // One refresh operation can share completed source downloads across portfolios,
+  // aliases and derived ETFs. Discard this map when the operation finishes.
+  sharedSnapshots?: Map<string, Promise<HoldingsSnapshot>>;
 }
 
 function cacheTtlSeconds() {
@@ -521,9 +524,12 @@ export async function getHoldingsSnapshot(
     );
   }
   const cacheKey = `${databasePath()}::${catalogRevision()}::${etf.id}::${options.forceRefresh ? "force" : "cached"}`;
-  const existing = inFlightRefreshes.get(cacheKey)
+  const existing = options.sharedSnapshots?.get(cacheKey) ?? inFlightRefreshes.get(cacheKey)
     ?? (!options.forceRefresh ? inFlightRefreshes.get(`${databasePath()}::${catalogRevision()}::${etf.id}::force`) : undefined);
-  if (existing) return existing;
+  if (existing) {
+    options.sharedSnapshots?.set(cacheKey, existing);
+    return existing;
+  }
 
   const refresh = refreshHoldings(etf, options)
     .catch((error) => {
@@ -538,5 +544,6 @@ export async function getHoldingsSnapshot(
       inFlightRefreshes.delete(cacheKey);
     });
   inFlightRefreshes.set(cacheKey, refresh);
+  options.sharedSnapshots?.set(cacheKey, refresh);
   return refresh;
 }
