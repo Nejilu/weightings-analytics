@@ -5,25 +5,31 @@ import { loadPortfolioById } from "@/db/repositories/portfolio-repository";
 import { getCatalog } from "./catalog-service";
 import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
 import { investedIndices } from "@/domain/portfolio-invested-return";
+import type { PortfolioRecordedSnapshot } from "@/domain/portfolio-history";
 
 // Reads saved observations only; the existing scheduler owns snapshot capture.
-export function getPortfolioDashboard(): PortfolioDashboardEntry[] {
+export function getPortfolioDashboard(now = new Date()): PortfolioDashboardEntry[] {
   ensureLocalDatabase();
   return getCatalog().flatMap((group) => group.variants).flatMap((etf) => {
     if (etf.fundType !== "portfolio" || !etf.portfolioId) return [];
     const stored = loadPortfolioById(etf.portfolioId);
     if (!stored) return [];
-    const snapshots = loadPortfolioHistory(etf.portfolioId).snapshots.filter((point) =>
-      point.valueUsd > 0 && point.valueEur > 0 && Number.isFinite(point.valueUsd) && Number.isFinite(point.valueEur));
-    const base = snapshots[0];
+    const history = loadPortfolioHistory(etf.portfolioId, now);
+    const project = (points: PortfolioRecordedSnapshot[]) => {
+      const valid = points.filter((point) => point.valueUsd > 0 && point.valueEur > 0 && Number.isFinite(point.valueUsd) && Number.isFinite(point.valueEur));
+      const base = valid[0];
+      return valid.map((point) => ({
+        date: point.date, valueUsd: point.valueUsd, valueEur: point.valueEur,
+        ...("slotAt" in point ? { slotAt: point.slotAt, capturedAt: point.capturedAt } : {}),
+        ...investedIndices(point.invested),
+        indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
+      }));
+    };
     return [{
       id: etf.id, ticker: etf.ticker, name: etf.name, visibility: etf.visibility ?? "private",
       positionsCount: stored.items.length, cashCount: stored.cashPositions.length,
-      snapshots: snapshots.map((point) => ({
-        date: point.date, valueUsd: point.valueUsd, valueEur: point.valueEur,
-        ...investedIndices(point.invested),
-        indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
-      })),
+      snapshots: project(history.snapshots),
+      hourlySnapshots: project(history.hourlySnapshots ?? []),
     }];
   });
 }

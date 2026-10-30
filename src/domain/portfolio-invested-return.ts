@@ -62,4 +62,4 @@ export function latestInvestedSegment<T extends InvestedIndices>(points: T[]): T
   return segment ? points.filter((p) => p.investedSegment === segment && valid(p)) : [];
 }
 
-export const INVESTED_RETURN_NOTE = "Price return of the previous captured holdings, divided by their gross exposure and compounded daily. Cash and portfolio borrowing are excluded; known ETF leverage multipliers are included in exposure. Trades are treated as occurring at capture time. Cash dividends, fees and intraday trading P&L are not included. This is not benchmark alpha. Missing data starts a new series; older totals cannot reconstruct this return.";
+export const INVESTED_RETURN_NOTE = "Price return of the previous captured holdings, divided by their gross exposure and compounded at each capture. Cash and portfolio borrowing are excluded; known ETF leverage multipliers are included in exposure. Trades are treated as occurring at capture time. Cash dividends, fees and intraday trading P&L are not included. This is not benchmark alpha. Missing data starts a new series; older totals cannot reconstruct this return.";

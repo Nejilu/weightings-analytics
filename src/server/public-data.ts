@@ -3,9 +3,9 @@ import { getDb } from "@/db/client";
 import { etfs, portfolioItems } from "@/db/schema";
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { PortfolioHoldingsValuation } from "@/domain/portfolio-valuation";
-import type { PortfolioDashboardEntry } from "@/domain/portfolio-dashboard";
+import type { PortfolioDashboardEntry, PortfolioDashboardPoint } from "@/domain/portfolio-dashboard";
 import type { LocalPortfolioEtfDetail } from "@/domain/local-etf";
-import type { PortfolioHistory } from "@/domain/portfolio-history";
+import type { PortfolioHistory, PortfolioRecordedSnapshot } from "@/domain/portfolio-history";
 import { investedIndices } from "@/domain/portfolio-invested-return";
 import { AccessError } from "./site-access";
 
@@ -113,27 +113,36 @@ export function publicPortfolioDetail(detail: LocalPortfolioEtfDetail, catalog: 
 export function publicPortfolioHistory(history: PortfolioHistory, reference: string, catalog: PublicationCatalog) {
   const etf = requirePublicEtf(catalog, reference);
   if (etf.fundType !== "portfolio") throw new AccessError(404, "Portfolio unavailable.");
-  const base = history.snapshots[0];
-  return { enabled: history.enabled, lastError: null, lastAttemptAt: null, snapshots: history.snapshots.map((point) => ({
-    date: point.date, capturedAt: point.capturedAt, reason: point.reason,
-    indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
-    ...investedIndices(point.invested),
-    ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
-  })) };
+  const project = (points: PortfolioRecordedSnapshot[]) => {
+    const base = points[0];
+    return points.map((point) => ({
+      date: point.date, capturedAt: point.capturedAt, reason: point.reason,
+      ...("slotAt" in point ? { slotAt: point.slotAt } : {}),
+      indexUsd: point.valueUsd / base.valueUsd * 100, indexEur: point.valueEur / base.valueEur * 100,
+      ...investedIndices(point.invested),
+      ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
+    }));
+  };
+  return { enabled: history.enabled, lastError: null, lastAttemptAt: null,
+    snapshots: project(history.snapshots), hourlySnapshots: project(history.hourlySnapshots ?? []),
+    hourlyLastError: null, hourlyLastAttemptAt: null,
+  };
 }
 
 export function publicPortfolioDashboard(entries: PortfolioDashboardEntry[], catalog: PublicationCatalog): PortfolioDashboardEntry[] {
   return entries.flatMap((entry) => {
     const etf = catalog.byId.get(entry.id);
     if (!etf || etf.fundType !== "portfolio" || !catalog.visible(etf.id)) return [];
+    const project = (points: PortfolioDashboardPoint[]) => points.map((point) => ({
+      date: point.date, indexUsd: point.indexUsd, indexEur: point.indexEur,
+      ...(point.slotAt ? { slotAt: point.slotAt, capturedAt: point.capturedAt } : {}),
+      investedIndexUsd: point.investedIndexUsd, investedIndexEur: point.investedIndexEur, investedSegment: point.investedSegment,
+      ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
+    }));
     return [{
       id: etf.id, ticker: etf.ticker, name: etf.name, visibility: etf.visibility!,
       positionsCount: entry.positionsCount, cashCount: entry.cashCount,
-      snapshots: entry.snapshots.map((point) => ({
-        date: point.date, indexUsd: point.indexUsd, indexEur: point.indexEur,
-        investedIndexUsd: point.investedIndexUsd, investedIndexEur: point.investedIndexEur, investedSegment: point.investedSegment,
-        ...(etf.visibility === "public" ? { valueUsd: point.valueUsd, valueEur: point.valueEur } : {}),
-      })),
+      snapshots: project(entry.snapshots), hourlySnapshots: project(entry.hourlySnapshots ?? []),
     }];
   });
 }

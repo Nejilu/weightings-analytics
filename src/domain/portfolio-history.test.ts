@@ -1,11 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { portfolioHistoryClock, portfolioSnapshotDue } from "./portfolio-history";
+import { portfolioHistoryClock, portfolioSnapshotDue, portfolioHourlySlot, portfolioHourlyCutoff } from "./portfolio-history";
+import { usEquitySession } from "./us-equity-calendar";
 import { buildInvestedSnapshot, investedPositionKey, type InvestedPosition } from "./portfolio-invested-return";
 
 const position = (quantity = 10, priceUsd = 100, referenceId = "A", exposureMultiplier = 1): InvestedPosition => ({ kind: "security", referenceId, ticker: referenceId, quantity, priceUsd, exposureMultiplier });
 const prices = (...positions: InvestedPosition[]) => new Map(positions.map((p) => [investedPositionKey(p), p.priceUsd]));
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
+
+test("hourly captures run at :05 from 04:05 through 20:05 New York with bounded retries", () => {
+  for (let hour = 4; hour <= 20; hour++) {
+    const scheduled = new Date(`2026-10-30T${String(hour).padStart(2, "0")}:05:00-04:00`);
+    assert.equal(portfolioHourlySlot(scheduled), scheduled.toISOString());
+    assert.equal(portfolioHourlySlot(new Date(scheduled.getTime() + 14 * 60_000 + 59_999)), scheduled.toISOString());
+    assert.equal(portfolioHourlySlot(new Date(scheduled.getTime() - 1)), null);
+    assert.equal(portfolioHourlySlot(new Date(scheduled.getTime() + 15 * 60_000)), null);
+  }
+  assert.equal(portfolioHourlySlot(new Date("2026-10-30T03:05:00-04:00")), null);
+  assert.equal(portfolioHourlySlot(new Date("2026-10-30T21:05:00-04:00")), null);
+  assert.equal(portfolioHourlySlot(new Date("2026-10-31T12:05:00-04:00")), null);
+  assert.equal(portfolioHourlySlot(new Date("2026-11-01T12:05:00-05:00")), null);
+});
+
+test("hourly scheduling follows New York DST independently of the European change", () => {
+  for (const [date, offset] of [["2026-03-06", "-05:00"], ["2026-03-09", "-04:00"], ["2026-10-30", "-04:00"], ["2026-11-02", "-05:00"]]) {
+    const now = new Date(`${date}T04:05:00${offset}`);
+    assert.equal(portfolioHourlySlot(now), now.toISOString());
+  }
+  assert.equal(portfolioHourlyCutoff(new Date("2026-11-02T09:05:00Z")), "2026-10-26T09:05:00.000Z");
+});
+
+test("US equity calendar handles observed holidays, Good Friday and shortened extended sessions", () => {
+  const closed = ["2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
+    "2027-03-26", "2027-06-18", "2027-07-05", "2027-12-24", "2028-04-14", "2025-01-09"];
+  for (const date of closed) assert.equal(usEquitySession(date), null, date);
+  for (const date of ["2026-11-27", "2026-12-24", "2027-11-26", "2028-07-03", "2028-11-24"]) {
+    assert.deepEqual(usEquitySession(date), { openHour: 4, closeHour: 17 }, date);
+    assert.ok(portfolioHourlySlot(new Date(`${date}T17:05:00${date.includes("-07-") ? "-04:00" : "-05:00"}`)));
+  }
+  assert.equal(portfolioHourlySlot(new Date("2026-11-27T18:05:00-05:00")), null);
+  for (const date of ["2026-07-02", "2027-07-02", "2027-12-23", "2027-12-31"]) assert.deepEqual(usEquitySession(date), { openHour: 4, closeHour: 20 }, date);
+});
 
 test("invested returns ignore portfolio scale and cash/borrowing; ETF exposure removes known leverage", () => {
   for (const quantity of [1, 10, 200]) {

@@ -1,10 +1,12 @@
 import type { EtfVisibility } from "./visibility";
 import { latestInvestedSegment, type InvestedIndices, type PortfolioReturnBasis } from "./portfolio-invested-return";
+import { portfolioHistoryClock, portfolioHourlyCutoff, type PortfolioHistoryResolution } from "./portfolio-history";
 
-export type PortfolioPeriod = { preset: "1M" | "3M" | "1Y" | "All" } | { date: string };
+export type PortfolioPeriod = { preset: "1W" | "1M" | "3M" | "1Y" | "All" } | { date: string };
 
-export function portfolioPeriodStart(period: PortfolioPeriod, earliest: string, latest: string): string {
+export function portfolioPeriodStart(period: PortfolioPeriod, earliest: string, latest: string, now = new Date()): string {
   if ("date" in period) return period.date;
+  if (period.preset === "1W") return portfolioHistoryClock(new Date(portfolioHourlyCutoff(now))).date;
   if (period.preset === "All" || !latest) return earliest;
   const date = new Date(`${latest}T12:00:00Z`);
   const day = date.getUTCDate();
@@ -17,6 +19,8 @@ export function portfolioPeriodStart(period: PortfolioPeriod, earliest: string, 
 
 export interface PortfolioDashboardPoint extends InvestedIndices {
   date: string;
+  slotAt?: string;
+  capturedAt?: string;
   indexUsd: number;
   indexEur: number;
   valueUsd?: number;
@@ -31,20 +35,22 @@ export interface PortfolioDashboardEntry {
   positionsCount: number;
   cashCount: number;
   snapshots: PortfolioDashboardPoint[];
+  hourlySnapshots?: PortfolioDashboardPoint[];
 }
 
-export function dashboardSeries(entries: PortfolioDashboardEntry[], mode: "relative" | "absolute", currency: "USD" | "EUR", start: string, basis: PortfolioReturnBasis = "total") {
+export function dashboardSeries(entries: PortfolioDashboardEntry[], mode: "relative" | "absolute", currency: "USD" | "EUR", start: string, basis: PortfolioReturnBasis = "total", resolution: PortfolioHistoryResolution = "daily", now = new Date()) {
   return entries.flatMap((entry) => {
-    const points = (basis === "invested" ? latestInvestedSegment(entry.snapshots) : entry.snapshots).filter((point) => !start || point.date >= start);
+    const snapshots = resolution === "hourly" ? (entry.hourlySnapshots ?? []).filter((point) => point.slotAt && point.slotAt >= portfolioHourlyCutoff(now)) : entry.snapshots;
+    const points = (basis === "invested" ? latestInvestedSegment(snapshots) : snapshots).filter((point) => resolution === "hourly" || !start || point.date >= start);
     const base = points[0];
     if (!base) return [];
     const indexKey = basis === "invested" ? (currency === "USD" ? "investedIndexUsd" : "investedIndexEur") : (currency === "USD" ? "indexUsd" : "indexEur");
     const valueKey = currency === "USD" ? "valueUsd" : "valueEur";
     if (basis === "invested" && mode === "absolute") return [];
     if (mode === "absolute" && base[valueKey] === undefined) return [];
-    return [{ ...entry, baselineDate: base.date, points: points.flatMap((point) => {
+    return [{ ...entry, baselineDate: base.slotAt ?? base.date, points: points.flatMap((point) => {
       const value = mode === "relative" ? (point[indexKey]! / base[indexKey]! - 1) * 100 : point[valueKey];
-      return value !== undefined && Number.isFinite(value) ? [{ date: point.date, value }] : [];
+      return value !== undefined && Number.isFinite(value) ? [{ date: point.date, value, ...(point.slotAt ? { slotAt: point.slotAt, capturedAt: point.capturedAt } : {}) }] : [];
     }) }];
   });
 }

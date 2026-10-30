@@ -28,6 +28,7 @@ import {
   securities,
   marketPrices,
   portfolioValueSnapshots,
+  portfolioHourlySnapshots,
 } from "@/db/schema";
 import { findEtfById } from "@/db/repositories/catalog-repository";
 import { GET as catalogGET } from "@/app/api/v1/catalog/route";
@@ -558,6 +559,13 @@ test("portfolio dashboard publishes relative histories, hides private portfolios
         invested: { indexUsd: 100 + index * 8, indexEur: 100 + index * 4, segment: "2026-10-01", grossExposureUsd: 765432.1,
           positions: [{ kind: "security" as const, referenceId: "secret-security", ticker: "SECRET", quantity: 54321, priceUsd: 14, exposureMultiplier: 1 }] },
       }))).run();
+      const recent = new Date(Date.now() - 3_600_000).toISOString();
+      getDb().insert(portfolioHourlySnapshots).values({
+        portfolioId: `portfolio-${visibility}`, date: recent.slice(0, 10), slotAt: recent, capturedAt: recent,
+        valueUsd: base, valueEur: base / 1.2, eurToUsd: 1.2, quotesAsOf: recent, fxAsOf: recent, reason: "hourly",
+        invested: { indexUsd: 112, indexEur: 106, segment: recent, grossExposureUsd: 765432.1,
+          positions: [{ kind: "security", referenceId: "secret-security", ticker: "SECRET", quantity: 54321, priceUsd: 14, exposureMultiplier: 1 }] },
+      }).run();
     }
     const response = await dashboardGET(request("/api/v1/portfolio/overview"));
     assert.equal(response.status, 200);
@@ -571,6 +579,10 @@ test("portfolio dashboard publishes relative histories, hides private portfolios
     assert.equal(weights.snapshots[1].investedIndexUsd, 108);
     assert.equal(weights.snapshots[1].investedIndexEur, 104);
     assert.equal(weights.snapshots[0].investedSegment, "2026-10-01");
+    assert.equal(weights.hourlySnapshots[0].indexUsd, 100);
+    assert.equal(weights.hourlySnapshots[0].investedIndexUsd, 112);
+    assert.equal(weights.hourlySnapshots[0].valueUsd, undefined);
+    assert.ok(weights.hourlySnapshots[0].slotAt);
     assert(!JSON.stringify(entries).includes("secret-security"));
     assert(!JSON.stringify(entries).includes("765432"));
     assert(!JSON.stringify(entries).includes("quantity"));
@@ -584,10 +596,12 @@ test("portfolio dashboard publishes relative histories, hides private portfolios
     const ownerEntries = (await ownerResponse.json()).data;
     assert.equal(ownerEntries.length, 3);
     assert.equal(ownerEntries.find((entry: { id: string }) => entry.id === "test-weights").snapshots[0].valueUsd, 987654.32);
+    assert.equal(ownerEntries.find((entry: { id: string }) => entry.id === "test-weights").hourlySnapshots[0].valueUsd, 987654.32);
     process.env.SITE_ACCESS_MODE = "cloudflare";
     getDb().update(etfs).set({ visibility: "weights" }).where(eq(etfs.id, "test-public")).run();
     const reduced = (await (await dashboardGET(request("/api/v1/portfolio/overview"))).json()).data;
     assert.equal(reduced.find((entry: { id: string }) => entry.id === "test-public").snapshots[0].valueUsd, undefined);
+    assert.equal(reduced.find((entry: { id: string }) => entry.id === "test-public").hourlySnapshots[0].valueUsd, undefined);
     getDb().update(etfs).set({ visibility: "private" }).where(eq(etfs.id, "test-public")).run();
     const hidden = (await (await dashboardGET(request("/api/v1/portfolio/overview"))).json()).data;
     assert.deepEqual(hidden.map((entry: { id: string }) => entry.id), ["test-weights"]);
@@ -623,6 +637,11 @@ test("visitors can open the Portfolio detail with amounts only for fully public 
     assert.equal(history.snapshots[0].valueUsd, mode === "public" ? 100000 : undefined);
     assert.equal(history.snapshots[1].investedIndexUsd, 108);
     assert.equal(history.snapshots[1].investedIndexEur, 104);
+    assert.equal(history.hourlySnapshots[0].reason, "hourly");
+    assert.equal(history.hourlySnapshots[0].indexUsd, 100);
+    assert.equal(history.hourlySnapshots[0].investedIndexUsd, 112);
+    assert.equal(history.hourlySnapshots[0].valueUsd, mode === "public" ? 100000 : undefined);
+    assert.equal(history.hourlyLastError, null);
     assert(!JSON.stringify(history).includes("secret-security"));
     assert(!JSON.stringify(history).includes("grossExposureUsd"));
     assert(!JSON.stringify(history).includes("quantity"));

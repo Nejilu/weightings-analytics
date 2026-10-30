@@ -354,6 +354,31 @@ export const fxRates = sqliteTable("fx_rates", {
   source: text("source").notNull(),
 });
 
+export const portfolioHourlyHistorySettings = sqliteTable("portfolio_hourly_history_settings", {
+  portfolioId: text("portfolio_id").primaryKey().references(() => portfolios.id, { onDelete: "cascade" }),
+  slotAt: text("slot_at"),
+  lastAttemptAt: text("last_attempt_at"),
+  lastError: text("last_error"),
+});
+
+export const portfolioHourlySnapshots = sqliteTable("portfolio_hourly_snapshots", {
+  portfolioId: text("portfolio_id").notNull().references(() => portfolios.id, { onDelete: "cascade" }),
+  slotAt: text("slot_at").notNull(),
+  date: text("date").notNull(),
+  capturedAt: text("captured_at").notNull(),
+  valueUsd: real("value_usd").notNull(),
+  valueEur: real("value_eur").notNull(),
+  eurToUsd: real("eur_to_usd").notNull(),
+  quotesAsOf: text("quotes_as_of").notNull(),
+  fxAsOf: text("fx_as_of").notNull(),
+  reason: text("reason", { enum: ["hourly"] }).notNull(),
+  invested: text("invested_json", { mode: "json" }).$type<import("@/domain/portfolio-invested-return").InvestedSnapshot>(),
+}, (table) => [
+  primaryKey({ columns: [table.portfolioId, table.slotAt] }),
+  index("portfolio_hourly_retention_idx").on(table.slotAt),
+  check("portfolio_hourly_positive_values", sql`${table.valueUsd} > 0 AND ${table.valueEur} > 0 AND ${table.eurToUsd} > 0`),
+]);
+
 export const metricDefinitions = sqliteTable(
   "metric_definitions",
   {

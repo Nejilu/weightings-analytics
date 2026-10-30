@@ -1,6 +1,10 @@
+import { usEquitySession } from "./us-equity-calendar";
+
 export const PORTFOLIO_HISTORY_TIMEZONE = "America/New_York";
 export const PORTFOLIO_HISTORY_CLOSE_MINUTES = 16 * 60 + 10;
 export const PORTFOLIO_HISTORY_RETRY_MS = 5 * 60_000;
+export const PORTFOLIO_HOURLY_RETENTION_MS = 7 * 86_400_000;
+export type PortfolioHistoryResolution = "daily" | "hourly";
 
 export interface PortfolioValueSnapshot {
   invested?: import("./portfolio-invested-return").InvestedSnapshot | null;
@@ -19,6 +23,30 @@ export interface PortfolioHistory {
   snapshots: PortfolioValueSnapshot[];
   lastAttemptAt: string | null;
   lastError: string | null;
+  hourlySnapshots?: PortfolioHourlySnapshot[];
+  hourlyLastAttemptAt?: string | null;
+  hourlyLastError?: string | null;
+}
+
+export interface PortfolioHourlySnapshot extends Omit<PortfolioValueSnapshot, "reason"> {
+  slotAt: string;
+  reason: "hourly";
+}
+
+export type PortfolioRecordedSnapshot = PortfolioValueSnapshot | PortfolioHourlySnapshot;
+
+// Capture at HH:05, with a 15-minute retry window. A restart never fills old
+// slots with today's prices; capturedAt always records the actual observation.
+export function portfolioHourlySlot(now: Date): string | null {
+  const clock = portfolioHistoryClock(now);
+  const session = usEquitySession(clock.date);
+  const hour = Math.floor(clock.minutes / 60), minute = clock.minutes % 60;
+  if (!session || hour < session.openHour || hour > session.closeHour || minute < 5 || minute >= 20) return null;
+  return new Date(now.getTime() - (minute - 5) * 60_000 - now.getUTCSeconds() * 1_000 - now.getUTCMilliseconds()).toISOString();
+}
+
+export function portfolioHourlyCutoff(now: Date): string {
+  return new Date(now.getTime() - PORTFOLIO_HOURLY_RETENTION_MS).toISOString();
 }
 
 export function portfolioHistoryClock(now: Date) {

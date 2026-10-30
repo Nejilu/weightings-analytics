@@ -65,3 +65,28 @@ test("invested comparison uses its own USD/EUR indices and never bridges unavail
   restarted.snapshots.push({ date: "2026-10-07", indexUsd: 160, indexEur: 160, investedIndexUsd: 100, investedIndexEur: 100, investedSegment: "2026-10-07" });
   assert.deepEqual(dashboardSeries([restarted], "relative", "EUR", "", "invested")[0].points, [{ date: "2026-10-07", value: 0 }]);
 });
+
+test("weekly comparison uses hourly slots, retains distinct same-day points and expires against now", () => {
+  const now = new Date("2026-10-30T17:05:00Z");
+  const hours = ["2026-10-23T16:05:00.000Z", "2026-10-23T17:05:00.000Z", "2026-10-30T16:05:00.000Z", "2026-10-30T17:05:00.000Z"];
+  const hourly = { ...entry, hourlySnapshots: hours.map((slotAt, i) => ({
+    date: slotAt.slice(0, 10), slotAt, capturedAt: slotAt.replace(":05:", ":06:"),
+    indexUsd: 100 + i * 10, indexEur: 100 + i * 5, valueUsd: 1000 + i * 100,
+    investedIndexUsd: 100 + i * 20, investedIndexEur: 100 + i * 10, investedSegment: "first-slot",
+  })) };
+  const relative = dashboardSeries([hourly], "relative", "USD", "", "total", "hourly", now)[0];
+  assert.equal(relative.baselineDate, hours[1]);
+  assert.deepEqual(relative.points.map((point) => point.slotAt), hours.slice(1));
+  assert.ok(Math.abs(relative.points[2].value - (130 / 110 - 1) * 100) < 1e-9);
+  const invested = dashboardSeries([hourly], "relative", "EUR", "", "invested", "hourly", now)[0];
+  assert.ok(Math.abs(invested.points[2].value - (130 / 110 - 1) * 100) < 1e-9);
+  assert.deepEqual(dashboardSeries([hourly], "absolute", "USD", "", "total", "hourly", now)[0].points.map((point) => point.value), [1100, 1200, 1300]);
+  assert.deepEqual(dashboardSeries([entry], "relative", "USD", "", "total", "hourly", now), []);
+  assert.equal(dashboardSeries([hourly], "relative", "USD", "")[0].points.length, entry.snapshots.length);
+  assert.deepEqual(dashboardSeries([hourly], "relative", "USD", "", "total", "hourly", new Date("2026-11-07T17:05:00Z")), []);
+  assert.equal(portfolioPeriodStart({ preset: "1W" }, "2020-01-01", "2020-01-02", now), "2026-10-23");
+  const midnightUtc = new Date("2026-10-30T00:00:00Z");
+  const late = { ...entry, hourlySnapshots: [{ date: "2026-10-22", slotAt: "2026-10-23T00:05:00.000Z", indexUsd: 100, indexEur: 100 }] };
+  assert.equal(portfolioPeriodStart({ preset: "1W" }, "", "", midnightUtc), "2026-10-22");
+  assert.equal(dashboardSeries([late], "relative", "USD", "2026-10-23", "total", "hourly", midnightUtc)[0].points.length, 1, "weekly cutoff uses timestamps even across UTC midnight");
+});

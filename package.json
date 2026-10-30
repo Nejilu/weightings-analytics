@@ -19,7 +19,7 @@
     "test:prices:live": "node --conditions=react-server --import tsx scripts/test-market-quotes.ts",
     "test:metrics": "node --conditions=react-server --import tsx --test src/data/services/metrics-source-refresh.test.ts src/data/services/portfolio-metrics-refresh-service.test.ts src/data/providers/tradingview-estimates-coordinator.test.ts",
     "test:stock": "node --conditions=react-server --import tsx --test src/data/services/stock-metrics-service.test.ts src/data/services/adr-premium-service.test.ts src/domain/adr-premium.test.ts src/data/providers/tradingview-chart.test.ts src/components/dashboard/adr-premium-store.test.ts",
-    "test:portfolio-history": "node --conditions=react-server --import tsx --test src/domain/portfolio-history.test.ts src/domain/portfolio-dashboard.test.ts src/data/services/portfolio-history-service.test.ts",
+    "test:portfolio-history": "node --conditions=react-server --import tsx --test src/domain/portfolio-history.test.ts src/domain/portfolio-dashboard.test.ts src/data/services/portfolio-history-service.test.ts src/data/services/portfolio-hourly-history.test.ts",
     "test:portfolio-journal": "node --conditions=react-server --import tsx --test src/domain/portfolio-journal.test.ts src/data/services/portfolio-journal-service.test.ts",
     "test:dividends": "node --conditions=react-server --import tsx --test src/domain/dividends.test.ts src/data/services/portfolio-dividends-service.test.ts",
     "test:migrations": "node scripts/test-migrations.mjs && node --import tsx --test src/db/branch-upgrade.test.ts",
