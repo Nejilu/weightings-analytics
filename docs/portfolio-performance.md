@@ -59,6 +59,12 @@ It selects hourly observations from the rolling last 7 × 24 hours, measured fro
 the current time. `1M`, `3M`, `1Y`, `All` and custom comparison dates continue to
 use the permanent daily observations. The default remains `All`.
 
+Both charts space recorded observations evenly on the horizontal axis for every
+period. Weekends, market closures and other gaps without observations take no
+extra width: Friday's last point is adjacent to Monday's first point. In the
+comparison chart, portfolios share the same axis of recorded dates or hourly
+slots. Axis labels and tooltips retain the original dates and capture times.
+
 On a normal US equity trading day the server captures at 04:05, 05:05, …, 20:05
 in `America/New_York`. The timezone follows US daylight saving independently of
 the European clock change. The recurring NYSE/Nasdaq equity calendar excludes
