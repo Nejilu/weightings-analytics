@@ -20,6 +20,7 @@ export function seedSupportedIndividualSecurities(
       currency: security.currency,
       identifiersJson: {
         exchange: security.exchange,
+        ...(security.listingIsin ? { listingIsin: security.listingIsin } : {}),
         ...(security.depositaryReceipt ? { depositaryReceipt: security.depositaryReceipt } : {}),
         ...(security.cusip ? { cusip: security.cusip } : {}),
         ...(security.sedol ? { sedol: security.sedol } : {}),

@@ -63,6 +63,9 @@ const DEPOSITARY_RECEIPT_PREFIXES: Record<string, string> = {
 };
 
 const CROSS_EXCHANGE_ALIASES: Record<string, string[]> = {
+  // Frankfurt quotes are available over the quote socket, while the screener
+  // exposes the same EUR ordinary share on gettex (same JP3122400009 ISIN).
+  "FWB:VAN": ["GETTEX:VAN"],
   "BSE:500048": ["NSE:BEML"],
   "BSE:532483": ["NSE:CANBK"],
   "BSE:533581": ["NSE:PGEL"],

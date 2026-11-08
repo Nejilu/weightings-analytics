@@ -18,6 +18,38 @@ import { etfs } from "./schema";
 import { SAMSUNG_GDRS } from "@/domain/samsung-securities";
 import { seedSupportedIndividualSecurities } from "./supported-securities";
 
+test("catalog setup keeps the EUR Advantest line separate from its Japanese ISIN", () => {
+  const originalPath = process.env.DATABASE_PATH;
+  const directory = mkdtempSync(join(tmpdir(), "advantest-listings-"));
+  try {
+    process.env.DATABASE_PATH = join(directory, "test.sqlite");
+    closeDatabase();
+    ensureLocalDatabase();
+    const db = getSqlite();
+    db.exec(`INSERT INTO securities (id, isin, primary_ticker, name, asset_class, country, currency, identifiers_json)
+      VALUES ('JP3122400009', 'JP3122400009', '6857', 'ADVANTEST', 'Equity', 'Japan', 'JPY',
+        '{"exchange":"Tokyo Stock Exchange"}')`);
+    // Retain the primary listing through catalogue cleanup, as a saved portfolio would.
+    db.exec(`INSERT INTO portfolios (id, name) VALUES ('advantest-test', 'Test');
+      INSERT INTO portfolio_items (id, portfolio_id, asset_type, security_id, allocation_weight)
+      VALUES ('advantest-primary', 'advantest-test', 'security', 'JP3122400009', 100)`);
+    seedCatalog();
+    seedCatalog();
+    const listings = findSecuritiesByIds(["JP3122400009", "LISTING:FWB:VAN"]);
+    assert.equal(listings.size, 2);
+    assert.equal(listings.get("JP3122400009")?.ticker, "6857");
+    assert.equal(listings.get("LISTING:FWB:VAN")?.ticker, "VAN");
+    assert.equal(listings.get("LISTING:FWB:VAN")?.isin, "JP3122400009");
+    assert.equal(listings.get("LISTING:FWB:VAN")?.exchange, "Frankfurt Stock Exchange");
+    assert.deepEqual(db.prepare("SELECT currency FROM securities WHERE id = 'LISTING:FWB:VAN'").get(), { currency: "EUR" });
+  } finally {
+    closeDatabase();
+    if (originalPath === undefined) delete process.env.DATABASE_PATH;
+    else process.env.DATABASE_PATH = originalPath;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("catalog setup seeds two distinct Samsung GDRs and persists their 25-share ratios", () => {
   const originalPath = process.env.DATABASE_PATH;
   const directory = mkdtempSync(join(tmpdir(), "samsung-gdr-catalog-"));

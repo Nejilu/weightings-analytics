@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Holding } from "./etf";
+import { SUPPORTED_INDIVIDUAL_SECURITIES } from "@/data/supported-individual-securities";
+import { tradingViewPriceSymbols } from "@/data/providers/market-quote-symbols";
+import { tradingViewSymbolCandidates } from "@/data/providers/tradingview-symbols";
 import { SAMSUNG_GDRS } from "./samsung-securities";
 import {
   mergeEquivalentHoldings,
@@ -25,6 +28,24 @@ function holding(
     weight,
   };
 }
+
+test("Advantest keeps Japanese and European prices distinct while combining exposure", () => {
+  const european = SUPPORTED_INDIVIDUAL_SECURITIES.find((security) => security.ticker === "VAN")!;
+  const japanese = { ...holding("JP3122400009", "6857", "ADVANTEST", 20),
+    country: "Japan", exchange: "Tokyo Stock Exchange", marketValue: 2000 };
+  const frankfurt = { ...european, weight: 10, marketValue: 1000 };
+  assert.equal(securityQuoteAlias(frankfurt), undefined, "VAN is an ordinary share, not a receipt");
+  assert.equal(securityListingQuoteSymbol(japanese), "6857.T");
+  assert.equal(securityListingQuoteSymbol(frankfurt), "VAN.F");
+  assert.deepEqual(tradingViewSymbolCandidates(frankfurt), ["FWB:VAN", "GETTEX:VAN"]);
+  assert.deepEqual(tradingViewPriceSymbols(frankfurt, "VAN.F", "TSE:6857"), ["FWB:VAN"]);
+  assert.deepEqual(tradingViewPriceSymbols(japanese, "6857.T", "GETTEX:VAN"), ["TSE:6857"]);
+  const merged = mergeEquivalentHoldings([japanese, frankfurt]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].securityId, "economic:advantest");
+  assert.equal(merged[0].weight, 30);
+  assert.equal(merged[0].marketValue, 3000);
+});
 
 test("maps Asian primary listings to explicit Yahoo depositary symbols", () => {
   assert.deepEqual(securityQuoteAlias({ ticker: "SKHY", name: "SK HYNIX INC SPONSORED ADR" }), {

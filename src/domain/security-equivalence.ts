@@ -25,6 +25,13 @@ export interface SecurityQuoteAlias {
 
 const ECONOMIC_GROUPS: EconomicSecurityGroup[] = [
   {
+    key: "advantest",
+    displayTicker: "6857 / VAN",
+    displayName: "ADVANTEST",
+    tickers: ["6857", "6857.T", "VAN", "VAN.F"],
+    nameIncludes: ["ADVANTEST"],
+  },
+  {
     key: "samsung-electronics",
     displayTicker: "005930 / 005935 / SMSN / SMSD",
     displayName: "SAMSUNG ELECTRONICS",
@@ -147,6 +154,7 @@ export function securityListingQuoteSymbol(
 
   const exchange = normalized(security.exchange ?? "");
   if (exchange === "NASDAQ" || exchange === "NYSE") return ticker;
+  if (exchange.includes("FRANKFURT")) return `${ticker}.F`;
   if (exchange.includes("TOKYO")) return `${ticker}.T`;
   if (exchange.includes("KOSDAQ")) return `${ticker}.KQ`;
   if (exchange.includes("KOREA EXCHANGE")) return `${ticker}.KS`;

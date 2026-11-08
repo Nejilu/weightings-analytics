@@ -5,6 +5,8 @@ export interface SupportedIndividualSecurity
   extends Omit<Holding, "weight" | "marketValue"> {
   currency: string;
   exchange: string;
+  /** Shared ISIN of a separate trading line; securities.isin stays unique. */
+  listingIsin?: string;
   depositaryReceipt?: {
     underlyingSecurityId: string;
     underlyingTicker: string;
@@ -17,6 +19,19 @@ export interface SupportedIndividualSecurity
  * are not present in the current ACWI holdings snapshot.
  */
 export const SUPPORTED_INDIVIDUAL_SECURITIES: readonly SupportedIndividualSecurity[] = [
+  {
+    // Same ordinary share as Tokyo 6857, quoted in EUR in Frankfurt.
+    // https://www.tradingview.com/symbols/FWB-VAN/
+    securityId: "LISTING:FWB:VAN",
+    listingIsin: "JP3122400009",
+    ticker: "VAN",
+    name: "ADVANTEST (FRANKFURT)",
+    sector: "Information Technology",
+    assetClass: "Equity",
+    country: "Japan",
+    currency: "EUR",
+    exchange: "Frankfurt Stock Exchange",
+  },
   ...SAMSUNG_GDRS.map((gdr) => ({
     securityId: gdr.isin,
     isin: gdr.isin,
