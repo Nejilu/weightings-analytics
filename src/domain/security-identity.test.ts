@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ANTHROPIC_LEGACY_ID, ANTHROPIC_SECURITY, isAnthropicIdentity } from "./anthropic-security";
 
 import {
   fallbackSecurityId,
@@ -7,6 +8,23 @@ import {
   preferredSecurityId,
   securityCanonicalNameIdentity,
 } from "./security-identity";
+
+test("Anthropic exposure aliases require an exact company identity and a present canonical target", () => {
+  const legacy = { securityId: ANTHROPIC_LEGACY_ID, name: "ANTHROPIC SERIES F PREF EQ Prvt" };
+  assert.deepEqual(planSecurityIdentityMerges([legacy]), []);
+  assert.deepEqual(planSecurityIdentityMerges([legacy, ANTHROPIC_SECURITY]), [
+    { sourceId: ANTHROPIC_LEGACY_ID, targetId: ANTHROPIC_SECURITY.securityId },
+  ]);
+  for (const other of [
+    { ...legacy, name: "ANTHROPIC SERIES G PREF EQ Prvt" },
+    { ...legacy, isin: "US0000000001" },
+    { ...legacy, cusip: "000000001" },
+    { ...legacy, sedol: "1234567" },
+    { ...legacy, ticker: "OTHER" },
+    { securityId: "NAME:ANTEROS:ANT", ticker: "ANT", name: "ANTEROS METALS" },
+    { securityId: "NAME:ANTHROPICCLASSN", name: "ANTHROPIC CLASS N" },
+  ]) assert.equal(isAnthropicIdentity(other), false);
+});
 
 test("prefers durable market identifiers over source fallback IDs", () => {
   assert.equal(

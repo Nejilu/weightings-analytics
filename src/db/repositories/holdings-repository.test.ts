@@ -3,6 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { ANTHROPIC_LEGACY_ID, ANTHROPIC_SECURITY } from "@/domain/anthropic-security";
+import { reconcilePersistedSecurityIdentities } from "../security-identity-repository";
+import { seedCatalog } from "../seed";
+import { tradingViewPriceSymbols } from "@/data/providers/market-quote-symbols";
+import { tradingViewSymbolCandidates } from "@/data/providers/tradingview-symbols";
 
 import { filterCreatorHoldings } from "@/domain/etf-creator";
 import { analyzePortfolio } from "@/domain/processors/analyze-portfolio";
@@ -16,6 +21,59 @@ import {
   loadSnapshot,
   persistSnapshot,
 } from "./holdings-repository";
+
+test("Anthropic setup and repeated BGSIX imports retain one listed identity and historical values", () => {
+  const originalPath = process.env.DATABASE_PATH;
+  const directory = mkdtempSync(join(tmpdir(), "anthropic-identities-"));
+  try {
+    process.env.DATABASE_PATH = join(directory, "test.sqlite");
+    closeDatabase();
+    ensureLocalDatabase();
+    const sqlite = getSqlite();
+    const bgsix = findEtfById("bgsix-us")!;
+    // Simulate the existing production row from before the listing was seeded.
+    sqlite.prepare(`INSERT INTO securities (id, name) VALUES (?, ?)`)
+      .run(ANTHROPIC_LEGACY_ID, "ANTHROPIC SERIES F PREF EQ Prvt");
+    sqlite.exec(`INSERT INTO holding_snapshots
+      (id, etf_id, as_of, fetched_at, source_url, source_hash, source_status, total_weight, row_count)
+      VALUES ('anthropic-old', 'bgsix-us', '2026-09-30', '2026-11-13T00:00:00Z', 'test', 'old', 'cached', 2.5, 1)`);
+    sqlite.prepare(`INSERT INTO holdings (snapshot_id, security_id, weight, market_value)
+      VALUES ('anthropic-old', ?, 2.5, 202127460.08)`).run(ANTHROPIC_LEGACY_ID);
+    seedCatalog();
+    assert.deepEqual(sqlite.prepare(`SELECT security_id, weight, market_value, quantity FROM holdings
+      WHERE snapshot_id='anthropic-old'`).get(), {
+      security_id: ANTHROPIC_SECURITY.securityId, weight: 2.5, market_value: 202127460.08, quantity: null,
+    });
+    assert.match((sqlite.prepare(`SELECT source_row_json AS value FROM holdings WHERE snapshot_id='anthropic-old'`).get() as { value: string }).value, /SERIES F/);
+    assert.equal(reconcilePersistedSecurityIdentities(), 0);
+    const legacy = {
+      securityId: ANTHROPIC_LEGACY_ID, ticker: "—", name: "ANTHROPIC SERIES F PREF EQ Prvt",
+      country: "Not reported", sector: "Unclassified", assetClass: "Unclassified",
+      weight: 2.5, marketValue: 202127460.08,
+    };
+    for (let index = 0; index < 2; index++) {
+      const snapshot = persistSnapshot({ etf: bgsix, asOf: "2026-09-30",
+        fetchedAt: `2026-11-${14 + index}T00:00:00Z`, sourceUrl: "test", sourceHash: `refresh-${index}`, holdings: [legacy] });
+      const holding = loadSnapshot(bgsix, snapshot, "cached", 24).holdings[0];
+      assert.equal(holding.securityId, ANTHROPIC_SECURITY.securityId);
+      assert.equal(holding.ticker, "ANT");
+      assert.equal(holding.currency, "USD");
+      assert.equal(holding.exchange, "NASDAQ");
+      assert.equal(holding.name, ANTHROPIC_SECURITY.name);
+      assert.equal(holding.weight, 2.5);
+      assert.equal(holding.marketValue, 202127460.08);
+      assert.deepEqual(tradingViewPriceSymbols(holding), ["NASDAQ:ANT"]);
+      assert.deepEqual(tradingViewSymbolCandidates(holding), ["NASDAQ:ANT"]);
+      assert.equal(sqlite.prepare("SELECT id FROM securities WHERE id=?").get(ANTHROPIC_LEGACY_ID), undefined);
+    }
+    assert.deepEqual(sqlite.pragma("foreign_key_check"), []);
+  } finally {
+    closeDatabase();
+    if (originalPath === undefined) delete process.env.DATABASE_PATH;
+    else process.env.DATABASE_PATH = originalPath;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("replaces a holdings cache across days and rolls back failed replacements", () => {
   const originalPath = process.env.DATABASE_PATH;

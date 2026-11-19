@@ -278,6 +278,20 @@ metric definitions, metric observations, portfolios, local ETFs, and the
 provider negative cache. Writes are transactional and large metric operations
 are batched.
 
+Anthropic uses the listed Class A identity `US03703U1079` (CUSIP `03703U107`),
+with `ANT` on Nasdaq and the TradingView symbol `NASDAQ:ANT`. The exact legacy
+BGSIX label `ANTHROPIC SERIES F PREF EQ Prvt` is an explicit exposure alias.
+Setup reconciles existing rows, and subsequent holdings imports retain the
+canonical identity and listing metadata. Historical weights and market values
+are preserved; this alias does not calculate preferred-share conversion ratios
+or revalue a fund at the public quote. Original source labels are retained in
+`holdings.source_row_json`. Other preferred series and Class N are not aliases.
+`npm run db:sync-anthropic` backs up the configured database, applies only the
+Anthropic reconciliation, and records the official provider-symbol mapping.
+Symbol resolution is separate from quote availability: an IPO offer price is
+never inserted as a traded market price. Listing details are sourced from the
+[Nasdaq listing notice](https://www.nasdaqtrader.com/TraderNews.aspx?id=DTN2026-28).
+
 The bounded Metrics Overview result cache holds up to eight selections. Complete
 and stale results have a 60-second in-process TTL; partial results have a
 five-minute TTL. These are separate from the source TTLs. The underlying response

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { canonicalizeAnthropicHolding } from "@/domain/anthropic-security";
 
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 
@@ -176,6 +177,15 @@ interface PersistSnapshotInput {
 export function persistSnapshot(
   input: PersistSnapshotInput,
 ): SnapshotRecord {
+  const originalHoldings = input.holdings;
+  input = { ...input, holdings: input.holdings.map(canonicalizeAnthropicHolding) };
+  const sourceRows = new Map<string, Holding[]>();
+  for (const source of originalHoldings) {
+    const canonicalId = canonicalizeAnthropicHolding(source).securityId;
+    if (canonicalId !== source.securityId) {
+      sourceRows.set(canonicalId, [...(sourceRows.get(canonicalId) ?? []), source]);
+    }
+  }
   const db = getDb();
   const totalWeight = input.holdings.reduce(
     (sum, holding) => sum + holding.weight,
@@ -305,6 +315,7 @@ export function persistSnapshot(
             currency: holding.currency,
             sourceTicker:
               holding.ticker === "—" ? null : holding.ticker,
+            sourceRowJson: sourceRows.get(holding.securityId),
           })),
         )
         .run();

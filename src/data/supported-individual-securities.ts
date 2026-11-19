@@ -1,5 +1,6 @@
 import type { Holding } from "@/domain/etf";
 import { SAMSUNG_GDRS } from "@/domain/samsung-securities";
+import { ANTHROPIC_SECURITY } from "@/domain/anthropic-security";
 
 export interface SupportedIndividualSecurity
   extends Omit<Holding, "weight" | "marketValue"> {
@@ -19,6 +20,7 @@ export interface SupportedIndividualSecurity
  * are not present in the current ACWI holdings snapshot.
  */
 export const SUPPORTED_INDIVIDUAL_SECURITIES: readonly SupportedIndividualSecurity[] = [
+  ANTHROPIC_SECURITY,
   {
     // Same ordinary share as Tokyo 6857, quoted in EUR in Frankfurt.
     // https://www.tradingview.com/symbols/FWB-VAN/

@@ -1,3 +1,5 @@
+import { ANTHROPIC_SECURITY, isAnthropicIdentity } from "./anthropic-security";
+
 export interface SecurityIdentityDescriptor {
   securityId: string;
   ticker?: string;
@@ -179,6 +181,13 @@ export function planSecurityIdentityMerges(
   securities: SecurityIdentityDescriptor[],
 ): SecurityIdentityMerge[] {
   const merges = new Map<string, SecurityIdentityMerge>();
+  if (securities.some((security) => security.securityId === ANTHROPIC_SECURITY.securityId && isAnthropicIdentity(security))) {
+    for (const security of securities) {
+      if (security.securityId !== ANTHROPIC_SECURITY.securityId && isAnthropicIdentity(security)) {
+        merges.set(security.securityId, { sourceId: security.securityId, targetId: ANTHROPIC_SECURITY.securityId });
+      }
+    }
+  }
   const canonicalStrongId = new Map<string, string>();
   for (const component of strongIdentityComponents(securities)) {
     const target = [...component].sort(

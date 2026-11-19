@@ -1,4 +1,5 @@
 import type { Holding } from "@/domain/etf";
+import { ANTHROPIC_SECURITY, canonicalizeAnthropicHolding, isAnthropicIdentity } from "@/domain/anthropic-security";
 import {
   normalizeSecurityIdentityPart,
   planSecurityIdentityMerges,
@@ -101,6 +102,14 @@ function mergeSecurity(
   if (sqlite.prepare(`SELECT 1 FROM portfolio_dividend_payments source
     JOIN portfolio_dividend_payments target ON target.portfolio_id = source.portfolio_id AND target.ex_date = source.ex_date
     WHERE source.security_id = ? AND target.security_id = ? LIMIT 1`).get(sourceId, targetId)) return false;
+
+  if (targetId === ANTHROPIC_SECURITY.securityId && isAnthropicIdentity(identityDescriptor(source))) {
+    sqlite.prepare(`UPDATE holdings SET source_row_json = COALESCE(source_row_json, ?)
+      WHERE security_id = ?`).run(JSON.stringify({
+      securityId: source.id, name: source.name, ticker: source.primaryTicker,
+      reconciliation: "Anthropic exposure alias; historical values and quantities unchanged",
+    }), sourceId);
+  }
 
   sqlite.prepare(`
     UPDATE securities SET
@@ -307,10 +316,11 @@ function mergeSecurity(
 export function reconcilePersistedSecurityIdentities(
   sqlite = getSqlite(),
   useTransaction = true,
+  targetIds?: readonly string[],
 ): number {
   const merges = planSecurityIdentityMerges(
     loadSecurities(sqlite).map(identityDescriptor),
-  );
+  ).filter((merge) => !targetIds || targetIds.includes(merge.targetId));
   const apply = () => merges.reduce(
     (count, merge) =>
       count + (mergeSecurity(sqlite, merge.sourceId, merge.targetId) ? 1 : 0),
@@ -356,7 +366,8 @@ export function canonicalizeHoldingsWithPersistedIdentities(
   }
 
   const merged = new Map<string, Holding>();
-  for (const holding of input) {
+  for (const source of input) {
+    const holding = canonicalizeAnthropicHolding(source);
     const preferredId = preferredSecurityId(holding);
     const listingKey = securityListingIdentity(holding);
     const listingCandidates = listingKey ? byListing.get(listingKey) ?? [] : [];
