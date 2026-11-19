@@ -36,6 +36,7 @@ import { PortfolioAllocationPanels } from "./portfolio-allocation-panels";
 import { PortfolioCloneBuilder } from "./portfolio-clone-builder";
 import { PortfolioJournalExplorer } from "./portfolio-journal-explorer";
 import type { HoldingsCashDisplay } from "@/domain/holdings-cash-display";
+import { portfolioPositionQuantity } from "@/domain/portfolio-position-quantity";
 
 interface PortfolioAnalyticsProps {
   owner?: boolean;
@@ -68,6 +69,7 @@ interface CompositionRow {
   country: string;
   weight: number;
   valueUsd: number;
+  quantity?: number;
   sources: Array<{ id: string; label: string; weight: number }>;
 }
 
@@ -793,6 +795,7 @@ export function PortfolioAnalytics({
       adrPremiumPairId: position.adrPremiumPairId,
       weight: position.weight * scale,
       valueUsd: netAssetValueUsd * position.weight / 100,
+      quantity: portfolioPositionQuantity(position, portfolio.items, netAssetValueUsd * position.weight / 100),
       sources: position.contributions.map((contribution) => ({
         id: contribution.itemId,
         label: contribution.ticker,
@@ -865,7 +868,7 @@ export function PortfolioAnalytics({
     [filteredPositions, compositionVisibleCount],
   );
   const visibleSecurityQuotesKey = visibleCompositionPositions
-    .filter((position) => position.kind === "security")
+    .filter((position) => position.kind === "security" && position.quantity === undefined)
     .map((position) => [
       position.id,
       position.quoteSecurityId ?? position.id,
@@ -873,6 +876,7 @@ export function PortfolioAnalytics({
     ].join("\t"))
     .join("|");
 
+  const compositionCalculatedAt = portfolio?.analysis?.calculatedAt;
   useEffect(() => {
     if (!amountsVisible) return;
     const quotes = visibleSecurityQuotesKey
@@ -926,7 +930,7 @@ export function PortfolioAnalytics({
       }
     })();
     return () => controller.abort();
-  }, [visibleSecurityQuotesKey, amountsVisible, compositionRefreshRevision]);
+  }, [visibleSecurityQuotesKey, amountsVisible, compositionRefreshRevision, compositionCalculatedAt]);
 
   const analysis = portfolio?.analysis;
   const maxPositionWeight = compositionRows.reduce(
@@ -1566,7 +1570,7 @@ export function PortfolioAnalytics({
               <div className="synthetic-ranking" id="portfolio-underlying-positions">
                 <div className="synthetic-ranking__header">
                   <span>#</span><span>Security</span><span>Sources</span>
-                  {amountsVisible ? <span title="Exposure divided by the latest security price">Equivalent shares</span> : null}
+                  {amountsVisible ? <span title="Owned quantities for direct positions; equivalent shares for combined exposures">Equivalent shares</span> : null}
                   <span>{exposureMode === "gross-normalized" ? "Normalized weight" : "NAV weight"}</span>
                 </div>
                 {filteredPositions.length === 0 ? <p className="direct-only-note">No holdings match your search.</p> : null}
@@ -1581,8 +1585,10 @@ export function PortfolioAnalytics({
                     <div className="contribution-list">
                       {position.sources.map((source) => <span key={source.id}>{source.label} {formatPercent(source.weight)}</span>)}
                     </div>
-                    {amountsVisible ? <div className="synthetic-shares" title={`Exposure divided by the latest security price for ${position.quoteTicker ?? position.ticker}`}>
-                      {position.kind === "security" && compositionPrices[position.id]?.priceUsd ? <>
+                    {amountsVisible ? <div className="synthetic-shares" title={`Shares of ${position.quoteTicker ?? position.ticker}; combined exposures are expressed in equivalent shares`}>
+                      {position.kind === "security" && position.quantity !== undefined ? <>
+                        <span>{formatQuantity(position.quantity)}</span><small>shares</small>
+                      </> : position.kind === "security" && compositionPrices[position.id]?.priceUsd ? <>
                         <span>{formatQuantity(position.valueUsd / compositionPrices[position.id].priceUsd)}</span><small>shares</small>
                       </> : position.kind === "security" && compositionPricesLoading ? <span aria-label="Loading equivalent shares">…</span> : <span>—</span>}
                     </div> : null}

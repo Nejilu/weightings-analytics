@@ -17,14 +17,16 @@ function SupportedAdrPremiumBadge({ pairId }: { pairId: AdrPairId }) {
   const view = snapshot.data[pairId];
   const observation = view?.observation;
   const ticker = pairId === "tsmc" ? "TSM" : "SKHY";
+  const gdrComparison = pairId === "sk-hynix-gdr-us";
+  const label = gdrComparison ? "SKHY/HY9H" : ticker;
   const number = observation ? `${observation.premiumPct >= 0 ? "+" : ""}${observation.premiumPct.toFixed(2)}%` : snapshot.status === "idle" || snapshot.status === "loading" ? "…" : "—";
   const stale = view?.sourceStatus === "stale";
   const closing = observation?.mode === "closing-prices";
   const title = observation
-    ? `${ticker} ADR premium ${number}. ${closing ? "Latest closing prices at different times" : "Synchronized comparison at the last available Asian close"}. Asian close: ${date(observation.localCloseAt, true)} UTC. US price: ${date(observation.adrPriceAt, true)} UTC. FX: ${date(observation.fxAt, true)} UTC. Last successful retrieval: ${date(view.capturedAt, true)} UTC.${stale ? " Refresh failed; previously captured comparison." : ""} Applies to the ADR component of this line.`
-    : `${ticker} ADR premium ${number === "…" ? "loading" : "unavailable"}.`;
+    ? `${label} ADR premium ${number}. ${closing ? "Latest closing prices at different times" : `Synchronized comparison at the last available ${gdrComparison ? "Frankfurt" : "Asian"} close`}. ${gdrComparison ? "HY9H" : "Asian"} close: ${date(observation.localCloseAt, true)} UTC. US price: ${date(observation.adrPriceAt, true)} UTC. FX: ${date(observation.fxAt, true)} UTC. Last successful retrieval: ${date(view.capturedAt, true)} UTC.${stale ? " Refresh failed; previously captured comparison." : ""} ${gdrComparison ? "US SKHY premium versus HY9H, converted from EUR to USD; 10 SKHY represent 1 HY9H." : "Applies to the ADR component of this line."}`
+    : `${label} ADR premium ${number === "…" ? "loading" : "unavailable"}.`;
   return <span className={`adr-premium-badge${stale ? " adr-premium-badge--stale" : ""}`} tabIndex={0} role="note" aria-label={title} title={title}>
-    <span className="adr-premium-badge__symbol">{ticker}</span> ADR {number}{observation ? <><span className="adr-premium-badge__date"> · {closing ? "closes" : "sync"} {date(closing ? observation.adrPriceAt : observation.localCloseAt)}</span>{stale ? " · stale" : ""}</> : null}
+    <span className="adr-premium-badge__symbol">{label}</span> ADR {number}{observation ? <><span className="adr-premium-badge__date"> · {closing ? "closes" : "sync"} {date(closing ? observation.adrPriceAt : observation.localCloseAt)}</span>{stale ? " · stale" : ""}</> : null}
   </span>;
 }
 

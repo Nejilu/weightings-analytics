@@ -3,6 +3,7 @@ import "../src/data/providers/ishares-source.test";
 import "../src/data/providers/ishares-csv.test";
 import "../src/data/catalog.test";
 import "../src/domain/processors/analyze-portfolio.test";
+import "../src/domain/portfolio-position-quantity.test";
 import "../src/domain/processors/analyze-holdings.test";
 import "../src/domain/distortion-rankings.test";
 import "../src/domain/capitalization-reference.test";

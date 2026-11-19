@@ -50,7 +50,7 @@ export function fetchTradingViewChart(symbol: string, interval: "1" | "5" | "1D"
       if (error) reject(error);
       else {
         const output = [...bars.values()].sort((a, b) => a.timestamp - b.timestamp);
-        if (interval === "1D" && timezone === "America/New_York") {
+        if (interval === "1D" && timezone) {
           for (const bar of output) {
             const duration = tradingViewSessionSeconds(regularSession, sessionCorrections, marketDate(bar.timestamp, timezone));
             if (duration !== null) bar.sessionCloseTimestamp = bar.timestamp + duration;

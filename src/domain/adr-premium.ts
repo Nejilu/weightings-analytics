@@ -1,14 +1,14 @@
 import type { Holding } from "./etf";
 
 export interface AdrPair {
-  id: "tsmc" | "sk-hynix";
+  id: "tsmc" | "sk-hynix" | "sk-hynix-gdr-us";
   adrSymbol: string;
   localSymbol: string;
   overnightSymbol: string;
   fxSymbol: string;
   localCurrency: string;
   localTimezone: string;
-  localCloseUtc: string;
+  localCloseUtc?: string;
   underlyingPerAdr: number;
 }
 
@@ -29,6 +29,12 @@ export interface AdrListingDescriptor {
 /** Identify the instrument held, rather than every listing of the same issuer. */
 export function adrPairForListing(security: AdrListingDescriptor): AdrPair | null {
   if (security.kind && security.kind !== "security") return null;
+  if (security.adrPremiumPairId === null) return null;
+  const listingSymbol = (security.priceSymbol ?? security.quoteTicker ?? security.ticker).trim().toUpperCase().split(":").at(-1)!;
+  if (["HY9H", "HY9H.F"].includes(listingSymbol) && adrPairForSecurity({
+    ticker: "HY9H", name: security.name, isin: security.isin,
+    securityId: security.securityId ?? security.referenceId ?? "",
+  })?.id === "sk-hynix") return ADR_PAIRS.find((pair) => pair.id === "sk-hynix-gdr-us")!;
   if (security.priceSymbol && !ADR_PAIRS.some((pair) => pair.adrSymbol.split(":")[1] === security.priceSymbol!.trim().toUpperCase().split(":").at(-1))) return null;
   if (security.adrPremiumPairId !== undefined) return ADR_PAIRS.find((pair) => pair.id === security.adrPremiumPairId) ?? null;
   const symbol = (security.priceSymbol ?? security.quoteTicker ?? security.ticker).trim().toUpperCase();
@@ -58,6 +64,15 @@ export const ADR_PAIRS: readonly AdrPair[] = [
     // https://depositaryreceipts.citi.com/adr/guides/pgm_dispabook.aspx?cusip=78392B206&pageId=15&subpageID=111
     underlyingPerAdr: 0.1,
   },
+  {
+    id: "sk-hynix-gdr-us", adrSymbol: "NASDAQ:SKHY", localSymbol: "FWB:HY9H",
+    // Frankfurt and Nasdaq overlap: use US regular-session minute bars.
+    overnightSymbol: "NASDAQ:SKHY", fxSymbol: "FX_IDC:USDEUR",
+    localCurrency: "EUR", localTimezone: "Europe/Berlin",
+    // Citi GDR ORD:DR 1:1; US ADR ORD:DR 1:10. One SKHY = 0.1 HY9H.
+    // https://depositaryreceipts.citi.com/adr/guides/pgm_dispabook.aspx?cusip=78392B107&pageId=15&subpageID=111
+    underlyingPerAdr: 0.1,
+  },
 ];
 
 export function adrPairForSecurity(security: Pick<Holding, "ticker" | "name" | "isin" | "securityId">): AdrPair | null {
@@ -76,7 +91,7 @@ export interface PriceBar {
   timestamp: number;
   close: number;
   volume: number;
-  /** Actual regular-session end for US daily bars, including shortened sessions. */
+  /** Actual regular-session end for daily bars, including shortened sessions. */
   sessionCloseTimestamp?: number;
 }
 
@@ -99,7 +114,7 @@ export interface AdrPremiumView {
   observation: AdrPremiumObservation | null;
   sourceStatus: "live" | "cached" | "stale" | "unavailable";
   capturedAt: string;
-  fallbackReason: "overnight-unavailable" | "fx-unavailable" | "prices-unavailable" | null;
+  fallbackReason: "overnight-unavailable" | "intraday-unavailable" | "fx-unavailable" | "prices-unavailable" | null;
 }
 
 export function marketDate(timestamp: number, timezone: string): string {
@@ -123,7 +138,9 @@ export function calculateAdrPremium(pair: AdrPair, data: {
 }, now = Date.now()): Pick<AdrPremiumView, "observation" | "fallbackReason"> {
   const nowSeconds = now / 1_000;
   const local = data.localDaily.filter((bar) => positive(bar) && bar.volume > 0)
-    .map((bar) => ({ bar, close: Date.parse(`${marketDate(bar.timestamp, pair.localTimezone)}T${pair.localCloseUtc}Z`) / 1_000 }))
+    .map((bar) => ({ bar, close: bar.sessionCloseTimestamp ?? (pair.localCloseUtc
+      ? Date.parse(`${marketDate(bar.timestamp, pair.localTimezone)}T${pair.localCloseUtc}Z`) / 1_000
+      : Infinity) }))
     .filter((entry) => entry.close <= nowSeconds).sort((a, b) => b.close - a.close)[0];
   if (!local) return { observation: null, fallbackReason: "prices-unavailable" };
   const overnight = lastCompletedBar(data.overnight, local.close, 60, 300, true);
@@ -147,7 +164,9 @@ export function calculateAdrPremium(pair: AdrPair, data: {
     && bar.sessionCloseTimestamp !== undefined && bar.sessionCloseTimestamp <= nowSeconds)
     .sort((a, b) => b.timestamp - a.timestamp)[0];
   const closingFx = us ? lastCompletedBar(data.fx, us.sessionCloseTimestamp!, 300, 900) : undefined;
-  const fallbackReason = !overnight ? "overnight-unavailable" : "fx-unavailable";
+  const fallbackReason = !overnight
+    ? pair.id === "sk-hynix-gdr-us" ? "intraday-unavailable" : "overnight-unavailable"
+    : "fx-unavailable";
   return {
     observation: us && closingFx ? makeObservation(us, closingFx, "closing-prices", us.sessionCloseTimestamp!) : null,
     fallbackReason,

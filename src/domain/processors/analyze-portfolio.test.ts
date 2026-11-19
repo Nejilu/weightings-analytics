@@ -78,7 +78,7 @@ test("Samsung display combines local shares and GDRs while canonical instruments
   assert.equal(displayed.positions[0].contributions.length, 4);
 });
 
-test("SKHY carries its ADR premium but a GDR price override does not", () => {
+test("SKHY carries its Korean premium while a HY9H override carries the GDR/US comparison", () => {
   const security: PortfolioSecurity = { ...apple, securityId: "US78392B2060", ticker: "SKHY",
     name: "SK HYNIX INC SPONSORED ADR", adrPremiumPairId: "sk-hynix" };
   const item: PortfolioItem = { id: "skhy", kind: "security", referenceId: security.securityId,
@@ -86,7 +86,7 @@ test("SKHY carries its ADR premium but a GDR price override does not", () => {
   const input = { items: [item], etfSnapshots: new Map(), directSecurities: new Map([[security.securityId, security]]) };
   assert.equal(analyzePortfolioForDisplay(input).positions[0].adrPremiumPairId, "sk-hynix");
   const overridden = analyzePortfolioForDisplay({ ...input, items: [{ ...item, priceSymbol: "HY9H.F" }] });
-  assert.equal(overridden.positions[0].adrPremiumPairId, undefined);
+  assert.equal(overridden.positions[0].adrPremiumPairId, "sk-hynix-gdr-us");
   assert.equal(overridden.positions[0].weight, 100);
 });
 

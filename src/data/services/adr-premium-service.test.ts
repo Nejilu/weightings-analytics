@@ -91,3 +91,27 @@ test("a transient chart connection retries only the failed symbol", async () => 
   assert.equal(calls.get("NYSE:TSM"), 1);
   assert.equal(calls.get("FX_IDC:USDTWD"), 1);
 });
+
+test("HY9H/US comparison requests Frankfurt, Nasdaq regular intraday and EUR/USD in its own cache", async () => {
+  const calls: string[] = [];
+  const close = Date.parse("2026-11-18T19:00:00Z") / 1_000;
+  const load = createAdrPremiumLoader(async (symbol, interval) => {
+    calls.push(`${symbol}:${interval}`);
+    if (symbol === "FWB:HY9H") return { currency: "EUR", timezone: "Europe/Berlin",
+      bars: [{ ...quote("2026-11-18T07:00:00Z", 900), sessionCloseTimestamp: close }] };
+    if (symbol === "NASDAQ:SKHY") return { currency: "USD", timezone: "America/New_York",
+      bars: [{ timestamp: close - 60, close: 120, volume: 100 }] };
+    if (symbol === "FX_IDC:USDEUR") return { currency: "EUR", timezone: "Etc/UTC",
+      bars: [{ timestamp: close - 300, close: 0.9, volume: 0 }] };
+    throw new Error("Unexpected symbol");
+  }, () => close * 1_000);
+  const request = load("sk-hynix-gdr-us");
+  assert.equal(load("sk-hynix-gdr-us"), request);
+  const result = await request;
+  assert.equal(result?.pair.id, "sk-hynix-gdr-us");
+  assert.equal(result?.sourceStatus, "live");
+  assert.ok(Math.abs(result!.observation!.premiumPct - 20) < 1e-10);
+  assert.deepEqual(calls.sort(), ["FWB:HY9H:1D", "NASDAQ:SKHY:1D", "NASDAQ:SKHY:1", "FX_IDC:USDEUR:5"].sort());
+  assert.equal((await load("sk-hynix-gdr-us"))?.sourceStatus, "cached");
+  assert.equal(calls.length, 4);
+});

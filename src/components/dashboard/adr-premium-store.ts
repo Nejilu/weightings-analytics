@@ -1,4 +1,4 @@
-import type { AdrPairId, AdrPremiumView } from "@/domain/adr-premium";
+import { ADR_PAIRS, type AdrPairId, type AdrPremiumView } from "@/domain/adr-premium";
 
 export type AdrPremiumSnapshot = {
   status: "idle" | "loading" | "ready" | "unavailable";
@@ -33,7 +33,7 @@ export function createAdrPremiumStore(fetcher: typeof fetch = fetch, clock = Dat
         const response = await fetcher(`/api/v1/metrics/adr-premiums${forceRefresh ? "?refresh=true" : ""}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Premiums unavailable");
         const payload = await response.json() as { data?: Partial<Record<AdrPairId, AdrPremiumView>> };
-        if (!payload.data?.tsmc || !payload.data?.["sk-hynix"]) throw new Error("Incomplete premium response");
+        if (!payload.data || ADR_PAIRS.some((pair) => !payload.data?.[pair.id])) throw new Error("Incomplete premium response");
         update({ status: "ready", data: payload.data });
         const captured = Math.min(...Object.values(payload.data).map((view) => Date.parse(view.capturedAt)));
         const retryNeeded = Object.values(payload.data).some((view) => view.sourceStatus === "stale" || view.sourceStatus === "unavailable");

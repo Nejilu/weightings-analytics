@@ -26,8 +26,11 @@ test("row badges identify ADR instruments, explicit price overrides and merged A
   assert.equal(adrPairForListing({ ...tsm, adrPremiumPairId: null }), null);
   const sk = { ticker: "SKHY", name: "SK Hynix ADR" };
   assert.equal(adrPairForListing(sk)?.id, "sk-hynix");
-  assert.equal(adrPairForListing({ ...sk, adrPremiumPairId: "sk-hynix", priceSymbol: "HY9H.F" }), null);
-  assert.equal(adrPairForListing({ ...sk, ticker: "HY9H", priceSymbol: "HY9H.F" }), null);
+  assert.equal(adrPairForListing({ ...sk, adrPremiumPairId: "sk-hynix", priceSymbol: "HY9H.F" })?.id, "sk-hynix-gdr-us");
+  assert.equal(adrPairForListing({ ...sk, ticker: "HY9H", priceSymbol: "HY9H.F" })?.id, "sk-hynix-gdr-us");
+  assert.equal(adrPairForListing({ ...sk, ticker: "HY9H / 000660", quoteTicker: "HY9H" })?.id, "sk-hynix-gdr-us");
+  assert.equal(adrPairForListing({ ...sk, ticker: "HY9H", adrPremiumPairId: null }), null);
+  assert.equal(adrPairForListing({ ticker: "HY9H", name: "Unrelated issuer" }), null);
   assert.equal(adrPairForListing({ ...sk, ticker: "000660" }), null);
 });
 
@@ -52,6 +55,36 @@ test("SK hynix US ADR ratio is one tenth of a Korean share", () => {
   }, now);
   assert.ok(Math.abs(result.observation!.premiumPct - (177.24 * 1_338.18 / 168_100 - 1) * 100) < 1e-8);
   assert.equal(result.observation?.adrMaxAgeSeconds, 60);
+});
+
+test("SKHY versus HY9H adjusts the 10:1 receipt ratio and EUR/USD at Frankfurt's actual close", () => {
+  const pair = ADR_PAIRS.find((pair) => pair.id === "sk-hynix-gdr-us")!;
+  const input = {
+    localDaily: [daily("2026-11-18T07:00:00Z", 900, 43_200)], usDaily: [],
+    overnight: [bar("2026-11-18T18:59:00Z", 120)],
+    fx: [bar("2026-11-18T18:55:00Z", 0.9, 0)],
+  };
+  const result = calculateAdrPremium(pair, input, Date.parse("2026-11-18T19:00:00Z"));
+  assert.equal(result.observation?.mode, "aligned");
+  assert.equal(result.observation?.localCloseAt, "2026-11-18T19:00:00.000Z");
+  assert.equal(result.observation?.parityUsd, 100);
+  assert.ok(Math.abs(result.observation!.premiumPct - 20) < 1e-10);
+  assert.equal(calculateAdrPremium(pair, input, Date.parse("2026-11-18T18:59:00Z")).observation, null);
+  assert.equal(calculateAdrPremium(pair, { ...input, localDaily: [bar("2026-11-18T07:00:00Z", 900)] }, now).observation, null);
+});
+
+test("HY9H comparison marks unsynchronized closes and requires an FX quote at the US close", () => {
+  const pair = ADR_PAIRS.find((pair) => pair.id === "sk-hynix-gdr-us")!;
+  const input = {
+    localDaily: [daily("2026-11-18T07:00:00Z", 900, 43_200)],
+    usDaily: [daily("2026-11-18T14:30:00Z", 120)], overnight: [],
+    fx: [bar("2026-11-18T20:55:00Z", 0.9, 0)],
+  };
+  const result = calculateAdrPremium(pair, input, Date.parse("2026-11-18T21:00:00Z"));
+  assert.equal(result.observation?.mode, "closing-prices");
+  assert.equal(result.fallbackReason, "intraday-unavailable");
+  assert.equal(result.observation?.adrPriceAt, "2026-11-18T21:00:00.000Z");
+  assert.equal(calculateAdrPremium(pair, { ...input, fx: [] }, Date.parse("2026-11-18T21:00:00Z")).observation, null);
 });
 
 test("stale overnight or FX observations trigger an explicitly asynchronous close comparison", () => {

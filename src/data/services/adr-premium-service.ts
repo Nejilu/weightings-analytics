@@ -1,6 +1,6 @@
 import "server-only";
 import type { Holding } from "@/domain/etf";
-import { adrPairForSecurity, calculateAdrPremium, type AdrPair, type AdrPremiumView } from "@/domain/adr-premium";
+import { ADR_PAIRS, adrPairForSecurity, calculateAdrPremium, type AdrPair, type AdrPairId, type AdrPremiumView } from "@/domain/adr-premium";
 import { fetchTradingViewChart, type TradingViewChart } from "../providers/tradingview-chart";
 
 type ChartFetcher = typeof fetchTradingViewChart;
@@ -51,8 +51,8 @@ export function createAdrPremiumLoader(fetchChart: ChartFetcher = fetchTradingVi
     return view;
   }
 
-  return (security: Pick<Holding, "ticker" | "name" | "isin" | "securityId">, forceRefresh = false): Promise<AdrPremiumView | null> => {
-    const pair = adrPairForSecurity(security);
+  return (security: Pick<Holding, "ticker" | "name" | "isin" | "securityId"> | AdrPairId, forceRefresh = false): Promise<AdrPremiumView | null> => {
+    const pair = typeof security === "string" ? ADR_PAIRS.find((pair) => pair.id === security) : adrPairForSecurity(security);
     if (!pair) return Promise.resolve(null);
     const running = inFlight.get(pair.id);
     if (running) return running;

@@ -15,7 +15,7 @@ test("all row badges share one request, retain the server capture expiry and fla
   const store = createAdrPremiumStore(async () => {
     calls++;
     if (fail) throw new Error("Transport unavailable");
-    return Response.json({ data: { tsmc: view(0), "sk-hynix": view(1) } });
+    return Response.json({ data: Object.fromEntries(ADR_PAIRS.map((pair, index) => [pair.id, view(index)])) });
   }, () => now);
   let notifications = 0;
   const unsubscribe = store.subscribe(() => notifications++);
@@ -58,7 +58,7 @@ test("an unavailable pair in a successful response retries after one minute", as
     calls++;
     const view = (index: number) => ({ pair: ADR_PAIRS[index], observation: null, sourceStatus: "unavailable",
       fallbackReason: "fx-unavailable", capturedAt: new Date(now).toISOString() });
-    return Response.json({ data: { tsmc: view(0), "sk-hynix": view(1) } });
+    return Response.json({ data: Object.fromEntries(ADR_PAIRS.map((pair, index) => [pair.id, view(index)])) });
   }, () => now);
   await store.load();
   await store.load();
@@ -75,7 +75,7 @@ test("manual refresh bypasses both caches and updates the shared badge data", as
     urls.push(String(url));
     const view = (index: number) => ({ pair: ADR_PAIRS[index], observation: null, sourceStatus: "cached",
       fallbackReason: "prices-unavailable", capturedAt: new Date(now).toISOString() });
-    return Response.json({ data: { tsmc: view(0), "sk-hynix": view(1) } });
+    return Response.json({ data: Object.fromEntries(ADR_PAIRS.map((pair, index) => [pair.id, view(index)])) });
   }, () => now);
   // Refreshing unrelated panels does not create a premium request.
   await store.refreshIfLoaded();

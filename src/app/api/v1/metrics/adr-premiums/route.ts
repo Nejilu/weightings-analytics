@@ -4,12 +4,9 @@ import { withSiteAccess } from "@/server/site-route";
 
 async function handleGET(request: Request) {
   const refresh = new URL(request.url).searchParams.get("refresh") === "true";
-  // Only the two fixed public instruments are accepted; portfolio data is not needed.
+  // Only fixed public comparisons are accepted; portfolio data is not needed.
   const entries = await Promise.all(ADR_PAIRS.map(async (pair) => {
-    const view = await getAdrPremium({
-      securityId: pair.id, ticker: pair.adrSymbol.split(":")[1],
-      name: pair.id === "tsmc" ? "Taiwan Semiconductor ADR" : "SK Hynix ADR",
-    }, refresh);
+    const view = await getAdrPremium(pair.id, refresh);
     return [pair.id, view] as const;
   }));
   return Response.json({ data: Object.fromEntries(entries) as Record<AdrPairId, AdrPremiumView | null> });
