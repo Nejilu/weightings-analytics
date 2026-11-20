@@ -277,9 +277,65 @@ test("keeps short positions signed and ranks them by absolute exposure", () => {
   });
 
   assert.deepEqual(result.positions.map((position) => position.weight), [150, -50]);
-  assert.equal(result.netExposureWeight, 100);
+  assert.equal(result.netExposureWeight, 200);
   assert.equal(result.grossExposureWeight, 200);
+  assert.equal(result.cashWeight, -50);
   assert.equal(result.top10Concentration, 200);
+});
+
+test("a $100 standalone short adds $100 of securities exposure and deducts $100 from entered cash", () => {
+  const items: PortfolioItem[] = [{
+    id: "short", kind: "security", referenceId: apple.securityId, ticker: apple.ticker,
+    name: apple.name, allocationWeight: 0, quantity: -1,
+  }];
+  const price = { assetKind: "security" as const, assetId: apple.securityId, providerSymbol: apple.ticker,
+    price: 100, priceUsd: 100, currency: "USD", fxToUsd: 1, asOf: "2026-11-20", fetchedAt: "2026-11-20", sourceStatus: "cached" as const };
+  const cashUsd = 300;
+  const valued = valuePortfolioPositions(items, new Map([[`security:${apple.securityId}`, price]]), cashUsd);
+  const result = analyzePortfolioForDisplay({
+    items: valued.items, cashWeight: cashUsd / valued.totalMarketValueUsd * 100,
+    directSecurities: new Map([[apple.securityId, apple]]), etfSnapshots: new Map(),
+  });
+  assert.equal(valued.totalMarketValueUsd, 200);
+  assert.equal(result.grossExposureWeight, 50);
+  assert.equal(result.netExposureWeight, 50);
+  assert.equal(result.explicitCashWeight, 150);
+  assert.equal(result.cashWeight / 100 * valued.totalMarketValueUsd, 200);
+});
+
+test("only the uncovered part of a direct short against ETF holdings is deducted from cash", () => {
+  for (const [short, gross, net, uncovered] of [
+    [10, 60, 40, 0], [30, 80, 20, 0], [40, 90, 30, 10],
+  ]) {
+    // The ETF holds 30% Apple and 20% Microsoft at portfolio level.
+    const result = analyzePortfolioForDisplay({
+      items: [
+        { id: "fund", kind: "etf", referenceId: "ACWI", ticker: "ACWI", name: "ETF", allocationWeight: 50 },
+        { id: "short", kind: "security", referenceId: apple.securityId, ticker: apple.ticker, name: apple.name, allocationWeight: -short },
+      ],
+      etfSnapshots: new Map([["ACWI", snapshot]]), directSecurities: new Map([[apple.securityId, apple]]),
+      cashWeight: 50 + short,
+    });
+    assert.equal(result.grossExposureWeight, gross);
+    assert.equal(result.netExposureWeight, net);
+    assert.equal(result.netShortWeight, uncovered);
+    assert.equal(result.cashWeight, 50 + short - uncovered);
+  }
+});
+
+test("ETF cash and signed internal shorts enter the cash deduction exactly once", () => {
+  const result = analyzePortfolioForDisplay({
+    items: [{ id: "fund", kind: "etf", referenceId: "ETF", ticker: "ETF", name: "ETF", allocationWeight: 100 }],
+    directSecurities: new Map(), cashWeight: 0,
+    etfSnapshots: new Map([["ETF", { ...snapshot, holdings: [
+      { ...apple, weight: 60 }, { ...microsoft, weight: -20 },
+      { ...apple, securityId: "cash", ticker: "USD", assetClass: "Cash", name: "USD CASH", weight: 60 },
+    ] }]]),
+  });
+  assert.equal(result.grossExposureWeight, 80);
+  assert.equal(result.netExposureWeight, 80);
+  assert.equal(result.netShortWeight, 20);
+  assert.equal(result.cashWeight, 40);
 });
 
 test("recalculates component weights when prices diverge while shares stay fixed", () => {

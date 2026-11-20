@@ -1,3 +1,4 @@
+import { ISHARES_HOLDINGS_HASH_PREFIX } from "../src/data/providers/ishares-csv";
 // Synthetic browser-test data. Always creates a new temporary database.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,7 +37,7 @@ for (const id of ["acwi-us", "ivv-us"]) {
     asOf: now.slice(0, 10),
     fetchedAt: now,
     sourceUrl: "https://example.com/synthetic-test-data",
-    sourceHash: `ishares-holdings-v3:demo-${id}`,
+    sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}demo-${id}`,
     holdings:
       id === "acwi-us"
         ? holdings

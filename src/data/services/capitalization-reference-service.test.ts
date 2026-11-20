@@ -1,3 +1,4 @@
+import { ISHARES_HOLDINGS_HASH_PREFIX } from "../providers/ishares-csv";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -30,7 +31,7 @@ test("total-cap service reuses verified mappings, requests issuer metadata in US
       { securityId: "US5949181045", ticker: "MSFT", name: "MICROSOFT", assetClass: "Equity", country: "United States", sector: "Technology", exchange: "NASDAQ", weight: 40 },
     ];
     for (const reference of ["ivv-us", "acwi-us"]) persistSnapshot({
-      etf: findEtfByReference(reference)!, holdings, asOf: now.slice(0, 10), fetchedAt: now, sourceUrl: "https://example.com", sourceHash: `ishares-holdings-v3:${reference}`,
+      etf: findEtfByReference(reference)!, holdings, asOf: now.slice(0, 10), fetchedAt: now, sourceUrl: "https://example.com", sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}${reference}`,
     });
     // Admit the tiny cache fixture through the provider's fund-size check;
     // the test exercises capitalizations, not iShares download validation.

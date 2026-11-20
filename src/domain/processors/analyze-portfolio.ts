@@ -1,4 +1,5 @@
 import { holdingsSourceIssues } from "@/domain/holdings-source-issues";
+import { isCashHolding } from "../cash-holdings";
 import type {
   PortfolioAnalysis,
   PortfolioAnalysisInput,
@@ -40,7 +41,7 @@ function addPosition(
   quoteTicker = security.ticker,
   priceSymbol?: string,
 ) {
-  if (!Number.isFinite(weight) || Math.abs(weight) <= EPSILON) return;
+  if (!Number.isFinite(weight) || Math.abs(weight) <= EPSILON) return 0;
 
   const identity = resolveIdentity(security);
   const adrPair = adrPairForListing({ ...security, ticker: quoteTicker, priceSymbol });
@@ -71,16 +72,16 @@ function addPosition(
     } else {
       existing.contributions.push(contribution);
     }
-    return;
+  } else {
+    positions.set(identity.securityId, {
+      ...security,
+      ...identity,
+      adrPremiumPairId: adrPair?.id,
+      weight,
+      contributions: [contribution],
+    });
   }
-
-  positions.set(identity.securityId, {
-    ...security,
-    ...identity,
-    adrPremiumPairId: adrPair?.id,
-    weight,
-    contributions: [contribution],
-  });
+  return isCashHolding(security) ? 0 : Math.abs(weight);
 }
 
 function analyzePortfolioWithIdentity({
@@ -100,6 +101,7 @@ function analyzePortfolioWithIdentity({
   const positions = new Map<string, PortfolioLookThroughPosition>();
   const quoteCandidates: QuoteCandidatesByPosition = new Map();
   let financingWeight = 0;
+  let grossExposureWeight = 0;
 
   for (const item of items) {
     if (!Number.isFinite(item.allocationWeight) || Math.abs(item.allocationWeight) <= EPSILON) {
@@ -111,7 +113,7 @@ function analyzePortfolioWithIdentity({
       if (!security) {
         throw new Error(`Security ${item.ticker} is no longer available.`);
       }
-      addPosition(
+      grossExposureWeight += addPosition(
         positions,
         quoteCandidates,
         security,
@@ -149,7 +151,7 @@ function analyzePortfolioWithIdentity({
 
     for (const holding of calculationHoldings) {
       const weight = item.allocationWeight * (holding.weight / 100);
-      addPosition(
+      grossExposureWeight += addPosition(
         positions,
         quoteCandidates,
         {
@@ -200,7 +202,16 @@ function analyzePortfolioWithIdentity({
   });
 
   const sectors = new Map<string, number>();
+  let underlyingCashWeight = 0;
+  let netExposureWeight = 0;
+  let netShortWeight = 0;
   for (const position of rawRankedPositions) {
+    if (isCashHolding(position)) {
+      underlyingCashWeight += position.weight;
+    } else {
+      netExposureWeight += Math.abs(position.weight);
+      netShortWeight += Math.max(0, -position.weight);
+    }
     sectors.set(
       position.sector,
       (sectors.get(position.sector) ?? 0) + position.weight,
@@ -208,20 +219,13 @@ function analyzePortfolioWithIdentity({
   }
 
   const explicitCashWeight = cashWeight ?? Math.max(0, 100 - allocationWeight);
-  const totalCashWeight = explicitCashWeight + financingWeight;
-  const netExposureWeight = rawRankedPositions.reduce(
-    (sum, position) => sum + position.weight,
-    0,
-  );
-  const grossExposureWeight = rawRankedPositions.reduce(
-    (sum, position) => sum + Math.abs(position.weight),
-    0,
-  );
+  const totalCashWeight = explicitCashWeight + financingWeight + underlyingCashWeight - netShortWeight;
 
   return {
     calculatedAt,
     allocationWeight: roundWeight(allocationWeight),
     cashWeight: roundWeight(totalCashWeight),
+    netShortWeight: roundWeight(netShortWeight),
     explicitCashWeight: roundWeight(explicitCashWeight),
     financingWeight: roundWeight(financingWeight),
     netExposureWeight: roundWeight(netExposureWeight),

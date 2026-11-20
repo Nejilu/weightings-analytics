@@ -12,6 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CatalogGroup, EtfShareClass } from "@/domain/etf";
 import type { LocalEtfDetail, LocalPortfolioEtfDetail } from "@/domain/local-etf";
 import { mergeCashPosition } from "@/domain/processors/merge-cash-position";
+import { isCashHolding } from "@/domain/cash-holdings";
 import { mergePortfolioPosition } from "@/domain/processors/merge-portfolio-position";
 import {
   SUPPORTED_CASH_CURRENCIES,
@@ -780,12 +781,13 @@ export function PortfolioAnalytics({
     const analysis = portfolio?.analysis;
     if (!analysis) return [];
     const netAssetValueUsd = analysis.totalMarketValueUsd ?? draftMarketValue;
-    const scale = exposureMode === "gross-normalized" && analysis.grossExposureWeight > 0
-      ? 100 / analysis.grossExposureWeight
+    const scale = exposureMode === "gross-normalized" && analysis.netExposureWeight > 0
+      ? 100 / analysis.netExposureWeight
       : 1;
-    const rows: CompositionRow[] = analysis.positions.map((position) => ({
+    const visiblePositions = exposureMode === "net-total" ? analysis.positions : analysis.positions.filter((position) => !isCashHolding(position));
+    const rows: CompositionRow[] = visiblePositions.map((position) => ({
       id: position.securityId,
-      kind: "security",
+      kind: isCashHolding(position) ? "cash" : "security",
       ticker: position.ticker,
       name: position.name,
       sector: position.sector,
@@ -820,21 +822,19 @@ export function PortfolioAnalytics({
           }],
         });
       }
-      if (Math.abs(analysis.financingWeight) > 0.000001) {
+      const cashAdjustments = [
+        { id: "cash:implicit-financing", ticker: "FIN", name: "Implicit leveraged-ETF financing", weight: analysis.financingWeight },
+        { id: "cash:net-short-deduction", ticker: "SHORT", name: "Net short deduction", weight: -analysis.netShortWeight },
+      ];
+      for (const adjustment of cashAdjustments) {
+        if (!adjustment.weight) continue;
         rows.push({
-          id: "cash:implicit-financing",
+          ...adjustment,
           kind: "financing",
-          ticker: "FIN",
-          name: "Implicit leveraged-ETF financing",
           sector: "Cash & equivalents",
           country: "Not applicable",
-          weight: analysis.financingWeight,
-          valueUsd: netAssetValueUsd * analysis.financingWeight / 100,
-          sources: [{
-            id: "cash:implicit-financing",
-            label: "ETF financing",
-            weight: analysis.financingWeight,
-          }],
+          valueUsd: netAssetValueUsd * adjustment.weight / 100,
+          sources: [{ id: adjustment.id, label: adjustment.name, weight: adjustment.weight }],
         });
       }
       if (cashDisplay === "combined") {
@@ -843,10 +843,10 @@ export function PortfolioAnalytics({
           const securities = rows.filter((row) => row.kind === "security");
           rows.splice(0, rows.length, ...securities, {
             id: "display:net-cash", kind: "cash", ticker: "CASH",
-            name: "Net cash (all positions)", sector: "Cash & equivalents", country: "Not applicable",
+            name: "Cash exposure", sector: "Cash & equivalents", country: "Not applicable",
             weight: cash.reduce((sum, row) => sum + row.weight, 0),
             valueUsd: cash.reduce((sum, row) => sum + row.valueUsd, 0),
-            sources: cash.flatMap((row) => row.sources),
+            sources: cash.flatMap((row) => row.sources.map((source) => ({ ...source, id: JSON.stringify([row.id, source.id]) }))),
           });
         }
       }
@@ -1527,8 +1527,8 @@ export function PortfolioAnalytics({
             <section className="panel holdings-summary-group" aria-labelledby="portfolio-exposure-title">
               <h2 id="portfolio-exposure-title">Portfolio exposure</h2>
               <div className="holdings-summary-metrics">
-                <MetricCard label="Gross securities exposure" value={formatPercent(analysis.grossExposureWeight, 1)} detail="Long and short exposures, in absolute value" />
-                <MetricCard label="Net securities exposure" value={formatPercent(analysis.netExposureWeight, 1)} detail="Long positions minus short positions" />
+                <MetricCard label="Gross securities exposure" value={formatPercent(analysis.grossExposureWeight, 1)} detail="Size of all long and short positions before offsets" />
+                <MetricCard label="Net securities exposure" value={formatPercent(analysis.netExposureWeight, 1)} detail="Size of the remaining long or short position in each underlying security" />
               </div>
             </section>
             <section className="panel holdings-summary-group holdings-summary-group--cash" aria-labelledby="portfolio-cash-title">
@@ -1538,20 +1538,20 @@ export function PortfolioAnalytics({
                   Include cash <span className="holdings-cash-toggle-track" aria-hidden="true" />
                 </button>
               </div>
-              <MetricCard label={<span className="holdings-cash-metric-label"><span>Cash & equivalents</span>
+              <MetricCard label={<span className="holdings-cash-metric-label"><span>Cash exposure</span>
                 {exposureMode === "net-total" ? <select className="holdings-cash-grouping" aria-label="Cash grouping" value={cashDisplay} onChange={(event) => setCashDisplay(event.target.value as HoldingsCashDisplay)}>
                   <option value="combined">Combined</option><option value="positions">Separate</option>
                 </select> : null}
               </span>} value={formatPercent(analysis.cashWeight, 2)} detail={<>
                 {amountsVisible ? `${formatPortfolioTotal((analysis.totalMarketValueUsd ?? draftMarketValue) * analysis.cashWeight / 100, displayCurrency, displayRateToUsd)} · ` : ""}{exposureMode === "net-total" ? "included in view" : "excluded from view"}<br />
-                {formatPercent(analysis.explicitCashWeight)} cash · {formatPercent(analysis.financingWeight)} ETF financing
+                {formatPercent(analysis.cashWeight + analysis.netShortWeight)} cash including ETF cash and financing, less {formatPercent(analysis.netShortWeight)} in net shorts
               </>} />
             </section>
           </section>
           <p className="holdings-method-copy portfolio-composition-basis" role="status">
             {exposureMode === "net-total"
-              ? "Weights use net asset value, including cash and financing. Long positions, shorts and borrowing retain their signs."
-              : "Cash is excluded from allocations. Securities are normalized by gross absolute exposure to 100%; amounts remain actual portfolio exposure."}
+              ? "Weights are percentages of net asset value. Security rows show direction. Cash exposure deducts the current value of net shorts once."
+              : "Each security’s weight is its signed position divided by net securities exposure. Absolute weights total 100% when the portfolio has securities exposure."}
           </p>
 
           <PortfolioAllocationPanels positions={compositionRows} includeCash={exposureMode === "net-total"} formatValue={amountsVisible ? (value) => formatPortfolioTotal(value, displayCurrency, displayRateToUsd) : undefined} />
@@ -1560,7 +1560,7 @@ export function PortfolioAnalytics({
           <section className={`panel portfolio-lookthrough-panel${amountsVisible ? "" : " portfolio-lookthrough-panel--weights"}`} aria-label="Underlying portfolio holdings">
             <div className="panel-heading">
               <div><span className="eyebrow">Look-through composition</span><h2>Underlying holdings</h2></div>
-              <span className="info-chip">{exposureMode === "net-total" ? "NAV weights · with cash" : "Gross normalized · securities"}</span>
+              <span className="info-chip">{exposureMode === "net-total" ? "NAV weights · with cash" : "Normalized securities"}</span>
             </div>
             <div className="holdings-table-search">
               <label className="result-search"><span className="sr-only">Filter portfolio holdings</span><input type="search" value={resultFilter} placeholder="Filter holdings" onChange={(event) => { setResultFilter(event.target.value); setCompositionVisibleCount(COMPOSITION_INITIAL_COUNT); }} /></label>

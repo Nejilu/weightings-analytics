@@ -1,3 +1,4 @@
+import { ISHARES_HOLDINGS_HASH_PREFIX } from "../providers/ishares-csv";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -68,7 +69,7 @@ test("allocated subsets persist independent rules, merge shared stocks and prese
     }));
     const persistSource = (asOf: string, source: typeof fixtures) => persistSnapshot({
       etf: sourceEtf, asOf, fetchedAt: new Date().toISOString(), sourceUrl: sourceEtf.holdingsUrl,
-      sourceHash: `ishares-holdings-v3:${asOf}`, holdings: source,
+      sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}${asOf}`, holdings: source,
     });
     persistSource("2026-10-01", fixtures);
     const source = await getHoldingsSnapshot(sourceEtf.id);
@@ -137,7 +138,7 @@ test("custom multipliers persist and follow current source and overlap membershi
     }));
     const persistSource = (asOf: string, source: typeof fixtures) => persistSnapshot({
       etf: sourceEtf, asOf, fetchedAt: new Date().toISOString(),
-      sourceUrl: sourceEtf.holdingsUrl, sourceHash: `ishares-holdings-v3:${asOf}`, holdings: source,
+      sourceUrl: sourceEtf.holdingsUrl, sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}${asOf}`, holdings: source,
     });
     persistSource("2026-10-01", fixtures);
     const source = await getHoldingsSnapshot(sourceEtf.id);
@@ -230,7 +231,7 @@ test("equal creator weights survive saving, migration, source changes and editin
     }));
     const persistSource = (asOf: string, source: typeof sourceHoldings) => persistSnapshot({
       etf: sourceEtf, asOf, fetchedAt: new Date().toISOString(),
-      sourceUrl: sourceEtf.holdingsUrl, sourceHash: `ishares-holdings-v3:${asOf}`, holdings: source,
+      sourceUrl: sourceEtf.holdingsUrl, sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}${asOf}`, holdings: source,
     });
     persistSource("2026-10-01", sourceHoldings);
     const source = await getHoldingsSnapshot(sourceEtf.id);
@@ -292,7 +293,7 @@ test("403 survives stale fallback, aliases, analysis and comparison; relay refre
     const etf = findEtfById("qtop-us")!;
     persistSnapshot({
       etf, asOf: "2026-09-11", fetchedAt: new Date().toISOString(),
-      sourceUrl: etf.holdingsUrl, sourceHash: "ishares-holdings-v3:fixture",
+      sourceUrl: etf.holdingsUrl, sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}fixture`,
       holdings: Array.from({ length: 6 }, (_, i) => ({
         securityId: `TEST${i}`, ticker: `T${i}`, name: `Company ${i}`,
         sector: "Technology", assetClass: "Equity", country: "United States", weight: 100 / 6,

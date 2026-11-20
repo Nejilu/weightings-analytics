@@ -1,12 +1,7 @@
 import type { Holding } from "../etf";
-import { isCashHolding } from "../cash-holdings";
 
 const MAX_POSITION_DIFFERENCE = 0.1;
 const MAX_TOTAL_DIFFERENCE = 5;
-
-// Borrowed cash offsets invested assets in net asset value.
-const sourceWeight = (holding: Holding) =>
-  isCashHolding(holding) ? holding.weight : Math.max(0, holding.weight);
 
 // Market values are preferred only when they reconcile closely with the
 // official weights. This avoids treating derivative market value as exposure.
@@ -15,14 +10,14 @@ function normalizedBySourceWeight(
   targetTotal: number,
 ): Holding[] {
   const total = holdings.reduce(
-    (sum, holding) => sum + sourceWeight(holding),
+    (sum, holding) => sum + holding.weight,
     0,
   );
   if (total <= 0) return holdings;
 
   return holdings.map((holding) => ({
     ...holding,
-    weight: (sourceWeight(holding) / total) * targetTotal,
+    weight: (holding.weight / total) * targetTotal,
   }));
 }
 
@@ -34,6 +29,7 @@ function normalizedByMarketValue(
     holdings.length === 0 ||
     holdings.some(
       (holding) =>
+        holding.weight < 0 ||
         typeof holding.marketValue !== "number" ||
         !Number.isFinite(holding.marketValue) ||
         holding.marketValue <= 0,

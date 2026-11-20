@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { parseIsharesHoldingsCsv } from "./ishares-csv";
 
-test("retains a holding rounded to 0% when market value is positive", () => {
+test("retains signed shorts and holdings rounded to 0% with positive market value", () => {
   const parsed = parseIsharesHoldingsCsv(
     [
       'Fund Holdings as of,"29/Jul/2026"',
@@ -13,12 +13,14 @@ test("retains a holding rounded to 0% when market value is positive", () => {
       'THIRD,Third holding,Technology,Equity,0.01,100,United States,US0000000003',
       'FOURTH,Fourth holding,Technology,Equity,0.01,100,United States,US0000000004',
       'FIFTH,Fifth holding,Technology,Equity,0.01,100,United States,US0000000005',
+      'SHORT,Short holding,Technology,Equity,-0.5,-5000,United States,US0000000006',
     ].join("\n"),
   );
 
   const small = parsed.holdings.find((holding) => holding.ticker === "SMALL");
   assert.equal(small?.weight, 0);
   assert.equal(small?.marketValue, 1);
+  assert.equal(parsed.holdings.find((holding) => holding.ticker === "SHORT")?.weight, -0.5);
   assert.equal(parsed.asOf, "2026-07-29");
 });
 
@@ -64,9 +66,9 @@ test("parses IVV marketWeight and ceMarketValue while preserving identifiers and
         asOfDate: { value: 20261027 },
         ticker: { value: ["NVDA", "AAPL", "MSFT", "OTHER", "SMALL"] },
         issueName: { value: ["NVIDIA", "APPLE", "MICROSOFT", "Other", "Small"] },
-        marketWeight: { value: [7.92, 7.61, 5.93, 0.01, 0] },
+        marketWeight: { value: [7.92, 7.61, 5.93, -0.01, 0] },
         notionalWeight: { value: [7.91, 7.60, 5.92, 0.01, 0] },
-        ceMarketValue: { value: [70_223_995_863.7, 67_447_762_874.7, 52_532_234_201.61, 100, 1] },
+        ceMarketValue: { value: [70_223_995_863.7, 67_447_762_874.7, 52_532_234_201.61, -100, 1] },
         ceNotionalValue: { value: [1, 1, 1, 1, 1] },
         isin: { value: ["US67066G1040", "US0378331005", "US5949181045", "", ""] },
         exchange: { value: ["NASDAQ", "NASDAQ", "NASDAQ", "", ""] },
@@ -80,6 +82,7 @@ test("parses IVV marketWeight and ceMarketValue while preserving identifiers and
   assert.equal(parsed.holdings[0].marketValue, 70_223_995_863.7);
   assert.equal(parsed.holdings[0].isin, "US67066G1040");
   assert.equal(parsed.holdings[0].exchange, "NASDAQ");
+  assert.equal(parsed.holdings[3].weight, -0.01);
   assert.equal(parsed.holdings[4].weight, 0);
   assert.equal(parsed.holdings[4].marketValue, 1);
 });

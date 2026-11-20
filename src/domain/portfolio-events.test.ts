@@ -6,7 +6,7 @@ import { orderEarningsEvents, selectHoldingsEventPositions, selectPortfolioEvent
 const portfolio: PortfolioRecord = { id: "test", name: "Test", baseCurrency: "USD", updatedAt: "2026-10-09", items: [], cashPositions: [], analysis: null };
 const analysis: PortfolioAnalysis = {
   calculatedAt: "2026-10-09", allocationWeight: 100, cashWeight: 0, explicitCashWeight: 0, financingWeight: 0,
-  netExposureWeight: 100, grossExposureWeight: 100, positionsCount: 12, directPositionsCount: 0, etfSleevesCount: 1,
+  netExposureWeight: 100, grossExposureWeight: 100, netShortWeight: 0, positionsCount: 12, directPositionsCount: 0, etfSleevesCount: 1,
   top10Concentration: 90, positions: [], sectors: [], sources: [],
 };
 

@@ -145,6 +145,7 @@ export interface PortfolioAnalysis {
   calculatedAt: string;
   allocationWeight: number;
   cashWeight: number;
+  netShortWeight: number;
   explicitCashWeight: number;
   financingWeight: number;
   netExposureWeight: number;

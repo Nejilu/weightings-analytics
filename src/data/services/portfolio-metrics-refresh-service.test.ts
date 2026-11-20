@@ -1,3 +1,4 @@
+import { ISHARES_HOLDINGS_HASH_PREFIX } from "../providers/ishares-csv";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -108,7 +109,7 @@ test("daily metrics use newly downloaded constituents and share a fresh source a
       issuer: "Synthetic fixture", metadataJson: { model: "scaled-source", sourceEtfId: "daily-alias",
         sourceIndexName: "Daily fixture index", compositionSourceUrl: source.holdingsUrl, exposureMultiplier: 2 } }).run();
     persistSnapshot({ etf: source, asOf: "2026-10-16", fetchedAt: new Date().toISOString(),
-      sourceUrl: source.holdingsUrl, sourceHash: "ishares-holdings-v3:daily-cached",
+      sourceUrl: source.holdingsUrl, sourceHash: `${ISHARES_HOLDINGS_HASH_PREFIX}daily-cached`,
       holdings: Array.from({ length: 6 }, (_, i) => ({ securityId: `DAILY-CACHED-${i}`, ticker: `CACHED${i}`,
         name: `Old constituent ${i}`, sector: "Technology", assetClass: "Equity", country: "United States", weight: 100 / 6 })) });
     for (const id of ["daily-a", "daily-b"]) {

@@ -42,6 +42,8 @@ export async function analysisContext(request: AiAnalysisRequest) {
   return { title: p.name, context: {
     type: "portfolio", name: p.name, baseCurrency: p.baseCurrency, updatedAt: p.updatedAt, calculatedAt: a.calculatedAt,
     weightBasis: "signed percentage of net asset value; negative weights are shorts or financing",
+    exposureBasis: "Gross sums absolute security contributions before offsets. Net sums absolute remaining positions per underlying security. Cash exposure deducts net shorts once from cash including ETF cash and financing.",
+    netShortWeightPct: weight(a.netShortWeight),
     allocationWeightPct: weight(a.allocationWeight), cashWeightPct: weight(a.cashWeight), explicitCashWeightPct: weight(a.explicitCashWeight),
     financingWeightPct: weight(a.financingWeight), netExposureWeightPct: weight(a.netExposureWeight), grossExposureWeightPct: weight(a.grossExposureWeight),
     sources: a.sources.map((s) => ({ ticker: s.ticker, asOf: s.asOf, sourceStatus: s.sourceStatus, sourceIssues: s.sourceIssues, constituentCoverage: s.constituentCoverage ? { used: s.constituentCoverage.used, total: s.constituentCoverage.total } : undefined })), priceError: p.priceError,

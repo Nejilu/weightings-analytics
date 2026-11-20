@@ -1,6 +1,6 @@
 import type { Holding } from "./etf";
 
-export function isCashHolding(holding: Holding): boolean {
+export function isCashHolding(holding: Pick<Holding, "assetClass" | "name">): boolean {
   const assetClass = holding.assetClass.toLocaleLowerCase("en-US");
   const name = holding.name.toLocaleLowerCase("en-US");
   return (

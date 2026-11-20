@@ -6,7 +6,7 @@ import {
 
 // Bump this prefix whenever the normalization changes in a way that must be
 // re-applied to snapshots already persisted from the same provider payload.
-export const ISHARES_HOLDINGS_HASH_PREFIX = "ishares-holdings-v3:";
+export const ISHARES_HOLDINGS_HASH_PREFIX = "ishares-holdings-v4:";
 
 interface ParsedHoldingsFile {
   asOf: string;
@@ -202,7 +202,7 @@ function parseBlackrockProductData(raw: string): ParsedHoldingsFile {
       const isin = blackrockValueAt(isins, index);
       const cusip = blackrockValueAt(cusips, index);
       const sedol = blackrockValueAt(sedols, index);
-      if (!name || (weight <= 0 && marketValue <= 0)) return null;
+      if (!name || (weight === 0 && marketValue <= 0)) return null;
 
       return {
         securityId: preferredSecurityId({
@@ -284,7 +284,7 @@ export function parseIsharesHoldingsCsv(raw: string): ParsedHoldingsFile {
       const isin = valueAt(row, isinIndex);
       const cusip = valueAt(row, cusipIndex);
       const sedol = valueAt(row, sedolIndex);
-      if (!name || (weight <= 0 && marketValue <= 0)) return null;
+      if (!name || (weight === 0 && marketValue <= 0)) return null;
 
       return {
         securityId: preferredSecurityId({
